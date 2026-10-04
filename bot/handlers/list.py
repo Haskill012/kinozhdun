@@ -47,7 +47,7 @@ async def render_user_list(telegram_id: int, username: str | None, first_name: s
         return text, reply_markup
 
 
-@router.message(or_f(Command("list"), F.text == "🍿 Мой список ожидания", F.text == "📋 Мой список"))
+@router.message(or_f(Command("list"), F.text == "🍿 Мой Кинождун", F.text == "🍿 Мой список ожидания", F.text == "📋 Мой список"))
 async def cmd_list(message: Message) -> None:
     """Команда /list или кнопка «📋 Мой список» — показать список отслеживаемых проектов."""
     session_factory = message.bot["session_factory"]

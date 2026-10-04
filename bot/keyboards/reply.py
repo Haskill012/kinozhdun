@@ -9,7 +9,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [
                 KeyboardButton(text="🔍 Найти фильм / сериал"),
-                KeyboardButton(text="🍿 Мой список ожидания"),
+                KeyboardButton(text="🍿 Мой Кинождун"),
             ],
             [
                 KeyboardButton(text="🔄 Проверить статус"),

@@ -82,8 +82,8 @@ def track_success_keyboard(
     share_text = f"🍿 Я жду {type_str} «{title}»!\nКинождун сообщит, когда появятся новости и объявят дату выхода 🎬"
     share_url = f"https://t.me/share/url?url={urllib.parse.quote(deep_link)}&text={urllib.parse.quote(share_text)}"
 
-    builder.button(text="📤 Поделиться с другом", url=share_url)
-    builder.button(text="📋 Мой список", callback_data="back_to_list")
+    builder.button(text="📤 Поделиться", url=share_url)
+    builder.button(text="🍿 Мой Кинождун", callback_data="back_to_list")
     builder.button(text="🔍 Искать ещё", callback_data="cancel_search")
     builder.adjust(1, 2)
     return builder.as_markup()
@@ -92,6 +92,11 @@ def track_success_keyboard(
 def user_items_keyboard(items: list[Any], action: str = "info") -> InlineKeyboardMarkup:
     """Клавиатура списка отслеживаемых элементов с кнопкой «📤 Поделиться списком»."""
     builder = InlineKeyboardBuilder()
+
+    # При просмотре списка ставим кнопку шеринга В САМЫЙ ВЕРХ, чтобы её сразу заметили!
+    if action == "info" and len(items) > 0:
+        builder.button(text="📤 Поделиться моим Кинождуном", callback_data="share_watchlist")
+
     for item in items:
         title = getattr(item, "title", f"Элемент {getattr(item, 'id', '')}")
         media_type = getattr(item, "media_type", "movie")
@@ -105,9 +110,9 @@ def user_items_keyboard(items: list[Any], action: str = "info") -> InlineKeyboar
 
         builder.button(text=btn_text, callback_data=f"{action}:{item.id}")
 
-    # Если это просмотр списка (action == "info") и есть элементы, добавляем кнопку шеринга
-    if action == "info" and len(items) > 0:
-        builder.button(text="📤 Поделиться списком ожидания", callback_data="share_watchlist")
+    # Внизу длинного списка также добавляем кнопку
+    if action == "info" and len(items) > 3:
+        builder.button(text="📤 Поделиться списком", callback_data="share_watchlist")
 
     builder.button(text="❌ Закрыть", callback_data="cancel_search")
     builder.adjust(1)
