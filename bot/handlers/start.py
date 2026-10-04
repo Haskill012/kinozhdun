@@ -30,7 +30,7 @@ async def cmd_start(message: Message) -> None:
     )
 
 
-@router.message(or_f(Command("help"), F.text == "ℹ️ Справка"))
+@router.message(or_f(Command("help"), F.text == "ℹ️ Справка и помощь", F.text == "ℹ️ Справка"))
 async def cmd_help(message: Message) -> None:
     """Обработка команды /help и кнопки «ℹ️ Справка»."""
     await message.answer(format_help_message(), reply_markup=main_menu_keyboard())

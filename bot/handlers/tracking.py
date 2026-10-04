@@ -29,11 +29,15 @@ logger = logging.getLogger(__name__)
 router = Router(name="tracking_router")
 
 MENU_BUTTON_TEXTS = {
+    "🔍 Найти фильм / сериал",
     "🔍 Найти сериал / фильм",
+    "🍿 Мой список ожидания",
     "📋 Мой список",
     "🔄 Проверить статус",
+    "📅 Своя дата",
     "📅 Указать дату",
     "🗑 Удалить из списка",
+    "ℹ️ Справка и помощь",
     "ℹ️ Справка",
 }
 
@@ -45,13 +49,14 @@ class DateState(StatesGroup):
 
 # --- Кнопка меню «Поиск» ---
 
-@router.message(F.text == "🔍 Найти сериал / фильм")
+@router.message(or_f(F.text == "🔍 Найти фильм / сериал", F.text == "🔍 Найти сериал / фильм"))
 async def btn_search_prompt(message: Message) -> None:
     """Подсказка при нажатии кнопки поиска в меню."""
     await message.answer(
-        "🔍 <b>Поиск фильма или сериала</b>\n\n"
-        "Напишите в ответ название проекта, который вы ждёте "
-        "(например: <i>Ведьмак</i>, <i>Мандалорец</i> или <i>Дюна</i>):",
+        "🔍 <b>Поиск фильма или сериала</b>\n"
+        "────────────────────────\n"
+        "Напишите в ответ название проекта, который вы ждёте.\n"
+        "<i>Например: Ведьмак, Мандалорец, Дюна, Пацаны...</i>",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -330,7 +335,7 @@ async def cancel_remove(callback: CallbackQuery) -> None:
 
 # --- Установка своей даты ---
 
-@router.message(or_f(Command("setdate"), F.text == "📅 Указать дату"))
+@router.message(or_f(Command("setdate"), F.text == "📅 Своя дата", F.text == "📅 Указать дату"))
 async def cmd_setdate(message: Message) -> None:
     """Показать список для установки пользовательской даты."""
     session_factory = message.bot["session_factory"]
