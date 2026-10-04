@@ -36,8 +36,13 @@ async def init_db(engine: AsyncEngine) -> None:
     """Инициализация базы данных — создание всех таблиц и безопасная миграция колонок."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Безопасно добавляем колонку network, если база уже существовала
-        try:
-            await conn.execute(text("ALTER TABLE tracked_items ADD COLUMN network TEXT"))
-        except Exception:
-            pass
+        # Безопасно добавляем колонки в существующие таблицы
+        for alter_sql in [
+            "ALTER TABLE tracked_items ADD COLUMN network TEXT",
+            "ALTER TABLE users ADD COLUMN referral_source TEXT",
+            "ALTER TABLE users ADD COLUMN referrer_id BIGINT",
+        ]:
+            try:
+                await conn.execute(text(alter_sql))
+            except Exception:
+                pass

@@ -1,7 +1,8 @@
-"""Инлайн-клавиатуры для бота КиноЖдун."""
+"""Инлайн-клавиатуры для бота КиноЖдун (включая виральный шеринг, расшаривание списков и переходы из канала)."""
 
-from typing import Any
-from aiogram.types import InlineKeyboardMarkup
+import urllib.parse
+from typing import Any, Optional
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
@@ -29,7 +30,6 @@ def search_results_keyboard(results: list[dict[str, Any]]) -> InlineKeyboardMark
             btn_text = btn_text[:57] + "..."
 
         tmdb_id = result.get("tmdb_id") or result.get("id")
-        # Ведёт на карточку предпросмотра с кнопкой «Добавить в отслеживание»
         builder.button(text=btn_text, callback_data=f"preview:{media_type}:{tmdb_id}")
 
     builder.button(text="❌ Отмена поиска", callback_data="cancel_search")
@@ -41,12 +41,20 @@ def preview_item_keyboard(
     media_type: str,
     tmdb_id: int,
     is_already_tracked: bool = False,
-    tracked_item_id: int | None = None
+    tracked_item_id: int | None = None,
+    bot_username: str = "kinojdun_bot",
+    title: str = "",
 ) -> InlineKeyboardMarkup:
     """Клавиатура для карточки предпросмотра проекта с кнопкой добавления в отслеживание."""
     builder = InlineKeyboardBuilder()
     if is_already_tracked:
-        builder.button(text="✅ Уже в вашем списке отслеживания", callback_data="already_tracked")
+        builder.button(text="✅ Уже в вашем списке", callback_data="already_tracked")
+        # Возможность поделиться проектом из списка
+        if title:
+            deep_link = f"https://t.me/{bot_username}?start=c_{media_type}_{tmdb_id}"
+            share_text = f"🍿 Я жду «{title}». Кинождун сообщит, когда появятся новости и объявят дату выхода!"
+            share_url = f"https://t.me/share/url?url={urllib.parse.quote(deep_link)}&text={urllib.parse.quote(share_text)}"
+            builder.button(text="📤 Поделиться с другом", url=share_url)
         if tracked_item_id:
             builder.button(text="🗑 Удалить из списка", callback_data=f"remove:{tracked_item_id}")
     else:
@@ -58,17 +66,31 @@ def preview_item_keyboard(
     return builder.as_markup()
 
 
-def track_success_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура после успешного добавления проекта в отслеживание."""
+def track_success_keyboard(
+    media_type: str,
+    tmdb_id: int,
+    title: str,
+    bot_username: str = "kinojdun_bot",
+    referrer_id: Optional[int] = None,
+) -> InlineKeyboardMarkup:
+    """Клавиатура после успешного добавления проекта с виральной кнопкой шеринга."""
     builder = InlineKeyboardBuilder()
+
+    ref_part = f"_u{referrer_id}" if referrer_id else ""
+    deep_link = f"https://t.me/{bot_username}?start=c_{media_type}_{tmdb_id}{ref_part}"
+    type_str = "сериал" if media_type == "tv" else "фильм"
+    share_text = f"🍿 Я жду {type_str} «{title}»!\nКинождун сообщит, когда появятся новости и объявят дату выхода 🎬"
+    share_url = f"https://t.me/share/url?url={urllib.parse.quote(deep_link)}&text={urllib.parse.quote(share_text)}"
+
+    builder.button(text="📤 Поделиться с другом", url=share_url)
     builder.button(text="📋 Мой список", callback_data="back_to_list")
     builder.button(text="🔍 Искать ещё", callback_data="cancel_search")
-    builder.adjust(2)
+    builder.adjust(1, 2)
     return builder.as_markup()
 
 
 def user_items_keyboard(items: list[Any], action: str = "info") -> InlineKeyboardMarkup:
-    """Клавиатура списка отслеживаемых элементов пользователя."""
+    """Клавиатура списка отслеживаемых элементов с кнопкой «📤 Поделиться списком»."""
     builder = InlineKeyboardBuilder()
     for item in items:
         title = getattr(item, "title", f"Элемент {getattr(item, 'id', '')}")
@@ -83,7 +105,126 @@ def user_items_keyboard(items: list[Any], action: str = "info") -> InlineKeyboar
 
         builder.button(text=btn_text, callback_data=f"{action}:{item.id}")
 
+    # Если это просмотр списка (action == "info") и есть элементы, добавляем кнопку шеринга
+    if action == "info" and len(items) > 0:
+        builder.button(text="📤 Поделиться списком ожидания", callback_data="share_watchlist")
+
     builder.button(text="❌ Закрыть", callback_data="cancel_search")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def shared_watchlist_created_keyboard(token: str, bot_username: str, titles: list[str]) -> InlineKeyboardMarkup:
+    """Клавиатура для создателя списка со ссылкой для быстрой отправки в чаты Telegram."""
+    deep_link = f"https://t.me/{bot_username}?start=w_{token}"
+    preview_titles = "\n".join(f"• {t}" for t in titles[:5])
+    if len(titles) > 5:
+        preview_titles += f"\n• ... и ещё {len(titles) - 5}"
+
+    share_text = (
+        f"🍿 Вот что я сейчас жду в Кинождуне:\n\n{preview_titles}\n\n"
+        "Удобный бот сообщает, когда выходят новые сезоны и объявляют даты премьер!"
+    )
+    share_url = f"https://t.me/share/url?url={urllib.parse.quote(deep_link)}&text={urllib.parse.quote(share_text)}"
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📤 Отправить друзьям в Telegram", url=share_url)
+    builder.button(text="📋 К моему списку", callback_data="back_to_list")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def shared_item_recipient_keyboard(
+    media_type: str,
+    tmdb_id: int,
+    is_already_tracked: bool = False,
+    referrer_id: Optional[int] = None,
+) -> InlineKeyboardMarkup:
+    """Клавиатура для получателя ссылки на конкретный фильм/сериал."""
+    builder = InlineKeyboardBuilder()
+    if is_already_tracked:
+        builder.button(text="✅ Уже в вашем списке ожидания", callback_data="already_tracked")
+        builder.button(text="📋 Открыть мой список", callback_data="back_to_list")
+    else:
+        ref_part = f":{referrer_id}" if referrer_id else ""
+        builder.button(text="🔔 Отслеживать", callback_data=f"track_from_share:{media_type}:{tmdb_id}{ref_part}")
+        builder.button(text="🔎 Посмотреть подробнее", callback_data=f"preview:{media_type}:{tmdb_id}")
+
+    builder.button(text="🔍 Найти другой фильм/сериал", callback_data="cancel_search")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def shared_watchlist_recipient_keyboard(
+    token: str,
+    items: list[dict[str, Any]],
+    tracked_keys: set[tuple[str, int]],
+) -> InlineKeyboardMarkup:
+    """Клавиатура для получателя расшаренного списка: кнопки по каждому тайтлу + «Отслеживать всё»."""
+    builder = InlineKeyboardBuilder()
+
+    # Кнопки для отдельных элементов (первые 8, чтобы не перегружать клавиатуру)
+    for idx, item in enumerate(items[:8]):
+        m_type = item.get("media_type", "movie")
+        t_id = int(item.get("tmdb_id", 0))
+        title = item.get("title", "Без названия")
+        is_tracked = (m_type, t_id) in tracked_keys
+
+        if is_tracked:
+            btn_text = f"✅ {title} (уже у вас)"
+            callback = "already_tracked"
+        else:
+            icon = "📺" if m_type == "tv" else "🎬"
+            btn_text = f"➕ {icon} {title}"
+            if len(btn_text) > 40:
+                btn_text = btn_text[:37] + "..."
+            callback = f"track_shared_item:{token}:{idx}"
+
+        builder.button(text=btn_text, callback_data=callback)
+
+    # Кнопка «Отслеживать всё»
+    untracked_count = sum(1 for it in items if (it.get("media_type", "movie"), int(it.get("tmdb_id", 0))) not in tracked_keys)
+    if untracked_count > 0:
+        builder.button(text=f"➕ Отслеживать всё ({untracked_count})", callback_data=f"prompt_batch_track:{token}")
+    else:
+        builder.button(text="✅ Все тайтлы уже в вашем списке", callback_data="already_tracked")
+
+    builder.button(text="📋 Мой список ожидания", callback_data="back_to_list")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def confirm_batch_track_keyboard(token: str) -> InlineKeyboardMarkup:
+    """Клавиатура подтверждения массового добавления тайтлов из списка друга."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Да, отслеживать всё", callback_data=f"confirm_batch_track:{token}")
+    builder.button(text="❌ Отмена", callback_data=f"cancel_batch_track:{token}")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+def channel_referral_keyboard(
+    post_id: int,
+    media_type: str,
+    tmdb_id: int,
+    title: str,
+    is_already_tracked: bool = False,
+) -> InlineKeyboardMarkup:
+    """Клавиатура для пользователя, перешедшего из публикации Telegram-канала."""
+    builder = InlineKeyboardBuilder()
+    clean_title = title if len(title) <= 24 else title[:21] + "..."
+
+    if is_already_tracked:
+        builder.button(text=f"✅ «{clean_title}» уже в вашем списке", callback_data="already_tracked")
+        builder.button(text="📋 Мой список ожидания", callback_data="back_to_list")
+    else:
+        builder.button(
+            text=f"🔔 Отслеживать «{clean_title}»",
+            callback_data=f"track_from_channel:{post_id}:{media_type}:{tmdb_id}"
+        )
+        builder.button(text="🔎 Подробнее о проекте", callback_data=f"preview:{media_type}:{tmdb_id}")
+
+    builder.button(text="🔍 Найти другой фильм/сериал", callback_data="cancel_search")
     builder.adjust(1)
     return builder.as_markup()
 

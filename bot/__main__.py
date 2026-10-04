@@ -56,6 +56,10 @@ async def main() -> None:
     try:
         await bot.delete_webhook(drop_pending_updates=True)
 
+        bot_info = await bot.get_me()
+        if bot_info.username:
+            settings.BOT_USERNAME = bot_info.username
+
         # Настраиваем всплывающее меню команд Telegram
         await bot.set_my_commands([
             BotCommand(command="start", description="Главное меню / Перезапуск"),

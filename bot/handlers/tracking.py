@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+from typing import Any, Optional
 
 from aiogram import Router, F
 from aiogram.filters import Command, or_f
@@ -18,6 +19,7 @@ from bot.keyboards.inline import (
     confirm_remove_keyboard,
 )
 from bot.keyboards.reply import main_menu_keyboard
+from bot.services.analytics import AnalyticsService
 from bot.utils.formatting import (
     format_item_details,
     format_search_results_message,
@@ -121,12 +123,16 @@ async def process_preview_item(callback: CallbackQuery) -> None:
             if match:
                 tracked_item_id = match.id
 
+    title = details.get("title") or details.get("name") or "Без названия"
+    settings = callback.bot["settings"]
     text = "🔍 <b>Карточка выбранного проекта:</b>\n\n" + format_item_details(details, media_type)
     reply_markup = preview_item_keyboard(
         media_type=media_type,
         tmdb_id=tmdb_id,
         is_already_tracked=is_tracked,
         tracked_item_id=tracked_item_id,
+        bot_username=settings.BOT_USERNAME,
+        title=title,
     )
     await callback.message.edit_text(text, reply_markup=reply_markup)
 
@@ -159,49 +165,36 @@ async def process_already_tracked(callback: CallbackQuery) -> None:
 
 # --- Подтверждение добавления в отслеживание ---
 
-@router.callback_query(or_f(F.data.startswith("confirm_track:"), F.data.startswith("track:")))
-async def process_confirm_track(callback: CallbackQuery) -> None:
-    """Фактическое сохранение проекта в базу данных по нажатию кнопки «Добавить в отслеживание»."""
-    await callback.answer()
-    parts = callback.data.split(":")
-    media_type = parts[1]
-    tmdb_id = int(parts[2])
-
-    session_factory = callback.bot["session_factory"]
-    tmdb_client = callback.bot["tmdb_client"]
-    settings = callback.bot["settings"]
-
+async def save_single_tracked_item(
+    user_id: int,
+    telegram_id: int,
+    media_type: str,
+    tmdb_id: int,
+    session_factory: Any,
+    tmdb_client: Any,
+    settings: Any,
+) -> tuple[bool, str, Optional[dict[str, Any]]]:
+    """Вспомогательная функция для добавления тайтла в отслеживание с проверками."""
     async with session_factory() as session:
         repo = Repository(session)
-        user = await repo.get_or_create_user(
-            telegram_id=callback.from_user.id,
-            username=callback.from_user.username,
-            first_name=callback.from_user.first_name,
-        )
 
-        # Проверка: уже отслеживается?
-        if await repo.is_already_tracking(callback.from_user.id, tmdb_id, media_type):
-            await callback.message.edit_text("ℹ️ Этот проект уже находится в вашем списке ожидания.")
-            return
+        # 1. Проверка: уже отслеживается?
+        if await repo.is_already_tracking(telegram_id, tmdb_id, media_type):
+            return False, "already_tracked", None
 
-        # Проверка лимита
-        items = await repo.get_user_items(callback.from_user.id)
+        # 2. Проверка лимита
+        items = await repo.get_user_items(telegram_id)
         if len(items) >= settings.MAX_ITEMS_PER_USER:
-            await callback.message.edit_text(
-                f"⚠️ Достигнут лимит отслеживания ({settings.MAX_ITEMS_PER_USER} проектов). "
-                "Удалите ненужные тайтлы кнопкой «🗑 Удалить из списка»."
-            )
-            return
+            return False, "limit_exceeded", None
 
-        # Получаем полные детали из TMDB
+        # 3. Получаем детали из TMDB
         if media_type == "tv":
             details = await tmdb_client.get_tv_details(tmdb_id)
         else:
             details = await tmdb_client.get_movie_details(tmdb_id)
 
         if not details:
-            await callback.message.edit_text("❌ Не удалось получить информацию о проекте.")
-            return
+            return False, "not_found", None
 
         title = details.get("title", "Без названия")
         original_title = details.get("original_title")
@@ -240,7 +233,7 @@ async def process_confirm_track(callback: CallbackQuery) -> None:
                     pass
 
         await repo.add_tracked_item(
-            user_id=user.id,
+            user_id=user_id,
             tmdb_id=tmdb_id,
             media_type=media_type,
             title=title,
@@ -254,15 +247,225 @@ async def process_confirm_track(callback: CallbackQuery) -> None:
         )
         await session.commit()
 
-        network_str = f" ({network})" if network else ""
-        date_str = f"\n📅 Ближайшая известная дата: <code>{format_date_ru(next_air_date)}</code>" if next_air_date else "\n📅 Дата нового сезона: <i>пока не объявлена</i>"
+        return True, "ok", {
+            "title": title,
+            "network": network,
+            "next_air_date": next_air_date,
+        }
 
-        text = (
-            f"✅ <b>«{title}»</b>{network_str} добавлен в ваш список отслеживания! 🎉\n"
-            f"{date_str}\n\n"
-            "Как только появится официальная дата премьеры — бот сразу пришлёт вам уведомление с ссылкой на первоисточник 🍿"
+
+# --- Подтверждение добавления в отслеживание ---
+
+@router.callback_query(or_f(F.data.startswith("confirm_track:"), F.data.startswith("track:")))
+async def process_confirm_track(callback: CallbackQuery) -> None:
+    """Фактическое сохранение проекта в базу данных по нажатию кнопки «Добавить в отслеживание»."""
+    await callback.answer()
+    parts = callback.data.split(":")
+    media_type = parts[1]
+    tmdb_id = int(parts[2])
+
+    session_factory = callback.bot["session_factory"]
+    tmdb_client = callback.bot["tmdb_client"]
+    settings = callback.bot["settings"]
+    analytics = AnalyticsService(session_factory)
+
+    async with session_factory() as session:
+        repo = Repository(session)
+        user = await repo.get_or_create_user(
+            telegram_id=callback.from_user.id,
+            username=callback.from_user.username,
+            first_name=callback.from_user.first_name,
         )
-        await callback.message.edit_text(text, reply_markup=track_success_keyboard())
+        user_id = user.id
+        await session.commit()
+
+    success, reason, info = await save_single_tracked_item(
+        user_id=user_id,
+        telegram_id=callback.from_user.id,
+        media_type=media_type,
+        tmdb_id=tmdb_id,
+        session_factory=session_factory,
+        tmdb_client=tmdb_client,
+        settings=settings,
+    )
+
+    if not success:
+        if reason == "already_tracked":
+            await callback.message.edit_text("ℹ️ Этот проект уже находится в вашем списке ожидания.")
+        elif reason == "limit_exceeded":
+            await callback.message.edit_text(
+                f"⚠️ Достигнут лимит отслеживания ({settings.MAX_ITEMS_PER_USER} проектов). "
+                "Удалите ненужные тайтлы кнопкой «🗑 Удалить из списка»."
+            )
+        else:
+            await callback.message.edit_text("❌ Не удалось получить информацию о проекте.")
+        return
+
+    title = info["title"]
+    network = info["network"]
+    next_air_date = info["next_air_date"]
+
+    network_str = f" ({network})" if network else ""
+    date_str = f"\n📅 Ближайшая известная дата: <code>{format_date_ru(next_air_date)}</code>" if next_air_date else "\n📅 Дата нового сезона: <i>пока не объявлена</i>"
+
+    text = (
+        f"✅ <b>«{title}»</b>{network_str} добавлен в ваш список отслеживания! 🎉\n"
+        f"{date_str}\n\n"
+        "Как только появится официальная дата премьеры — бот сразу пришлёт вам уведомление с ссылкой на первоисточник 🍿"
+    )
+    reply_markup = track_success_keyboard(
+        media_type=media_type,
+        tmdb_id=tmdb_id,
+        title=title,
+        bot_username=settings.BOT_USERNAME,
+        referrer_id=callback.from_user.id,
+    )
+    await callback.message.edit_text(text, reply_markup=reply_markup)
+
+
+# --- Добавление по виральной ссылке шеринга контента ---
+
+@router.callback_query(F.data.startswith("track_from_share:"))
+async def process_track_from_share(callback: CallbackQuery) -> None:
+    """Добавление фильма/сериала получателем ссылки расшаривания контента."""
+    await callback.answer()
+    parts = callback.data.split(":")
+    media_type = parts[1]
+    tmdb_id = int(parts[2])
+    referrer_id = int(parts[3]) if len(parts) > 3 and parts[3] else None
+
+    session_factory = callback.bot["session_factory"]
+    tmdb_client = callback.bot["tmdb_client"]
+    settings = callback.bot["settings"]
+    analytics = AnalyticsService(session_factory)
+
+    async with session_factory() as session:
+        repo = Repository(session)
+        user = await repo.get_or_create_user(
+            telegram_id=callback.from_user.id,
+            username=callback.from_user.username,
+            first_name=callback.from_user.first_name,
+            referral_source=f"share_content:{media_type}:{tmdb_id}",
+            referrer_id=referrer_id,
+        )
+        user_id = user.id
+        await session.commit()
+
+    success, reason, info = await save_single_tracked_item(
+        user_id=user_id,
+        telegram_id=callback.from_user.id,
+        media_type=media_type,
+        tmdb_id=tmdb_id,
+        session_factory=session_factory,
+        tmdb_client=tmdb_client,
+        settings=settings,
+    )
+
+    if not success:
+        if reason == "already_tracked":
+            await callback.message.edit_text("ℹ️ Этот проект уже находится в вашем списке ожидания 🍿")
+        elif reason == "limit_exceeded":
+            await callback.message.edit_text(
+                f"⚠️ Достигнут лимит отслеживания ({settings.MAX_ITEMS_PER_USER} проектов)."
+            )
+        else:
+            await callback.message.edit_text("❌ Не удалось получить информацию о проекте.")
+        return
+
+    # Логируем аналитическое событие
+    await analytics.log_content_followed_from_share(callback.from_user.id, media_type, tmdb_id, referrer_id)
+
+    title = info["title"]
+    network = info["network"]
+    next_air_date = info["next_air_date"]
+    network_str = f" ({network})" if network else ""
+    date_str = f"\n📅 Ближайшая известная дата: <code>{format_date_ru(next_air_date)}</code>" if next_air_date else "\n📅 Дата нового сезона: <i>пока не объявлена</i>"
+
+    text = (
+        f"✅ <b>«{title}»</b>{network_str} успешно добавлен в ваш список отслеживания! 🎉\n"
+        f"{date_str}\n\n"
+        "Теперь вы будете первыми узнавать о выходе новых сезонов и датах премьер 🍿"
+    )
+    reply_markup = track_success_keyboard(
+        media_type=media_type,
+        tmdb_id=tmdb_id,
+        title=title,
+        bot_username=settings.BOT_USERNAME,
+        referrer_id=callback.from_user.id,
+    )
+    await callback.message.edit_text(text, reply_markup=reply_markup)
+
+
+# --- Добавление по ссылке из Telegram-канала ---
+
+@router.callback_query(F.data.startswith("track_from_channel:"))
+async def process_track_from_channel(callback: CallbackQuery) -> None:
+    """Добавление проекта в отслеживание после перехода из Telegram-канала."""
+    await callback.answer()
+    parts = callback.data.split(":")
+    post_id = int(parts[1])
+    media_type = parts[2]
+    tmdb_id = int(parts[3])
+
+    session_factory = callback.bot["session_factory"]
+    tmdb_client = callback.bot["tmdb_client"]
+    settings = callback.bot["settings"]
+    analytics = AnalyticsService(session_factory)
+
+    async with session_factory() as session:
+        repo = Repository(session)
+        user = await repo.get_or_create_user(
+            telegram_id=callback.from_user.id,
+            username=callback.from_user.username,
+            first_name=callback.from_user.first_name,
+            referral_source=f"telegram_channel:{post_id}",
+        )
+        user_id = user.id
+        await session.commit()
+
+    success, reason, info = await save_single_tracked_item(
+        user_id=user_id,
+        telegram_id=callback.from_user.id,
+        media_type=media_type,
+        tmdb_id=tmdb_id,
+        session_factory=session_factory,
+        tmdb_client=tmdb_client,
+        settings=settings,
+    )
+
+    if not success:
+        if reason == "already_tracked":
+            await callback.message.edit_text("ℹ️ Этот проект уже находится в вашем списке ожидания 🍿")
+        elif reason == "limit_exceeded":
+            await callback.message.edit_text(
+                f"⚠️ Достигнут лимит отслеживания ({settings.MAX_ITEMS_PER_USER} проектов)."
+            )
+        else:
+            await callback.message.edit_text("❌ Не удалось получить информацию о проекте.")
+        return
+
+    # Логируем событие
+    await analytics.log_content_followed_from_channel(callback.from_user.id, post_id, media_type, tmdb_id)
+
+    title = info["title"]
+    network = info["network"]
+    next_air_date = info["next_air_date"]
+    network_str = f" ({network})" if network else ""
+    date_str = f"\n📅 Дата премьеры: <code>{format_date_ru(next_air_date)}</code>" if next_air_date else "\n📅 Дата премьеры: <i>пока не объявлена</i>"
+
+    text = (
+        f"✅ <b>«{title}»</b>{network_str} добавлен в ваш список отслеживания! 🎉\n"
+        f"{date_str}\n\n"
+        "Мы напомним вам о премьере за 3 дня до релиза и пришлём уведомление в день выхода 🍿"
+    )
+    reply_markup = track_success_keyboard(
+        media_type=media_type,
+        tmdb_id=tmdb_id,
+        title=title,
+        bot_username=settings.BOT_USERNAME,
+        referrer_id=callback.from_user.id,
+    )
+    await callback.message.edit_text(text, reply_markup=reply_markup)
 
 
 # --- Отмена поиска ---

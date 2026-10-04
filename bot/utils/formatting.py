@@ -334,3 +334,87 @@ def format_help_message() -> str:
         f"{DIVIDER}\n"
         "💡 <i>Подсказка: Вы также можете в любой момент просто написать название фильма или сериала в чат!</i>"
     )
+
+
+def format_shared_item_prompt(title: str, details: dict[str, Any], media_type: str) -> str:
+    """Форматирует карточку проекта для получателя ссылки шеринга."""
+    icon = "📺" if media_type == "tv" else "🎬"
+    type_str = "сериал" if media_type == "tv" else "фильм"
+    network = details.get("network")
+    net_str = f"\n🏢 <b>Платформа:</b> {network}" if network else ""
+
+    next_date = None
+    if media_type == "tv":
+        next_ep = details.get("next_episode_to_air")
+        if next_ep and next_ep.get("air_date"):
+            next_date = next_ep["air_date"]
+    else:
+        next_date = details.get("release_date")
+
+    date_str = f"\n📅 <b>Дата выхода:</b> <code>{format_date_ru(next_date)}</code>" if next_date else "\n📅 <b>Дата выхода:</b> <i>пока не объявлена</i>"
+
+    overview = details.get("overview", "").strip()
+    if len(overview) > 200:
+        overview = overview[:197] + "..."
+    overview_str = f"\n\n📝 <i>«{overview}»</i>" if overview else ""
+
+    return (
+        f"🍿 <b>Тоже ждёшь «{title}»?</b>\n"
+        f"{DIVIDER}\n"
+        f"Друг поделился с вами {type_str}ом {icon} <b>«{title}»</b>.{net_str}{date_str}{overview_str}\n\n"
+        "Кинождун пришлёт вам уведомление, как только появится официальная дата премьеры, трейлер или новый сезон 🍿\n\n"
+        "👇 <i>Нажмите <b>«🔔 Отслеживать»</b> ниже, чтобы добавить в свой список в 1 клик:</i>"
+    )
+
+
+def format_shared_watchlist_message(items: list[dict[str, Any]], title: str = "Список ожидания") -> str:
+    """Форматирует карточку расшаренного списка для получателя."""
+    if not items:
+        return (
+            f"🍿 <b>{title}</b>\n"
+            f"{DIVIDER}\n"
+            "Этот список ожидания пуст."
+        )
+
+    lines = [
+        f"🍿 <b>{title}</b>",
+        f"Всего тайтлов: <b>{len(items)}</b>",
+        DIVIDER,
+        "Вот какие фильмы и сериалы сейчас ждёт автор списка:\n",
+    ]
+
+    for i, it in enumerate(items, 1):
+        m_type = it.get("media_type", "movie")
+        icon = "📺" if m_type == "tv" else "🎬"
+        item_title = it.get("title", "Без названия")
+        network = it.get("network")
+        net_str = f" • {network}" if network else ""
+
+        next_date = it.get("next_air_date")
+        date_str = f" — <code>{format_date_ru(next_date)}</code>" if next_date else " — <i>дата не объявлена</i>"
+
+        lines.append(f"{i}. {icon} <b>{item_title}</b>{net_str}{date_str}")
+
+    lines.append(f"\n{DIVIDER}")
+    lines.append("👇 <i>Выберите позиции для добавления или нажмите «➕ Отслеживать всё»:</i>")
+    return "\n".join(lines)
+
+
+def format_channel_referral_prompt(post: Any) -> str:
+    """Форматирует карточку для пользователя, перешедшего из Telegram-канала."""
+    icon = "📺" if getattr(post, "media_type", "") == "tv" else "🎬"
+    title = getattr(post, "title", "Без названия")
+    network = getattr(post, "network", None)
+    net_str = f"\n🏢 <b>Платформа / Студия:</b> {network}" if network else ""
+
+    air_date = getattr(post, "air_date", None)
+    date_str = f"\n📅 <b>Дата премьеры:</b> <code>{format_date_ru(air_date)}</code>" if air_date else ""
+
+    return (
+        f"🔥 <b>Новость из Telegram-канала «Кинождун»</b>\n"
+        f"{DIVIDER}\n"
+        f"{icon} <b>{title}</b>{net_str}{date_str}\n\n"
+        "Вы перешли по новости из нашего канала! Вы можете добавить этот проект в свой личный "
+        "список отслеживания в 1 клик, чтобы не пропустить премьеру и новые анонсы.\n\n"
+        "👇 <i>Нажмите кнопку ниже:</i>"
+    )

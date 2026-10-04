@@ -6,6 +6,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from bot.config import Settings
 from bot.db.repositories import Repository
+from bot.services.channel import ChannelPublisher
 from bot.services.tmdb import TMDBClient
 from bot.services.tracker import TrackerService
 from bot.utils.formatting import (
@@ -17,7 +18,9 @@ from bot.utils.formatting import (
 logger = logging.getLogger(__name__)
 
 
-async def check_updates_job(bot: Bot, session_factory, tmdb_client: TMDBClient) -> None:
+async def check_updates_job(
+    bot: Bot, session_factory, tmdb_client: TMDBClient, settings: Settings
+) -> None:
     """Периодическая проверка появления дат выхода новых сезонов и релизов."""
     logger.info("Запуск фоновой проверки обновлений по каталогу TMDB...")
     try:
@@ -29,6 +32,9 @@ async def check_updates_job(bot: Bot, session_factory, tmdb_client: TMDBClient) 
             return
 
         logger.info(f"Обнаружено {len(updates)} обновлений, отправляю уведомления...")
+
+        channel_publisher = ChannelPublisher(session_factory, settings, bot)
+        processed_channel_keys: set[tuple[str, int, str]] = set()
 
         async with session_factory() as session:
             repo = Repository(session)
@@ -60,6 +66,24 @@ async def check_updates_job(bot: Bot, session_factory, tmdb_client: TMDBClient) 
                     await repo.log_notification(item.id, update_type, text)
                 except Exception as send_err:
                     logger.warning(f"Не удалось отправить уведомление пользователю {telegram_id}: {send_err}")
+
+                # Публикация в канал (дедуплицируя по проектам в рамках одного цикла проверки)
+                chan_key = (item.media_type, item.tmdb_id, update_type)
+                if chan_key not in processed_channel_keys:
+                    processed_channel_keys.add(chan_key)
+                    try:
+                        await channel_publisher.process_update_for_channel(
+                            tmdb_id=item.tmdb_id,
+                            media_type=item.media_type,
+                            event_type=update_type,
+                            title=item.title,
+                            season_number=info.get("next_season") or item.next_season_number,
+                            air_date=info.get("next_air_date") or item.next_air_date,
+                            network=item.network,
+                            poster_path=item.poster_path,
+                        )
+                    except Exception as chan_err:
+                        logger.error(f"Ошибка при обработке для Telegram-канала ({item.title}): {chan_err}", exc_info=True)
 
             await session.commit()
 
@@ -101,18 +125,37 @@ async def check_reminders_job(bot: Bot, session_factory) -> None:
         logger.error(f"Ошибка при выполнении задачи check_reminders_job: {e}", exc_info=True)
 
 
+async def check_channel_queue_job(bot: Bot, session_factory, settings: Settings) -> None:
+    """Периодическая проверка и публикация отложенных постов из очереди в Telegram-канал."""
+    if not settings.TELEGRAM_CHANNEL_ID or not settings.CHANNEL_POSTING_ENABLED:
+        return
+
+    try:
+        publisher = ChannelPublisher(session_factory, settings, bot)
+        published_count = await publisher.publish_pending_queue()
+        if published_count > 0:
+            logger.info(f"Опубликовано {published_count} отложенных постов в Telegram-канал.")
+    except Exception as e:
+        logger.error(f"Ошибка при публикации очереди в канал: {e}", exc_info=True)
+
+
 def setup_scheduler(
     bot: Bot, session_factory, tmdb_client: TMDBClient, settings: Settings
 ) -> AsyncIOScheduler:
     """Настройка и конфигурирование планировщика задач."""
     scheduler = AsyncIOScheduler(timezone="UTC")
 
-    # Основная проверка выхода новых сезонов / дат
+    # Основная проверка выхода новых сезонов / дат и публикация в канал
     scheduler.add_job(
         check_updates_job,
         "interval",
         hours=settings.CHECK_INTERVAL_HOURS,
-        kwargs={"bot": bot, "session_factory": session_factory, "tmdb_client": tmdb_client},
+        kwargs={
+            "bot": bot,
+            "session_factory": session_factory,
+            "tmdb_client": tmdb_client,
+            "settings": settings,
+        },
         id="check_tmdb_updates",
         replace_existing=True,
     )
@@ -124,6 +167,17 @@ def setup_scheduler(
         hours=12,
         kwargs={"bot": bot, "session_factory": session_factory},
         id="check_upcoming_reminders",
+        replace_existing=True,
+    )
+
+    # Публикация отложенных постов в канал (каждые 15 минут)
+    queue_interval = max(5, settings.CHANNEL_MIN_POST_INTERVAL_MINUTES)
+    scheduler.add_job(
+        check_channel_queue_job,
+        "interval",
+        minutes=queue_interval,
+        kwargs={"bot": bot, "session_factory": session_factory, "settings": settings},
+        id="check_channel_queue",
         replace_existing=True,
     )
 
