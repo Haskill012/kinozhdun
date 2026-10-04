@@ -1,0 +1,8 @@
+aiogram>=3.13
+aiohttp>=3.10
+aiosqlite>=0.20
+SQLAlchemy>=2.0
+greenlet>=3.0
+alembic>=1.13
+APScheduler>=3.10
+python-dotenv>=1.0

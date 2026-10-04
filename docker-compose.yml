@@ -1,0 +1,9 @@
+services:
+  kinozhdun-bot:
+    build: .
+    container_name: kinozhdun_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
