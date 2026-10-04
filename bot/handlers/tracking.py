@@ -1,4 +1,4 @@
-"""Хендлеры для добавления, удаления и настройки отслеживаемых элементов."""
+"""Хендлеры для поиска, предпросмотра, добавления, удаления и настройки отслеживаемых элементов."""
 
 import datetime
 import logging
@@ -12,6 +12,8 @@ from aiogram.fsm.state import StatesGroup, State
 from bot.db.repositories import Repository
 from bot.keyboards.inline import (
     search_results_keyboard,
+    preview_item_keyboard,
+    track_success_keyboard,
     user_items_keyboard,
     confirm_remove_keyboard,
 )
@@ -57,7 +59,7 @@ async def btn_search_prompt(message: Message) -> None:
 # --- Поиск по произвольному тексту ---
 
 @router.message(F.text & ~F.text.startswith("/") & ~F.text.in_(MENU_BUTTON_TEXTS))
-async def process_search(message: Message) -> None:
+async def process_search(message: Message, state: FSMContext) -> None:
     """Поиск фильма/сериала по тексту сообщения."""
     tmdb_client = message.bot["tmdb_client"]
     query = message.text.strip()
@@ -73,20 +75,92 @@ async def process_search(message: Message) -> None:
         )
         return
 
+    # Сохраняем результаты поиска в состояние для возможности возврата назад
+    await state.update_data(last_query=query, last_results=results)
+
     text = format_search_results_message(query, results)
     reply_markup = search_results_keyboard(results)
 
     await search_status_msg.edit_text(text, reply_markup=reply_markup)
 
 
-# --- Добавление в отслеживание ---
+# --- Карточка предпросмотра с кнопкой «Добавить в отслеживание» ---
 
-@router.callback_query(F.data.startswith("track:"))
-async def process_track_item(callback: CallbackQuery) -> None:
-    """Добавление выбранного элемента в список отслеживания."""
+@router.callback_query(F.data.startswith("preview:"))
+async def process_preview_item(callback: CallbackQuery) -> None:
+    """Показывает подробную карточку выбранного проекта с явной кнопкой добавления в отслеживание."""
     await callback.answer()
     _, media_type, tmdb_id_str = callback.data.split(":")
     tmdb_id = int(tmdb_id_str)
+
+    session_factory = callback.bot["session_factory"]
+    tmdb_client = callback.bot["tmdb_client"]
+
+    if media_type == "tv":
+        details = await tmdb_client.get_tv_details(tmdb_id)
+    else:
+        details = await tmdb_client.get_movie_details(tmdb_id)
+
+    if not details:
+        await callback.message.edit_text("❌ Не удалось получить информацию о проекте.")
+        return
+
+    # Проверяем, отслеживается ли проект уже пользователем
+    async with session_factory() as session:
+        repo = Repository(session)
+        is_tracked = await repo.is_already_tracking(callback.from_user.id, tmdb_id, media_type)
+        tracked_item_id = None
+        if is_tracked:
+            items = await repo.get_user_items(callback.from_user.id)
+            match = next((i for i in items if i.tmdb_id == tmdb_id and i.media_type == media_type), None)
+            if match:
+                tracked_item_id = match.id
+
+    text = "🔍 <b>Карточка выбранного проекта:</b>\n\n" + format_item_details(details, media_type)
+    reply_markup = preview_item_keyboard(
+        media_type=media_type,
+        tmdb_id=tmdb_id,
+        is_already_tracked=is_tracked,
+        tracked_item_id=tracked_item_id,
+    )
+    await callback.message.edit_text(text, reply_markup=reply_markup)
+
+
+# --- Возврат назад к результатам поиска ---
+
+@router.callback_query(F.data == "back_to_search")
+async def process_back_to_search(callback: CallbackQuery, state: FSMContext) -> None:
+    """Возвращает пользователя обратно к списку найденных вариантов."""
+    await callback.answer()
+    data = await state.get_data()
+    last_query = data.get("last_query")
+    last_results = data.get("last_results")
+
+    if last_query and last_results:
+        text = format_search_results_message(last_query, last_results)
+        reply_markup = search_results_keyboard(last_results)
+        await callback.message.edit_text(text, reply_markup=reply_markup)
+    else:
+        await callback.message.edit_text(
+            "🔍 Введите название фильма или сериала для нового поиска."
+        )
+
+
+@router.callback_query(F.data == "already_tracked")
+async def process_already_tracked(callback: CallbackQuery) -> None:
+    """Информационное оповещение, если проект уже отслеживается."""
+    await callback.answer("Этот проект уже находится в вашем списке ожидания! 🍿", show_alert=True)
+
+
+# --- Подтверждение добавления в отслеживание ---
+
+@router.callback_query(or_f(F.data.startswith("confirm_track:"), F.data.startswith("track:")))
+async def process_confirm_track(callback: CallbackQuery) -> None:
+    """Фактическое сохранение проекта в базу данных по нажатию кнопки «Добавить в отслеживание»."""
+    await callback.answer()
+    parts = callback.data.split(":")
+    media_type = parts[1]
+    tmdb_id = int(parts[2])
 
     session_factory = callback.bot["session_factory"]
     tmdb_client = callback.bot["tmdb_client"]
@@ -102,7 +176,7 @@ async def process_track_item(callback: CallbackQuery) -> None:
 
         # Проверка: уже отслеживается?
         if await repo.is_already_tracking(callback.from_user.id, tmdb_id, media_type):
-            await callback.message.edit_text("ℹ️ Вы уже отслеживаете этот проект.")
+            await callback.message.edit_text("ℹ️ Этот проект уже находится в вашем списке ожидания.")
             return
 
         # Проверка лимита
@@ -160,7 +234,7 @@ async def process_track_item(callback: CallbackQuery) -> None:
                 except (ValueError, TypeError):
                     pass
 
-        item = await repo.add_tracked_item(
+        await repo.add_tracked_item(
             user_id=user.id,
             tmdb_id=tmdb_id,
             media_type=media_type,
@@ -175,9 +249,15 @@ async def process_track_item(callback: CallbackQuery) -> None:
         )
         await session.commit()
 
-        text = f"✅ <b>{title}</b> успешно добавлен в ваш список ожидания!\n\n"
-        text += format_item_details(item)
-        await callback.message.edit_text(text)
+        network_str = f" ({network})" if network else ""
+        date_str = f"\n📅 Ближайшая известная дата: <code>{format_date_ru(next_air_date)}</code>" if next_air_date else "\n📅 Дата нового сезона: <i>пока не объявлена</i>"
+
+        text = (
+            f"✅ <b>«{title}»</b>{network_str} добавлен в ваш список отслеживания! 🎉\n"
+            f"{date_str}\n\n"
+            "Как только появится официальная дата премьеры — бот сразу пришлёт вам уведомление с ссылкой на первоисточник 🍿"
+        )
+        await callback.message.edit_text(text, reply_markup=track_success_keyboard())
 
 
 # --- Отмена поиска ---

@@ -29,10 +29,41 @@ def search_results_keyboard(results: list[dict[str, Any]]) -> InlineKeyboardMark
             btn_text = btn_text[:57] + "..."
 
         tmdb_id = result.get("tmdb_id") or result.get("id")
-        builder.button(text=btn_text, callback_data=f"track:{media_type}:{tmdb_id}")
+        # Ведёт на карточку предпросмотра с кнопкой «Добавить в отслеживание»
+        builder.button(text=btn_text, callback_data=f"preview:{media_type}:{tmdb_id}")
 
     builder.button(text="❌ Отмена поиска", callback_data="cancel_search")
     builder.adjust(1)
+    return builder.as_markup()
+
+
+def preview_item_keyboard(
+    media_type: str,
+    tmdb_id: int,
+    is_already_tracked: bool = False,
+    tracked_item_id: int | None = None
+) -> InlineKeyboardMarkup:
+    """Клавиатура для карточки предпросмотра проекта с кнопкой добавления в отслеживание."""
+    builder = InlineKeyboardBuilder()
+    if is_already_tracked:
+        builder.button(text="✅ Уже в вашем списке отслеживания", callback_data="already_tracked")
+        if tracked_item_id:
+            builder.button(text="🗑 Удалить из списка", callback_data=f"remove:{tracked_item_id}")
+    else:
+        builder.button(text="➕ Добавить в отслеживание", callback_data=f"confirm_track:{media_type}:{tmdb_id}")
+
+    builder.button(text="🔙 Назад к результатам поиска", callback_data="back_to_search")
+    builder.button(text="❌ Закрыть", callback_data="cancel_search")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def track_success_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура после успешного добавления проекта в отслеживание."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📋 Мой список", callback_data="back_to_list")
+    builder.button(text="🔍 Искать ещё", callback_data="cancel_search")
+    builder.adjust(2)
     return builder.as_markup()
 
 
