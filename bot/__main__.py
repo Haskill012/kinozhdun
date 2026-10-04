@@ -11,6 +11,7 @@ from bot.services.tmdb import TMDBClient
 from bot.handlers.start import router as start_router
 from bot.handlers.tracking import router as tracking_router
 from bot.handlers.list import router as list_router
+from bot.handlers.admin import router as admin_router
 from bot.scheduler.jobs import setup_scheduler
 
 # Добавляем поддержку доступа через bot['attr'] и bot.get('attr')
@@ -46,9 +47,11 @@ async def main() -> None:
     dp["tmdb_client"] = tmdb_client
     dp["settings"] = settings
 
+    dp.include_router(admin_router)
     dp.include_router(start_router)
     dp.include_router(list_router)
     dp.include_router(tracking_router)
+
 
     scheduler = setup_scheduler(bot, session_factory, tmdb_client, settings)
     scheduler.start()
@@ -63,7 +66,7 @@ async def main() -> None:
         # Настраиваем всплывающее меню команд Telegram
         await bot.set_my_commands([
             BotCommand(command="start", description="Главное меню / Перезапуск"),
-            BotCommand(command="list", description="Мой список ожидания"),
+            BotCommand(command="list", description="🍿 Мой Кинождун (список ожидания)"),
             BotCommand(command="status", description="Проверить статус релизов"),
             BotCommand(command="setdate", description="Указать дату премьеры вручную"),
             BotCommand(command="remove", description="Удалить из отслеживания"),

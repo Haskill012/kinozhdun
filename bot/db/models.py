@@ -89,19 +89,29 @@ class ChannelPost(Base):
     __tablename__ = 'channel_posts'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    tmdb_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    media_type: Mapped[str] = mapped_column(String, nullable=False) # 'tv' или 'movie'
-    event_type: Mapped[str] = mapped_column(String, nullable=False) # 'announced', 'released', 'status_change', 'season_announced'
+    post_type: Mapped[str] = mapped_column(String, default='news') # 'news', 'date_announcement', 'filming', 'trailer', 'daily_digest', 'weekly_digest', 'status_change', 'sponsored'
+    tmdb_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True) # nullable для дайджестов
+    media_type: Mapped[Optional[str]] = mapped_column(String, nullable=True) # 'tv' или 'movie'
+    event_type: Mapped[str] = mapped_column(String, nullable=False) # 'announced', 'released', 'status_change', 'season_announced', 'renewed', 'filming_started', 'filming_finished', 'date_announced', 'date_postponed', 'trailer', 'canceled', 'ended', 'daily_digest', 'weekly_digest'
     title: Mapped[str] = mapped_column(String, nullable=False)
     season_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     air_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     network: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     poster_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    status: Mapped[str] = mapped_column(String, default='published') # 'pending', 'approved', 'published', 'rejected'
-    content_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False) # дедупликация
+    source: Mapped[str] = mapped_column(String, default='tmdb') # 'tmdb', 'official', 'admin'
+    credibility: Mapped[str] = mapped_column(String, default='confirmed') # 'confirmed', 'likely', 'rumor'
+    post_text: Mapped[Optional[str]] = mapped_column(String, nullable=True) # фактический/предлагаемый текст
+    trailer_url: Mapped[Optional[str]] = mapped_column(String, nullable=True) # прямая ссылка на YouTube трейлер
+    payload: Mapped[Optional[str]] = mapped_column(String, nullable=True) # JSON с доп. метаданными (old_date, items)
+    is_sponsored: Mapped[bool] = mapped_column(Boolean, default=False) # задел под будущую монетизацию
+    partner_url: Mapped[Optional[str]] = mapped_column(String, nullable=True) # задел под партнёрские ссылки
+    sponsored_label: Mapped[Optional[str]] = mapped_column(String, nullable=True) # задел под маркировку рекламы
+    status: Mapped[str] = mapped_column(String, default='published') # 'pending', 'approved', 'published', 'rejected', 'failed'
+    content_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False) # дедупликация (event fingerprint)
     telegram_message_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
 
 class AnalyticsEvent(Base):
     """Минимальная аналитика событий органического роста и переходов."""

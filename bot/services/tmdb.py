@@ -208,3 +208,61 @@ class TMDBClient:
             "name": data.get("name"),
             "parts": data.get("parts", []),
         }
+
+    async def get_videos(self, media_type: str, tmdb_id: int) -> list[dict[str, Any]]:
+        """Получает список видеороликов (трейлеры, тизеры) для фильма или сериала."""
+        endpoint = f"/{media_type}/{tmdb_id}/videos"
+        # Сначала пробуем на русском
+        data_ru = await self._get(endpoint, {"language": "ru-RU"})
+        results = data_ru.get("results", [])
+
+        # Если на русском трейлеров нет, запрашиваем оригинальные (en-US / all)
+        if not results:
+            data_en = await self._get(endpoint, {"language": "en-US"})
+            results = data_en.get("results", [])
+
+        return results
+
+    async def get_official_trailer(self, media_type: str, tmdb_id: int) -> Optional[dict[str, str]]:
+        """Ищет официальный YouTube-трейлер проекта.
+        
+        Возвращает словарь с url и title либо None.
+        """
+        videos = await self.get_videos(media_type, tmdb_id)
+        if not videos:
+            return None
+
+        # Ищем строго официальный трейлер на YouTube
+        for v in videos:
+            if v.get("site") == "YouTube" and v.get("type") == "Trailer" and v.get("official") is True:
+                key = v.get("key")
+                if key:
+                    return {
+                        "url": f"https://www.youtube.com/watch?v={key}",
+                        "name": v.get("name", "Официальный трейлер"),
+                        "key": key,
+                    }
+
+        # Если официального флага нет, берем первый Trailer на YouTube
+        for v in videos:
+            if v.get("site") == "YouTube" and v.get("type") == "Trailer":
+                key = v.get("key")
+                if key:
+                    return {
+                        "url": f"https://www.youtube.com/watch?v={key}",
+                        "name": v.get("name", "Трейлер"),
+                        "key": key,
+                    }
+
+        return None
+
+    async def get_upcoming_movies(self, page: int = 1) -> list[dict[str, Any]]:
+        """Получает список предстоящих релизов фильмов из TMDB."""
+        data = await self._get("/movie/upcoming", {"page": page})
+        return data.get("results", [])
+
+    async def get_airing_today_tv(self, page: int = 1) -> list[dict[str, Any]]:
+        """Получает сериалы с новыми эпизодами сегодня из TMDB."""
+        data = await self._get("/tv/airing_today", {"page": page})
+        return data.get("results", [])
+

@@ -297,7 +297,7 @@ def format_item_list(items: list[Any]) -> str:
         lines.append(f"{i}. {status_badge} {icon} <b>{title}</b>{network_str}{date_info}")
 
     lines.append(DIVIDER)
-    lines.append("📤 <i>Нажмите <b>«📤 Поделиться моим списком»</b>, чтобы отправить список друзьям!</i>")
+    lines.append("📤 <i>Нажмите <b>«📤 Поделиться моим Кинождуном»</b> вверху, чтобы отправить подборку друзьям!</i>")
     return "\n".join(lines)
 
 
@@ -402,19 +402,37 @@ def format_shared_watchlist_message(items: list[dict[str, Any]], title: str = "�
 
 def format_channel_referral_prompt(post: Any) -> str:
     """Форматирует карточку для пользователя, перешедшего из Telegram-канала."""
-    icon = "📺" if getattr(post, "media_type", "") == "tv" else "🎬"
+    post_type = getattr(post, "post_type", "news")
+    if post_type in ("daily_digest", "weekly_digest"):
+        title = getattr(post, "title", "Премьеры")
+        return (
+            f"🍿 <b>{title}</b>\n"
+            f"{DIVIDER}\n"
+            "Вы перешли по подборке премьер из нашего Telegram-канала!\n\n"
+            "Воспользуйтесь поиском в меню ниже, чтобы добавить интересующие фильмы и сериалы в свой Кинождун 🍿"
+        )
+
+    media_type = getattr(post, "media_type", "")
+    icon = "📺" if media_type == "tv" else "🎬"
     title = getattr(post, "title", "Без названия")
+    season_number = getattr(post, "season_number", None)
+
+    season_suffix = f" — сезон {season_number}" if (media_type == "tv" and season_number) else ""
+    headline = f"🍿 <b>Тоже ждёшь «{title}{season_suffix}»?</b>"
+
     network = getattr(post, "network", None)
     net_str = f"\n🏢 <b>Платформа / Студия:</b> {network}" if network else ""
 
     air_date = getattr(post, "air_date", None)
-    date_str = f"\n📅 <b>Дата премьеры:</b> <code>{format_date_ru(air_date)}</code>" if air_date else ""
+    date_str = f"\n📅 <b>Дата премьеры:</b> <code>{format_date_ru(air_date)}</code>" if air_date else "\n📅 <b>Дата премьеры:</b> <i>уточняется</i>"
 
     return (
         f"🔥 <b>Новость из Telegram-канала «Кинождун»</b>\n"
         f"{DIVIDER}\n"
-        f"{icon} <b>{title}</b>{net_str}{date_str}\n\n"
-        "Вы перешли по новости из нашего канала! Вы можете добавить этот проект в свой личный "
-        "список отслеживания в 1 клик, чтобы не пропустить премьеру и новые анонсы.\n\n"
-        "👇 <i>Нажмите кнопку ниже:</i>"
+        f"{headline}\n"
+        f"{icon} <b>{title}</b>{season_suffix}{net_str}{date_str}\n\n"
+        "Кинождун сообщит вам, как только появятся важные новости, трейлеры или выйдет премьера 🍿\n\n"
+        "👇 <i>Нажмите кнопку ниже, чтобы начать отслеживание в 1 клик:</i>"
     )
+
+

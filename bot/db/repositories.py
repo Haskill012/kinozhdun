@@ -2,7 +2,7 @@ import json
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional, Any, Tuple
-from sqlalchemy import select, and_, or_, update, delete, desc
+from sqlalchemy import select, and_, or_, update, delete, desc, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -342,6 +342,8 @@ class Repository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    get_channel_post_by_id = get_channel_post
+
     async def get_channel_post_by_hash(self, content_hash: str) -> Optional[ChannelPost]:
         """Проверить наличие публикации по хэшу дедупликации."""
         stmt = select(ChannelPost).where(ChannelPost.content_hash == content_hash)
@@ -350,15 +352,24 @@ class Repository:
 
     async def create_channel_post(
         self,
-        tmdb_id: int,
-        media_type: str,
-        event_type: str,
         title: str,
         content_hash: str,
+        event_type: str,
+        tmdb_id: Optional[int] = None,
+        media_type: Optional[str] = None,
+        post_type: str = "news",
         season_number: Optional[int] = None,
         air_date: Optional[date] = None,
         network: Optional[str] = None,
         poster_path: Optional[str] = None,
+        source: str = "tmdb",
+        credibility: str = "confirmed",
+        post_text: Optional[str] = None,
+        trailer_url: Optional[str] = None,
+        payload: Optional[str] = None,
+        is_sponsored: bool = False,
+        partner_url: Optional[str] = None,
+        sponsored_label: Optional[str] = None,
         status: str = "published",
         telegram_message_id: Optional[int] = None,
         published_at: Optional[datetime] = None,
@@ -367,6 +378,7 @@ class Repository:
         post = ChannelPost(
             tmdb_id=tmdb_id,
             media_type=media_type,
+            post_type=post_type,
             event_type=event_type,
             title=title,
             content_hash=content_hash,
@@ -374,6 +386,14 @@ class Repository:
             air_date=air_date,
             network=network,
             poster_path=poster_path,
+            source=source,
+            credibility=credibility,
+            post_text=post_text,
+            trailer_url=trailer_url,
+            payload=payload,
+            is_sponsored=is_sponsored,
+            partner_url=partner_url,
+            sponsored_label=sponsored_label,
             status=status,
             telegram_message_id=telegram_message_id,
             published_at=published_at or (datetime.now(timezone.utc).replace(tzinfo=None) if status == "published" else None),
@@ -396,8 +416,35 @@ class Repository:
         await self.session.execute(stmt)
         await self.session.flush()
 
+    async def update_channel_post_status(
+        self,
+        post_id: int,
+        status: str,
+        telegram_message_id: Optional[int] = None,
+        post_text: Optional[str] = None,
+    ) -> Optional[ChannelPost]:
+        """Обновить статус и данные публикации (approve, reject, edit)."""
+        values: dict[str, Any] = {"status": status}
+        if telegram_message_id is not None:
+            values["telegram_message_id"] = telegram_message_id
+        if status == "published":
+            values["published_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
+        if post_text is not None:
+            values["post_text"] = post_text
+
+        stmt = update(ChannelPost).where(ChannelPost.id == post_id).values(**values)
+        await self.session.execute(stmt)
+        await self.session.flush()
+        return await self.get_channel_post(post_id)
+
+    async def update_channel_post_text(self, post_id: int, post_text: str) -> None:
+        """Обновить предложенный текст поста."""
+        stmt = update(ChannelPost).where(ChannelPost.id == post_id).values(post_text=post_text)
+        await self.session.execute(stmt)
+        await self.session.flush()
+
     async def get_last_published_channel_post(self) -> Optional[ChannelPost]:
-        """Получить время последней опубликованной записи в канале."""
+        """Получить последнюю опубликованную запись в канале."""
         stmt = (
             select(ChannelPost)
             .where(ChannelPost.status == "published")
@@ -416,6 +463,108 @@ class Repository:
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_pending_channel_posts_count(self) -> int:
+        """Получить количество публикаций, ожидающих модерации."""
+        stmt = select(func.count(ChannelPost.id)).where(ChannelPost.status == "pending")
+        result = await self.session.execute(stmt)
+        return result.scalar() or 0
+
+    async def get_pending_channel_post_by_index(self, offset: int = 0) -> Optional[ChannelPost]:
+        """Получить публикацию из очереди pending с заданным смещением."""
+        stmt = (
+            select(ChannelPost)
+            .where(ChannelPost.status == "pending")
+            .order_by(ChannelPost.created_at)
+            .offset(offset)
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    # --- Запросы релизов для дайджестов («Что выходит сегодня» и «Главные премьеры недели») ---
+
+    async def get_items_releasing_on_date(self, target_date: date) -> List[TrackedItem]:
+        """Получить уникальные элементы из базы, релиз которых назначен на указанную дату."""
+        stmt = (
+            select(TrackedItem)
+            .where(
+                or_(
+                    TrackedItem.next_air_date == target_date,
+                    TrackedItem.custom_date == target_date,
+                )
+            )
+        )
+        result = await self.session.execute(stmt)
+        items = list(result.scalars().all())
+
+        # Дедуплицируем по (media_type, tmdb_id)
+        seen = set()
+        unique_items = []
+        for it in items:
+            key = (it.media_type, it.tmdb_id)
+            if key not in seen:
+                seen.add(key)
+                unique_items.append(it)
+        return unique_items
+
+    async def get_items_releasing_between(self, start_date: date, end_date: date) -> List[TrackedItem]:
+        """Получить уникальные элементы из базы, релиз которых назначен в диапазоне дат."""
+        stmt = (
+            select(TrackedItem)
+            .where(
+                or_(
+                    and_(TrackedItem.next_air_date >= start_date, TrackedItem.next_air_date <= end_date),
+                    and_(TrackedItem.custom_date >= start_date, TrackedItem.custom_date <= end_date),
+                )
+            )
+        )
+        result = await self.session.execute(stmt)
+        items = list(result.scalars().all())
+
+        seen = set()
+        unique_items = []
+        for it in items:
+            key = (it.media_type, it.tmdb_id)
+            if key not in seen:
+                seen.add(key)
+                unique_items.append(it)
+        return unique_items
+
+    # --- Аналитика воронки Telegram-канала ---
+
+    async def get_channel_analytics_summary(self) -> dict[str, Any]:
+        """Формирует агрегированную сводку аналитики по Telegram-каналу."""
+        # Количество опубликованных постов
+        stmt_posts = select(func.count(ChannelPost.id)).where(ChannelPost.status == "published")
+        posts_count = (await self.session.execute(stmt_posts)).scalar() or 0
+
+        # Количество переходов из канала в бота (открытий ссылок ch_*)
+        stmt_opens = select(func.count(AnalyticsEvent.id)).where(AnalyticsEvent.event_name == "channel_link_opened")
+        opens_count = (await self.session.execute(stmt_opens)).scalar() or 0
+
+        # Количество уникальных пользователей, пришедших из канала
+        stmt_users = select(func.count(distinct(AnalyticsEvent.telegram_id))).where(
+            and_(AnalyticsEvent.event_name == "channel_link_opened", AnalyticsEvent.telegram_id.isnot(None))
+        )
+        unique_users = (await self.session.execute(stmt_users)).scalar() or 0
+
+        # Количество тайтлов, добавленных в отслеживание после перехода из канала
+        stmt_follows = select(func.count(AnalyticsEvent.id)).where(
+            AnalyticsEvent.event_name == "content_followed_from_channel"
+        )
+        follows_count = (await self.session.execute(stmt_follows)).scalar() or 0
+
+        conversion = (follows_count / opens_count * 100.0) if opens_count > 0 else 0.0
+
+        return {
+            "posts_count": posts_count,
+            "opens_count": opens_count,
+            "unique_users": unique_users,
+            "follows_count": follows_count,
+            "conversion_rate": round(conversion, 1),
+        }
+
 
     # --- Минимальная аналитика событий (AnalyticsEvent) ---
 

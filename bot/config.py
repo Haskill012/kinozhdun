@@ -22,6 +22,16 @@ class Settings:
     CHANNEL_POSTING_ENABLED: bool = False
     CHANNEL_AUTO_PUBLISH: bool = True
     CHANNEL_MIN_POST_INTERVAL_MINUTES: int = 15
+    ADMIN_USER_IDS: list[int] = None  # type: ignore
+    DAILY_DIGEST_ENABLED: bool = True
+    DAILY_DIGEST_HOUR: int = 9
+    WEEKLY_DIGEST_ENABLED: bool = True
+    WEEKLY_DIGEST_DAY: int = 0  # 0 = Monday
+    WEEKLY_DIGEST_HOUR: int = 10
+
+    def __post_init__(self):
+        if self.ADMIN_USER_IDS is None:
+            self.ADMIN_USER_IDS = []
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -37,7 +47,21 @@ class Settings:
             raise ValueError("TMDB_API_KEY не задан в .env файле")
 
         channel_enabled = os.getenv("CHANNEL_POSTING_ENABLED", "false").lower() in ("true", "1", "yes")
-        channel_auto = os.getenv("CHANNEL_AUTO_PUBLISH", "true").lower() in ("true", "1", "yes")
+
+        # Поддерживаем оба имени: CHANNEL_AUTO_PUBLISH и TELEGRAM_CHANNEL_AUTO_PUBLISH
+        raw_auto = os.getenv("CHANNEL_AUTO_PUBLISH")
+        if raw_auto is None:
+            raw_auto = os.getenv("TELEGRAM_CHANNEL_AUTO_PUBLISH", "true")
+        channel_auto = raw_auto.lower() in ("true", "1", "yes")
+
+        # Парсинг ID администраторов
+        raw_admins = os.getenv("ADMIN_USER_IDS", "")
+        admin_ids: list[int] = []
+        if raw_admins:
+            for part in raw_admins.split(","):
+                part_clean = part.strip()
+                if part_clean.isdigit():
+                    admin_ids.append(int(part_clean))
 
         return cls(
             TELEGRAM_BOT_TOKEN=token,
@@ -53,4 +77,11 @@ class Settings:
             CHANNEL_POSTING_ENABLED=channel_enabled,
             CHANNEL_AUTO_PUBLISH=channel_auto,
             CHANNEL_MIN_POST_INTERVAL_MINUTES=int(os.getenv("CHANNEL_MIN_POST_INTERVAL_MINUTES", "15")),
+            ADMIN_USER_IDS=admin_ids,
+            DAILY_DIGEST_ENABLED=os.getenv("DAILY_DIGEST_ENABLED", "true").lower() in ("true", "1", "yes"),
+            DAILY_DIGEST_HOUR=int(os.getenv("DAILY_DIGEST_HOUR", "9")),
+            WEEKLY_DIGEST_ENABLED=os.getenv("WEEKLY_DIGEST_ENABLED", "true").lower() in ("true", "1", "yes"),
+            WEEKLY_DIGEST_DAY=int(os.getenv("WEEKLY_DIGEST_DAY", "0")),
+            WEEKLY_DIGEST_HOUR=int(os.getenv("WEEKLY_DIGEST_HOUR", "10")),
         )
+

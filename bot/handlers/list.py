@@ -11,6 +11,7 @@ from bot.db.repositories import Repository
 from bot.keyboards.inline import (
     user_items_keyboard,
     back_to_list_keyboard,
+    item_details_keyboard,
     shared_watchlist_created_keyboard,
     shared_watchlist_recipient_keyboard,
     confirm_batch_track_keyboard,
@@ -140,8 +141,16 @@ async def process_info(callback: CallbackQuery) -> None:
             )
             return
 
+        settings = callback.bot["settings"]
         text = format_item_details(item)
-        await callback.message.edit_text(text, reply_markup=back_to_list_keyboard())
+        await callback.message.edit_text(
+            text,
+            reply_markup=item_details_keyboard(
+                item=item,
+                bot_username=settings.BOT_USERNAME,
+                referrer_id=callback.from_user.id,
+            ),
+        )
 
 
 @router.callback_query(F.data == "back_to_list")

@@ -1,6 +1,7 @@
 """Фоновые периодические задачи планировщика APScheduler."""
 
 import logging
+from typing import Optional
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -68,19 +69,22 @@ async def check_updates_job(
                     logger.warning(f"Не удалось отправить уведомление пользователю {telegram_id}: {send_err}")
 
                 # Публикация в канал (дедуплицируя по проектам в рамках одного цикла проверки)
-                chan_key = (item.media_type, item.tmdb_id, update_type)
+                chan_event = info.get("channel_event_type") or update_type
+                chan_key = (item.media_type, item.tmdb_id, chan_event)
                 if chan_key not in processed_channel_keys:
                     processed_channel_keys.add(chan_key)
                     try:
                         await channel_publisher.process_update_for_channel(
                             tmdb_id=item.tmdb_id,
                             media_type=item.media_type,
-                            event_type=update_type,
+                            event_type=chan_event,
                             title=item.title,
                             season_number=info.get("next_season") or item.next_season_number,
                             air_date=info.get("next_air_date") or item.next_air_date,
+                            old_air_date=info.get("old_air_date"),
                             network=item.network,
                             poster_path=item.poster_path,
+                            trailer_url=info.get("trailer_url"),
                         )
                     except Exception as chan_err:
                         logger.error(f"Ошибка при обработке для Telegram-канала ({item.title}): {chan_err}", exc_info=True)
@@ -139,6 +143,38 @@ async def check_channel_queue_job(bot: Bot, session_factory, settings: Settings)
         logger.error(f"Ошибка при публикации очереди в канал: {e}", exc_info=True)
 
 
+async def daily_digest_job(
+    bot: Bot, session_factory, settings: Settings, tmdb_client: Optional[TMDBClient] = None
+) -> None:
+    """Ежедневный выпуск дайджеста «Что выходит сегодня»."""
+    if not settings.DAILY_DIGEST_ENABLED:
+        return
+    logger.info("Запуск формирования утреннего дайджеста «Что выходит сегодня»...")
+    try:
+        publisher = ChannelPublisher(session_factory, settings, bot, tmdb_client=tmdb_client)
+        post = await publisher.create_daily_digest()
+        if post:
+            logger.info(f"Утренний дайджест успешно сформирован (ID: {post.id}, статус: {post.status}).")
+    except Exception as e:
+        logger.error(f"Ошибка при формировании утреннего дайджеста: {e}", exc_info=True)
+
+
+async def weekly_digest_job(
+    bot: Bot, session_factory, settings: Settings, tmdb_client: Optional[TMDBClient] = None
+) -> None:
+    """Еженедельный выпуск дайджеста «Главные премьеры недели»."""
+    if not settings.WEEKLY_DIGEST_ENABLED:
+        return
+    logger.info("Запуск формирования еженедельного дайджеста «Главные премьеры недели»...")
+    try:
+        publisher = ChannelPublisher(session_factory, settings, bot, tmdb_client=tmdb_client)
+        post = await publisher.create_weekly_digest()
+        if post:
+            logger.info(f"Еженедельный дайджест успешно сформирован (ID: {post.id}, статус: {post.status}).")
+    except Exception as e:
+        logger.error(f"Ошибка при формировании еженедельного дайджеста: {e}", exc_info=True)
+
+
 def setup_scheduler(
     bot: Bot, session_factory, tmdb_client: TMDBClient, settings: Settings
 ) -> AsyncIOScheduler:
@@ -181,4 +217,38 @@ def setup_scheduler(
         replace_existing=True,
     )
 
+    # Ежедневный утренний дайджест «Что выходит сегодня» (по расписанию)
+    scheduler.add_job(
+        daily_digest_job,
+        "cron",
+        hour=settings.DAILY_DIGEST_HOUR,
+        minute=30,
+        kwargs={
+            "bot": bot,
+            "session_factory": session_factory,
+            "settings": settings,
+            "tmdb_client": tmdb_client,
+        },
+        id="channel_daily_digest",
+        replace_existing=True,
+    )
+
+    # Еженедельный дайджест «Главные премьеры недели» (по расписанию)
+    scheduler.add_job(
+        weekly_digest_job,
+        "cron",
+        day_of_week=settings.WEEKLY_DIGEST_DAY,
+        hour=settings.WEEKLY_DIGEST_HOUR,
+        minute=0,
+        kwargs={
+            "bot": bot,
+            "session_factory": session_factory,
+            "settings": settings,
+            "tmdb_client": tmdb_client,
+        },
+        id="channel_weekly_digest",
+        replace_existing=True,
+    )
+
     return scheduler
+

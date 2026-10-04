@@ -246,5 +246,31 @@ def confirm_remove_keyboard(item_id: int) -> InlineKeyboardMarkup:
 def back_to_list_keyboard() -> InlineKeyboardMarkup:
     """Кнопка возврата к списку отслеживаемого."""
     builder = InlineKeyboardBuilder()
-    builder.button(text="📋 К списку", callback_data="back_to_list")
+    builder.button(text="📋 К списку «Мой Кинождун»", callback_data="back_to_list")
+    return builder.as_markup()
+
+
+def item_details_keyboard(
+    item: Any,
+    bot_username: str = "kinojdun_bot",
+    referrer_id: Optional[int] = None,
+) -> InlineKeyboardMarkup:
+    """Клавиатура детальной карточки проекта из списка отслеживания с прямой кнопкой шеринга."""
+    builder = InlineKeyboardBuilder()
+    title = getattr(item, "title", "")
+    media_type = getattr(item, "media_type", "movie")
+    tmdb_id = getattr(item, "tmdb_id", 0)
+    item_id = getattr(item, "id", 0)
+
+    if title and tmdb_id:
+        ref_part = f"_u{referrer_id}" if referrer_id else ""
+        deep_link = f"https://t.me/{bot_username}?start=c_{media_type}_{tmdb_id}{ref_part}"
+        type_str = "сериал" if media_type == "tv" else "фильм"
+        share_text = f"🍿 Я жду {type_str} «{title}»!\nКинождун сообщит, когда появятся новости и объявят дату выхода 🎬"
+        share_url = f"https://t.me/share/url?url={urllib.parse.quote(deep_link)}&text={urllib.parse.quote(share_text)}"
+        builder.button(text="📤 Поделиться с другом", url=share_url)
+
+    builder.button(text="🗑 Удалить из списка", callback_data=f"remove:{item_id}")
+    builder.button(text="📋 К списку «Мой Кинождун»", callback_data="back_to_list")
+    builder.adjust(1)
     return builder.as_markup()

@@ -36,10 +36,14 @@ class TrackerService:
 
                 # Если даты раньше не было или она изменилась на будущую
                 if item.next_air_date != new_date and new_date >= today:
+                    is_postponed = item.next_air_date is not None and new_date > item.next_air_date
+                    channel_event = "date_postponed" if is_postponed else "date_announced"
                     return {
                         "type": "announced",
+                        "channel_event_type": channel_event,
                         "next_season": new_season,
                         "next_air_date": new_date,
+                        "old_air_date": item.next_air_date,
                         "status": "announced",
                         "source_url": details.get("tmdb_url"),
                     }
@@ -47,6 +51,7 @@ class TrackerService:
                 elif new_date <= today and item.status != "released" and not item.notified_released:
                     return {
                         "type": "released",
+                        "channel_event_type": "released",
                         "next_season": new_season,
                         "next_air_date": new_date,
                         "status": "released",
@@ -68,25 +73,43 @@ class TrackerService:
                         s_air_date = datetime.date.fromisoformat(s_air_date_str)
                         if (item.last_known_season and s_num > item.last_known_season) or (item.next_air_date != s_air_date):
                             if s_air_date >= today and item.next_air_date != s_air_date:
+                                is_postponed = item.next_air_date is not None and s_air_date > item.next_air_date
+                                channel_event = "date_postponed" if is_postponed else "date_announced"
                                 return {
                                     "type": "announced",
+                                    "channel_event_type": channel_event,
                                     "next_season": s_num,
                                     "next_air_date": s_air_date,
+                                    "old_air_date": item.next_air_date,
                                     "status": "announced",
                                     "source_url": details.get("tmdb_url"),
                                 }
                     except (ValueError, TypeError):
                         pass
 
-        # 3. Изменение статуса сериала (закрыт, отменен)
-        if tmdb_status in ("Ended", "Canceled") and item.status not in ("Ended", "Canceled"):
-            return {
-                "type": "status_change",
-                "next_season": None,
-                "next_air_date": None,
-                "status": tmdb_status,
-                "source_url": details.get("tmdb_url"),
-            }
+        # 3. Изменение статуса сериала (съёмки, закрыт, продлён)
+        if tmdb_status and tmdb_status != item.status:
+            channel_event = "status_change"
+            if tmdb_status == "In Production":
+                channel_event = "filming_started"
+            elif tmdb_status == "Post Production":
+                channel_event = "filming_finished"
+            elif tmdb_status == "Returning Series":
+                channel_event = "renewed"
+            elif tmdb_status == "Canceled":
+                channel_event = "canceled"
+            elif tmdb_status == "Ended":
+                channel_event = "ended"
+
+            if channel_event != "status_change" or tmdb_status in ("Ended", "Canceled", "Returning Series"):
+                return {
+                    "type": "status_change",
+                    "channel_event_type": channel_event,
+                    "next_season": item.next_season_number,
+                    "next_air_date": item.next_air_date,
+                    "status": tmdb_status,
+                    "source_url": details.get("tmdb_url"),
+                }
 
         return None
 
@@ -97,33 +120,58 @@ class TrackerService:
 
         today = datetime.date.today()
         rel_str = details.get("release_date")
-        if not rel_str:
-            return None
+        tmdb_status = details.get("status")
 
-        try:
-            rel_date = datetime.date.fromisoformat(rel_str)
-            # Если появилась новая дата в будущем
-            if rel_date >= today and item.next_air_date != rel_date:
+        if rel_str:
+            try:
+                rel_date = datetime.date.fromisoformat(rel_str)
+                # Если появилась новая дата в будущем
+                if rel_date >= today and item.next_air_date != rel_date:
+                    is_postponed = item.next_air_date is not None and rel_date > item.next_air_date
+                    channel_event = "date_postponed" if is_postponed else "date_announced"
+                    return {
+                        "type": "announced",
+                        "channel_event_type": channel_event,
+                        "next_season": None,
+                        "next_air_date": rel_date,
+                        "old_air_date": item.next_air_date,
+                        "status": "announced",
+                        "source_url": details.get("tmdb_url"),
+                    }
+                # Если фильм уже вышел, а уведомление не отправлялось
+                elif rel_date <= today and item.status != "released" and not item.notified_released:
+                    return {
+                        "type": "released",
+                        "channel_event_type": "released",
+                        "next_season": None,
+                        "next_air_date": rel_date,
+                        "status": "released",
+                        "source_url": details.get("tmdb_url"),
+                    }
+            except (ValueError, TypeError):
+                pass
+
+        if tmdb_status and tmdb_status != item.status:
+            channel_event = "status_change"
+            if tmdb_status == "In Production":
+                channel_event = "filming_started"
+            elif tmdb_status == "Post Production":
+                channel_event = "filming_finished"
+            elif tmdb_status == "Canceled":
+                channel_event = "canceled"
+
+            if channel_event != "status_change":
                 return {
-                    "type": "announced",
+                    "type": "status_change",
+                    "channel_event_type": channel_event,
                     "next_season": None,
-                    "next_air_date": rel_date,
-                    "status": "announced",
+                    "next_air_date": item.next_air_date,
+                    "status": tmdb_status,
                     "source_url": details.get("tmdb_url"),
                 }
-            # Если фильм уже вышел, а уведомление не отправлялось
-            elif rel_date <= today and item.status != "released" and not item.notified_released:
-                return {
-                    "type": "released",
-                    "next_season": None,
-                    "next_air_date": rel_date,
-                    "status": "released",
-                    "source_url": details.get("tmdb_url"),
-                }
-        except (ValueError, TypeError):
-            pass
 
         return None
+
 
     async def check_all_updates(self) -> list[dict[str, Any]]:
         """Проверяет обновления для всех отслеживаемых элементов в БД.

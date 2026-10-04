@@ -82,6 +82,35 @@ class TestAnalytics(unittest.IsolatedAsyncioTestCase):
             p = json.loads(shared_event.payload)
             self.assertEqual(p["title"], "Фоллаут")
 
+    async def test_channel_funnel_analytics_summary(self):
+        """Проверка расчёта метрик и конверсии воронки канала."""
+        # 1. Записываем переходы и добавления
+        await self.analytics.log_channel_link_opened(telegram_id=1, post_id=10, tmdb_id=82856)
+        await self.analytics.log_channel_link_opened(telegram_id=2, post_id=10, tmdb_id=82856)
+        await self.analytics.log_channel_link_opened(telegram_id=2, post_id=10, tmdb_id=82856)  # повторный переход того же юзера
+        await self.analytics.log_content_followed_from_channel(telegram_id=1, post_id=10, media_type="tv", tmdb_id=82856)
+
+        async with self.session_factory() as session:
+            from bot.db.repositories import Repository
+            repo = Repository(session)
+            await repo.create_channel_post(
+                tmdb_id=82856,
+                media_type="tv",
+                title="Фоллаут",
+                content_hash="post_hash_1",
+                event_type="date_announced",
+                status="published",
+            )
+            await session.commit()
+
+            summary = await repo.get_channel_analytics_summary()
+            self.assertEqual(summary["posts_count"], 1)
+            self.assertEqual(summary["opens_count"], 3)
+            self.assertEqual(summary["unique_users"], 2)
+            self.assertEqual(summary["follows_count"], 1)
+            self.assertAlmostEqual(summary["conversion_rate"], 33.3, places=1)
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -196,7 +196,7 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
             )
             post = await repo.get_channel_post(post_id)
             is_tracked = False
-            if post:
+            if post and post.tmdb_id and post.media_type:
                 is_tracked = await repo.is_already_tracking(telegram_id, post.tmdb_id, post.media_type)
             await session.commit()
 
@@ -212,6 +212,11 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
         await analytics.log_channel_link_opened(telegram_id, post_id, post.tmdb_id)
 
         text = format_channel_referral_prompt(post)
+
+        if post.post_type in ("daily_digest", "weekly_digest") or not post.tmdb_id or not post.media_type:
+            await message.answer(text, reply_markup=main_menu_keyboard())
+            return
+
         reply_markup = channel_referral_keyboard(
             post_id=post.id,
             media_type=post.media_type,
@@ -221,6 +226,7 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
         )
         await message.answer(text, reply_markup=reply_markup)
         return
+
 
     # --- 5. Неизвестный или неподдерживаемый формат ссылки ---
     async with session_factory() as session:
