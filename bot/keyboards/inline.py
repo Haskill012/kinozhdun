@@ -10,7 +10,7 @@ from bot.utils.formatting import site_title_url
 def add_site_title_button(builder, media_type, tmdb_id):
     url = site_title_url(media_type, tmdb_id)
     if url:
-        builder.button(text="🌐 Карточка и новости на сайте", url=url)
+        builder.button(text="🌐 Страница на KinoJdun.ru", url=url)
 
 
 def search_results_keyboard(results: list[dict[str, Any]]) -> InlineKeyboardMarkup:
@@ -272,10 +272,6 @@ def item_details_keyboard(
             switch_inline_query=f"share_{media_type}_{tmdb_id}{ref_part}"
         )
 
-    tmdb_url = getattr(item, "tmdb_url", None)
-    if tmdb_url and str(tmdb_url).startswith("http"):
-        builder.button(text="🌐 Страница на TMDB", url=str(tmdb_url))
-
     builder.button(text="🗑 Удалить из списка", callback_data=f"remove:{item_id}")
     builder.button(text="📋 К списку «Мой Кинождун»", callback_data="back_to_list")
     add_site_title_button(builder, media_type, tmdb_id)
@@ -296,11 +292,9 @@ def notification_item_keyboard(
     media_type: str | None = None,
     tmdb_id: int | None = None,
 ) -> InlineKeyboardMarkup:
-    """Клавиатура для уведомлений пользователю: кнопка перехода к карточке и ссылка на TMDB."""
+    """Клавиатура для уведомлений: переход к проекту в боте и на сайте."""
     builder = InlineKeyboardBuilder()
     builder.button(text="🍿 Открыть в Кинождуне", callback_data=f"info:{item_id}")
-    if tmdb_url and str(tmdb_url).startswith("http"):
-        builder.button(text="🌐 Страница на TMDB", url=str(tmdb_url))
     add_site_title_button(builder, media_type, tmdb_id)
     builder.adjust(1)
     return builder.as_markup()

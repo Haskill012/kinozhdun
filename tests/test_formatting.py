@@ -133,18 +133,17 @@ class TestFormattingTemplates(unittest.TestCase):
         buttons = [b for row in kb.inline_keyboard for b in row]
         self.assertTrue(any(b.callback_data == "info:42" for b in buttons))
         self.assertTrue(any(b.url == "https://kinojdun.ru/title/tv/136315" for b in buttons))
-        self.assertTrue(any(b.url == "https://www.themoviedb.org/tv/136315" for b in buttons))
+        self.assertFalse(any(b.url and "themoviedb.org" in b.url for b in buttons))
+        self.assertTrue(any(b.text == "🌐 Страница на KinoJdun.ru" for b in buttons))
 
     def test_notification_item_keyboard(self):
         """Проверка генерации инлайн-клавиатуры для уведомлений."""
         kb = notification_item_keyboard(item_id=42, tmdb_url="https://www.themoviedb.org/tv/136315")
         buttons = [b for row in kb.inline_keyboard for b in row]
 
-        self.assertEqual(len(buttons), 2)
+        self.assertEqual(len(buttons), 1)
         self.assertEqual(buttons[0].text, "🍿 Открыть в Кинождуне")
         self.assertEqual(buttons[0].callback_data, "info:42")
-        self.assertEqual(buttons[1].text, "🌐 Страница на TMDB")
-        self.assertEqual(buttons[1].url, "https://www.themoviedb.org/tv/136315")
 
 
 if __name__ == "__main__":

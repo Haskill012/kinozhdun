@@ -25,7 +25,8 @@ class TestInlineKeyboards(unittest.TestCase):
 
         self.assertIsNotNone(share_btn)
         self.assertEqual(share_btn.switch_inline_query, "share_movie_1170608_u330413281")
-        self.assertTrue(any(b.url == "https://kinojdun.ru/title/movie/1170608" for b in buttons))
+        self.assertTrue(any(b.url == "https://kinojdun.ru/title/movie/1170608" and b.text == "🌐 Страница на KinoJdun.ru" for b in buttons))
+        self.assertFalse(any(b.url and "themoviedb.org" in b.url for b in buttons))
         self.assertIsNone(share_btn.url)
 
     def test_preview_item_keyboard_uses_inline_switch(self):
@@ -46,14 +47,15 @@ class TestInlineKeyboards(unittest.TestCase):
 
     def test_item_details_keyboard_uses_inline_switch(self):
         """Кнопка шеринга из карточки отслеживаемого тайтла должна использовать switch_inline_query."""
-        item = SimpleNamespace(id=1, tmdb_id=1170608, media_type="movie", title="Дюна 3", tmdb_url=None)
+        item = SimpleNamespace(id=1, tmdb_id=1170608, media_type="movie", title="Дюна 3", tmdb_url="https://www.themoviedb.org/movie/1170608")
         kb = item_details_keyboard(item, referrer_id=98765)
         buttons = [btn for row in kb.inline_keyboard for btn in row]
         share_btn = next((b for b in buttons if "Поделиться" in b.text), None)
 
         self.assertIsNotNone(share_btn)
         self.assertEqual(share_btn.switch_inline_query, "share_movie_1170608_u98765")
-        self.assertTrue(any(b.url == "https://kinojdun.ru/title/movie/1170608" for b in buttons))
+        self.assertTrue(any(b.url == "https://kinojdun.ru/title/movie/1170608" and b.text == "🌐 Страница на KinoJdun.ru" for b in buttons))
+        self.assertFalse(any(b.url and "themoviedb.org" in b.url for b in buttons))
 
     def test_shared_watchlist_keyboard_uses_inline_switch(self):
         """Кнопка шеринга списка ожидания должна использовать switch_inline_query=list_token."""

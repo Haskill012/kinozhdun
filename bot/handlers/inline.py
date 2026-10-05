@@ -105,7 +105,7 @@ async def process_inline_query(inline_query: InlineQuery) -> None:
                 ]
             ])
 
-            keyboard.inline_keyboard.append([InlineKeyboardButton(text="🌐 Карточка и новости на сайте", url=site_title_url(media_type, tmdb_id))])
+            keyboard.inline_keyboard.append([InlineKeyboardButton(text="🌐 Страница на KinoJdun.ru", url=site_title_url(media_type, tmdb_id))])
             results = []
             if poster_path:
                 photo_url = f"https://image.tmdb.org/t/p/w780{poster_path}"
@@ -235,7 +235,7 @@ async def process_inline_query(inline_query: InlineQuery) -> None:
                 [InlineKeyboardButton(text="🍿 Открыть Кинождун", url=f"https://t.me/{bot_username}")],
             ])
 
-            kb.inline_keyboard.append([InlineKeyboardButton(text="🌐 Карточка и новости на сайте", url=site_title_url(m_type, t_id))])
+            kb.inline_keyboard.append([InlineKeyboardButton(text="🌐 Страница на KinoJdun.ru", url=site_title_url(m_type, t_id))])
             if p_path:
                 results.append(
                     InlineQueryResultPhoto(
