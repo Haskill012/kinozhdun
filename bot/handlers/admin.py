@@ -86,7 +86,7 @@ async def cmd_admin_queue(message: Message, state: FSMContext) -> None:
             mode_label = "AUTO MODE (автопостинг)" if settings.CHANNEL_AUTO_PUBLISH else "SAFE MODE (ручная модерация)"
             await message.answer(
                 f"📭 <b>Очередь публикаций пуста!</b>\n\n"
-                f"Все подготовленные новости проверены.\n"
+                f"Все подготовленные публикации проверены.\n"
                 f"Текущий режим: <b>{mode_label}</b>\n\n"
                 "<b>Управление каналом:</b>\n"
                 "• <code>/channel_test</code> — проверить права бота в канале\n"
@@ -348,8 +348,8 @@ async def cmd_mode(message: Message) -> None:
     mode = "AUTO MODE (автопостинг)" if settings.CHANNEL_AUTO_PUBLISH else "SAFE MODE (ручная модерация)"
     instructions = (
         f"⚙️ <b>Текущий режим канала:</b> <b>{mode}</b>\n\n"
-        "• <b>SAFE MODE</b>: бот собирает проверенные новости, формирует посты и кладёт в очередь <code>/queue</code>. Администратор проверяет и публикует кнопкой «✅ Опубликовать».\n"
-        "• <b>AUTO MODE</b>: проверенные новости публикуются в канал автоматически с соблюдением интервала антиспама.\n\n"
+        "• <b>SAFE MODE</b>: бот готовит подборки и дайджесты, формирует посты и кладёт в очередь <code>/queue</code>. Администратор проверяет и публикует кнопкой «✅ Опубликовать».\n"
+        "• <b>AUTO MODE</b>: подборки и дайджесты публикуются в канал автоматически с соблюдением интервала антиспама.\n\n"
         "Для переключения режима измените в <code>.env</code>:\n"
         "<code>CHANNEL_AUTO_PUBLISH=true</code> (или <code>false</code>)\n"
         "и перезапустите бота."

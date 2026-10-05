@@ -222,6 +222,44 @@ class TestChannelPublisher(unittest.IsolatedAsyncioTestCase):
         call_chat_id = self.mock_bot.send_message.call_args[1]["chat_id"]
         self.assertEqual(call_chat_id, 99999)
 
+    async def test_automatic_queue_skips_legacy_news_without_blocking_digests(self):
+        async with self.session_factory() as session:
+            repo = Repository(session)
+            news = await repo.create_channel_post(
+                title="Legacy personal update", content_hash="legacy-news",
+                event_type="announced", post_text="Personal update", status="pending",
+            )
+            digest = await repo.create_channel_post(
+                title="Premiere collection", content_hash="collection",
+                post_type="daily_digest", event_type="daily_digest",
+                post_text="Today's premieres", status="pending",
+            )
+            await session.commit()
+
+        self.assertEqual(await self.publisher.publish_pending_queue(), 1)
+        self.mock_bot.send_message.assert_awaited_once()
+        self.assertEqual(self.mock_bot.send_message.call_args.kwargs["text"], "Today's premieres")
+        async with self.session_factory() as session:
+            repo = Repository(session)
+            self.assertEqual((await repo.get_channel_post(news.id)).status, "pending")
+            self.assertEqual((await repo.get_channel_post(digest.id)).status, "published")
+
+        self.settings.CHANNEL_MIN_POST_INTERVAL_MINUTES = 0
+        self.assertEqual(await self.publisher.publish_pending_queue(), 0)
+        self.assertEqual(self.mock_bot.send_message.await_count, 1)
+
+    async def test_safe_mode_does_not_automatically_publish_collections(self):
+        self.settings.CHANNEL_AUTO_PUBLISH = False
+        async with self.session_factory() as session:
+            await Repository(session).create_channel_post(
+                title="Weekly collection", content_hash="safe-collection",
+                post_type="weekly_digest", event_type="weekly_digest",
+                post_text="Premieres", status="pending",
+            )
+            await session.commit()
+        self.assertEqual(await self.publisher.publish_pending_queue(), 0)
+        self.mock_bot.send_message.assert_not_awaited()
+
     async def test_daily_digest_generation_and_skip(self):
         """Проверка дайджеста «Что выходит сегодня»: пропуск при отсутствии релизов и публикация при их наличии."""
         today = date(2027, 4, 17)

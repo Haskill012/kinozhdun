@@ -757,7 +757,14 @@ class ChannelPublisher:
             if not pending_posts:
                 return 0
 
-            post = pending_posts[0]
+            # Одиночные новости из прежнего трекера остаются для ручной модерации.
+            # Автоматический поток канала состоит только из общих подборок.
+            post = next(
+                (p for p in pending_posts if p.post_type in ("daily_digest", "weekly_digest")),
+                None,
+            )
+            if post is None:
+                return 0
             success = await self.publish_post_by_id(post.id)
             if success:
                 published_count += 1
@@ -1006,7 +1013,7 @@ class ChannelPublisher:
             "🍿 <b>Тестовое подключение канала «Кинождун»</b>\n"
             "────────────────────────\n"
             "Бот успешно подключён к каналу и имеет права на публикацию сообщений! 🎉\n\n"
-            "Теперь здесь будут появляться проверенные новости о датах премьер, продолжениях и официальные трейлеры."
+            "Здесь будут появляться подборки и дайджесты премьер. Личные уведомления по отслеживаемым фильмам и сериалам приходят в бота."
         )
 
         try:

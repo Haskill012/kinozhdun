@@ -38,9 +38,6 @@ async def check_updates_job(
 
         logger.info(f"Обнаружено {len(updates)} обновлений, отправляю уведомления...")
 
-        channel_publisher = ChannelPublisher(session_factory, settings, bot, tmdb_client=tmdb_client)
-        processed_channel_keys: set[tuple[str, int, str]] = set()
-
         async with session_factory() as session:
             repo = Repository(session)
             for update in updates:
@@ -73,36 +70,6 @@ async def check_updates_job(
                     await repo.log_notification(item.id, update_type, text)
                 except Exception as send_err:
                     logger.warning(f"Не удалось отправить уведомление пользователю {telegram_id}: {send_err}")
-
-                # Публикация в канал (дедуплицируя по проектам в рамках одного цикла проверки)
-                chan_event = info.get("channel_event_type") or update_type
-                chan_key = (item.media_type, item.tmdb_id, chan_event)
-                if chan_key not in processed_channel_keys:
-                    processed_channel_keys.add(chan_key)
-                    trailer_url = info.get("trailer_url")
-                    if not trailer_url and tmdb_client:
-                        try:
-                            t_info = await tmdb_client.get_official_trailer(item.media_type, item.tmdb_id)
-                            if t_info:
-                                trailer_url = t_info.get("url")
-                        except Exception:
-                            pass
-
-                    try:
-                        await channel_publisher.process_update_for_channel(
-                            tmdb_id=item.tmdb_id,
-                            media_type=item.media_type,
-                            event_type=chan_event,
-                            title=item.title,
-                            season_number=info.get("next_season") or item.next_season_number,
-                            air_date=info.get("next_air_date") or item.next_air_date,
-                            old_air_date=info.get("old_air_date"),
-                            network=item.network,
-                            poster_path=item.poster_path,
-                            trailer_url=trailer_url,
-                        )
-                    except Exception as chan_err:
-                        logger.error(f"Ошибка при обработке для Telegram-канала ({item.title}): {chan_err}", exc_info=True)
 
             await session.commit()
 
@@ -203,7 +170,7 @@ def setup_scheduler(
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
     now_utc = datetime.now(timezone.utc)
 
-    # Основная проверка выхода новых сезонов / дат и публикация в канал (первый запуск через 5 сек)
+    # Личные уведомления по отслеживаемым фильмам и сериалам (первый запуск через 5 сек)
     scheduler.add_job(
         check_updates_job,
         "interval",
