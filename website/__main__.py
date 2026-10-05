@@ -136,7 +136,14 @@ def create_app(config=None):
         return web.Response(text='<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>КиноЖдун</title><link>' + xml_escape(config["base_url"]) + '</link><description>Новости кино и сериалов</description><language>ru</language>' + ''.join(items) + '</channel></rss>', content_type="application/rss+xml")
 
     async def health(request):
-        return web.json_response({"status": "ok", "last_sync": store.state("last_sync"), "sync_error": store.state("sync_error"), "titles": len(store.titles()), "articles": store.db.execute("SELECT COUNT(*) FROM articles").fetchone()[0]}, headers={"X-Robots-Tag": "noindex"})
+        return web.json_response({
+            "status": "ok",
+            "version": "1.2.0",
+            "last_sync": store.state("last_sync"),
+            "sync_error": store.state("sync_error"),
+            "titles": len(store.titles()),
+            "articles": store.db.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
+        }, headers={"X-Robots-Tag": "noindex"})
 
     for path, handler in (("/", home), ("/news", listing), ("/movies", listing), ("/series", listing), ("/news/{slug}", article), ("/calendar", calendar), ("/about", about), ("/robots.txt", robots), ("/sitemap.xml", sitemap), ("/feed.xml", feed), ("/health", health)):
         app.router.add_get(path, handler)
