@@ -71,7 +71,7 @@ fi
 CRONSCRIPT
 chmod +x "$APP_DIR/deploy_cron.sh"
 
-(crontab -l 2>/dev/null | grep -F -v "deploy_cron.sh"; echo "*/2 * * * * /root/kinozhdun/deploy_cron.sh") | crontab -
+(crontab -l 2>/dev/null | grep -F -v "deploy_cron.sh" || true; echo "*/2 * * * * /root/kinozhdun/deploy_cron.sh") | crontab -
 echo "  Автообновление каждые 2 минуты установлено"
 
 echo ""
