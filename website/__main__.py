@@ -35,7 +35,10 @@ def configuration():
             "api_key": os.getenv("TMDB_API_KEY", ""),
             "api_base": os.getenv("TMDB_BASE_URL", "https://api.themoviedb.org/3").rstrip("/"),
             "sync_seconds": max(60, int(os.getenv("SITE_SYNC_INTERVAL_MINUTES", "60")) * 60),
-            "batch_size": min(20, max(1, int(os.getenv("SITE_BATCH_SIZE", "12"))))}
+            "batch_size": min(20, max(1, int(os.getenv("SITE_BATCH_SIZE", "12")))),
+            "yandex_verification": os.getenv("SITE_YANDEX_VERIFICATION", ""),
+            "google_verification": os.getenv("SITE_GOOGLE_VERIFICATION", ""),
+            "yandex_metrika_id": os.getenv("SITE_YANDEX_METRIKA_ID", "")}
 
 
 STORE = web.AppKey("store", Store)
@@ -106,13 +109,20 @@ def create_app(config=None):
     async def robots(request):
         text = "User-agent: *\n" + ("Allow: /\nDisallow: /health\n" if config["public"] else "Disallow: /\n")
         if config["public"]:
+            text += "Clean-param: q /news&/movies&/series\n"
             text += "Sitemap: " + config["base_url"] + "/sitemap.xml\n"
         return web.Response(text=text, content_type="text/plain")
 
     async def sitemap(request):
-        pages = [(p, None) for p in ("/", "/news", "/movies", "/series", "/calendar", "/about")]
-        pages.extend(("/news/" + a["slug"], a["updated"]) for a in store.articles(limit=50000))
-        body = ''.join('<url><loc>' + xml_escape(config["base_url"] + path) + '</loc>' + ('<lastmod>' + xml_escape(updated) + '</lastmod>' if updated else '') + '</url>' for path, updated in pages)
+        pages = [(p, None, "1.0" if p == "/" else "0.9" if p == "/calendar" else "0.8", "daily")
+                 for p in ("/", "/news", "/movies", "/series", "/calendar", "/about")]
+        pages.extend(("/news/" + a["slug"], a["updated"], "0.7", "weekly") for a in store.articles(limit=50000))
+        body = ''.join(
+            '<url><loc>' + xml_escape(config["base_url"] + path) + '</loc>'
+            + ('<lastmod>' + xml_escape(updated) + '</lastmod>' if updated else '')
+            + f'<changefreq>{freq}</changefreq><priority>{pri}</priority></url>'
+            for path, updated, pri, freq in pages
+        )
         return web.Response(text='<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + body + '</urlset>', content_type="application/xml")
 
     async def feed(request):

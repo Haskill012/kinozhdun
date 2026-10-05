@@ -18,7 +18,23 @@ services:
     environment:
       SITE_HOST: 0.0.0.0
       SITE_PORT: 8099
-    ports:
-      - "80:8099"
+    expose:
+      - "8099"
     volumes:
       - ./data:/app/data
+
+  caddy:
+    image: caddy:alpine
+    container_name: kinozhdun_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

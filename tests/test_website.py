@@ -10,7 +10,7 @@ from xml.etree import ElementTree
 
 from aiohttp.test_utils import AioHTTPTestCase
 
-from website.content import Store
+from website.content import Store, slugify
 from website.editor import Editor, today
 from website.__main__ import create_app
 
@@ -19,7 +19,8 @@ def config(path):
     return {"database": str(path), "bot_database": None, "bot_url": "https://t.me/kinojdun_bot",
             "channel_url": "https://t.me/kinojdun_channel", "base_url": "http://127.0.0.1:8099",
             "public": False, "api_key": "", "api_base": "https://api.themoviedb.org/3",
-            "sync_seconds": 3600, "batch_size": 2}
+            "sync_seconds": 3600, "batch_size": 2,
+            "yandex_verification": "", "google_verification": "", "yandex_metrika_id": ""}
 
 
 class EditorTests(unittest.TestCase):
@@ -33,6 +34,11 @@ class EditorTests(unittest.TestCase):
     def tearDown(self):
         self.store.db.close()
         self.tmp.cleanup()
+
+    def test_slugify_transliteration(self):
+        self.assertEqual(slugify("«Фоллаут»: дата выхода — 15.11.2026"), "follaut-data-vyhoda-15-11-2026")
+        self.assertEqual(slugify("Очень странные дела 5"), "ochen-strannye-dela-5")
+        self.assertEqual(slugify("Dune: Part Two"), "dune-part-two")
 
     def test_restart_does_not_duplicate_posts(self):
         self.editor.process("movie", self.movie)
@@ -125,6 +131,16 @@ class WebsiteHTTPTests(AioHTTPTestCase):
         self.assertIn('rel="canonical"', text)
         self.assertIn("Источник материала", text)
         self.assertIn("https://t.me/kinojdun_bot", text)
+
+    async def test_seo_meta_tags_and_breadcrumbs(self):
+        feed = await self.client.get("/feed.xml")
+        root = ElementTree.fromstring(await feed.text())
+        url = root.find("channel/item/link").text
+        response = await self.client.get(url.removeprefix(self.cfg["base_url"]))
+        text = await response.text()
+        self.assertIn('name="twitter:card"', text)
+        self.assertIn('BreadcrumbList', text)
+        self.assertIn('Напомнить о премьере в Telegram', text)
 
     async def test_search_escapes_input_and_is_not_indexed(self):
         response = await self.client.get("/news", params={"q": '"><script>alert(1)</script>'})

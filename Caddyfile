@@ -1,0 +1,3 @@
+kinojdun.ru, www.kinojdun.ru {
+    reverse_proxy kinozhdun-site:8099
+}

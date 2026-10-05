@@ -7,3 +7,8 @@
 nav,.tabs{scrollbar-width:none}nav::-webkit-scrollbar,.tabs::-webkit-scrollbar{display:none}
 @media(max-width:480px){.hero h1{font-size:48px;letter-spacing:-2.2px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
+
+.date-badge{display:inline-block;font-size:10px;padding:2px 6px;border-radius:4px;background:#242c22;color:var(--lime);margin-top:4px;font-weight:600;white-space:nowrap}
+.date-today{background:var(--lime);color:#111312}
+.date-tomorrow{background:#38482d;color:#d4fa58}
+.article-countdown{display:inline-flex;align-items:center;gap:8px;background:#20281e;border:1px solid #3c4a30;color:#d4fa58;padding:8px 14px;border-radius:6px;font-size:13px;margin:10px 0 20px;font-weight:500}

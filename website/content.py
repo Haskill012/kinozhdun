@@ -25,6 +25,28 @@ def plain(value):
     return html.unescape(re.sub(r"<[^>]*>", "", value or "")).strip()
 
 
+CYRILLIC_MAP = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
+    'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
+    'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'h', 'ц': 'ts',
+    'ч': 'ch', 'ш': 'sh', 'щ': 'sch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+}
+
+
+def slugify(text: str, max_length: int = 60) -> str:
+    s = (text or "").lower()
+    chars = []
+    for c in s:
+        if c in CYRILLIC_MAP:
+            chars.append(CYRILLIC_MAP[c])
+        elif c.isalnum() and ord(c) < 128:
+            chars.append(c)
+        elif c in (' ', '-', '_', ':', '.', '/', '«', '»', '"', "'", ',', '!', '?'):
+            chars.append('-')
+    cleaned = re.sub(r'-+', '-', ''.join(chars)).strip('-')
+    return cleaned[:max_length].rstrip('-') or 'post'
+
+
 class Store:
     def __init__(self, path):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -46,7 +68,9 @@ class Store:
 
     def publish(self, fingerprint, title, category, summary, body, source_url,
                 image=None, media_type=None, tmdb_id=None, release_date=None, published=None):
-        slug = "post-" + hashlib.sha256(fingerprint.encode()).hexdigest()[:16]
+        base_slug = slugify(title)
+        hash_suffix = hashlib.sha256(fingerprint.encode()).hexdigest()[:8]
+        slug = f"{base_slug}-{hash_suffix}"
         timestamp = published or now()
         cursor = self.db.execute(
             "INSERT OR IGNORE INTO articles VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -71,6 +95,8 @@ class Store:
 
     def article(self, slug):
         row = self.db.execute("SELECT * FROM articles WHERE slug = ?", (slug,)).fetchone()
+        if not row and slug.startswith("post-"):
+            row = self.db.execute("SELECT * FROM articles WHERE slug LIKE ?", (f"%{slug.removeprefix('post-')[:8]}%",)).fetchone()
         return dict(row) if row else None
 
     def titles(self):

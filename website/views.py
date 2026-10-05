@@ -30,13 +30,30 @@ def layout(config, title, description, content, path="/", active="", schema=None
     nav = "".join(f'<a class="{"active" if active == key else ""}" href="{url}">{label}</a>' for key, url, label in (
         ("home", "/", "Главная"), ("news", "/news", "Новости"), ("movies", "/movies", "Фильмы"), ("series", "/series", "Сериалы"), ("calendar", "/calendar", "Календарь премьер")))
     robots = "noindex, follow" if noindex or not config["public"] else "index, follow, max-image-preview:large"
+    verification = ""
+    if config.get("yandex_verification"):
+        verification += f'<meta name="yandex-verification" content="{esc(config["yandex_verification"])}">\n    '
+    if config.get("google_verification"):
+        verification += f'<meta name="google-site-verification" content="{esc(config["google_verification"])}">\n    '
+    metrika = ""
+    if config.get("yandex_metrika_id"):
+        mid = esc(config["yandex_metrika_id"])
+        metrika = f'''<script type="text/javascript">(function(m,e,t,r,i,k,a){{m[i]=m[i]||function(){{(m[i].a=m[i].a||[]).push(arguments)}};m[i].l=1*new Date();for(var j=0;j<document.scripts.length;j++){{if(document.scripts[j].src===r){{return;}}}}k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)}})(window,document,"script","https://mc.yandex.ru/metrika/tag.js","ym");ym({mid},"init",{{clickmap:true,trackLinks:true,accurateTrackBounce:true,webvisor:true}});</script><noscript><div><img src="https://mc.yandex.ru/watch/{mid}" style="position:absolute;left:-9999px;" alt="" /></div></noscript>'''
+    is_article = False
+    if schema:
+        if schema.get("@type") in ("NewsArticle", "Article"):
+            is_article = True
+        elif "@graph" in schema:
+            is_article = any(item.get("@type") in ("NewsArticle", "Article") for item in schema.get("@graph", []))
+    og_img = esc(og_image or (base + "/static/logo_mascot.jpg"))
     return f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>{esc(title)} — КиноЖдун</title><meta name="description" content="{esc(description)}"><meta name="robots" content="{robots}">
+    {verification}<title>{esc(title)} — КиноЖдун</title><meta name="description" content="{esc(description)}"><meta name="robots" content="{robots}">
     <link rel="canonical" href="{esc(base + path)}"><link rel="icon" href="/static/logo_mascot.jpg" type="image/jpeg"><link rel="icon" href="/static/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/static/logo_mascot.jpg">
-    <meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{esc(description)}"><meta property="og:site_name" content="КиноЖдун"><meta property="og:locale" content="ru_RU"><meta property="og:type" content="{"article" if schema and schema.get('@type') == 'NewsArticle' else 'website'}"><meta property="og:url" content="{esc(base + path)}">
-    {f'<meta property="og:image" content="{esc(og_image or (base + "/static/logo_mascot.jpg"))}">' }
+    <meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{esc(description)}"><meta property="og:site_name" content="КиноЖдун"><meta property="og:locale" content="ru_RU"><meta property="og:type" content="{"article" if is_article else 'website'}"><meta property="og:url" content="{esc(base + path)}">
+    <meta property="og:image" content="{og_img}">
+    <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{esc(title)}"><meta name="twitter:description" content="{esc(description)}"><meta name="twitter:image" content="{og_img}">
     <meta name="theme-color" content="#111312"><link rel="alternate" type="application/rss+xml" title="КиноЖдун — новости" href="/feed.xml">
-    <link rel="stylesheet" href="/static/site.css"><script type="application/ld+json">{jsonld}</script><script src="/static/site.js" defer></script></head>
+    <link rel="stylesheet" href="/static/site.css"><script type="application/ld+json">{jsonld}</script><script src="/static/site.js" defer></script>{metrika}</head>
     <body><a class="skip" href="#content">Перейти к содержимому</a><header><div class="header-inner"><a class="brand" href="/" aria-label="КиноЖдун — главная"><img class="brand-logo" src="/static/logo_mascot.jpg" alt="КиноЖдун" width="48" height="48"><span>кино<span class="brand-light">ждун</span><small>ХОРОШЕЕ КИНО СТОИТ ЖДАТЬ</small></span></a>
     <nav aria-label="Основная навигация">{nav}</nav><a class="button small" href="{esc(config['bot_url'])}" target="_blank" rel="noopener">↗ Открыть бота</a></div></header>
     <main id="content">{content}</main>
@@ -67,11 +84,18 @@ def premiere_rows(items, config, limit=5):
     rows = []
     for item in items[:limit]:
         d = date.fromisoformat(item["release_date"])
+        diff_days = (d - today()).days
+        if diff_days == 0:
+            badge = '<span class="date-badge date-today">Сегодня!</span>'
+        elif diff_days == 1:
+            badge = '<span class="date-badge date-tomorrow">Завтра</span>'
+        else:
+            badge = f'<span class="date-badge">через {diff_days} дн.</span>'
         month = ["ЯНВ", "ФЕВ", "МАР", "АПР", "МАЙ", "ИЮН", "ИЮЛ", "АВГ", "СЕН", "ОКТ", "НОЯ", "ДЕК"][d.month - 1]
         label = "Фильм" if item["media_type"] == "movie" else "Сериал"
         if item.get("episode"):
             label += f" · {item.get('season') or '?'} сезон, {item['episode']} серия"
-        rows.append(f'''<div class="premiere-row"><div class="premiere-date"><b>{d.day:02}</b><span>{month} {d.year}</span></div><div class="premiere-poster">{image(item.get('poster'), item['title'])}</div><div class="premiere-title"><strong>{esc(item['title'])}</strong><span>{esc(label)}</span></div><a class="reminder" href="{esc(title_link(item, config))}" target="_blank" rel="noopener" aria-label="Отслеживать {esc(item['title'])}">＋ <span>Ждать</span></a></div>''')
+        rows.append(f'''<div class="premiere-row"><div class="premiere-date"><b>{d.day:02}</b><span>{month} {d.year}</span>{badge}</div><div class="premiere-poster">{image(item.get('poster'), item['title'])}</div><div class="premiere-title"><strong>{esc(item['title'])}</strong><span>{esc(label)}</span></div><a class="reminder" href="{esc(title_link(item, config))}" target="_blank" rel="noopener" aria-label="Отслеживать {esc(item['title'])}">＋ <span>Ждать</span></a></div>''')
     return "".join(rows)
 
 
@@ -123,10 +147,45 @@ def article_page(store, config, article):
     body = "".join(f'<p>{esc(p)}</p>' for p in json.loads(article["body"]))
     bot_url = (config["bot_url"] + f"?start=c_{article['media_type']}_{article['tmdb_id']}" if article.get("media_type") in ("tv", "movie") and article.get("tmdb_id") else config["bot_url"])
     related = [a for a in store.articles(limit=7) if a["slug"] != article["slug"]][:3]
-    schema = {"@context": "https://schema.org", "@type": "NewsArticle" if article["category"] != "guides" else "Article", "headline": article["title"], "description": article["summary"], "datePublished": article["published"], "dateModified": article["updated"], "mainEntityOfPage": config["base_url"] + path, "inLanguage": "ru", "author": {"@type": "Organization", "name": "КиноЖдун", "url": config["base_url"] + "/about"}, "publisher": {"@type": "Organization", "name": "КиноЖдун", "url": config["base_url"]}}
+    
+    cat_url = config["base_url"] + ("/movies" if article["category"] == "movies" else "/series" if article["category"] == "series" else "/news")
+    article_obj = {
+        "@type": "NewsArticle" if article["category"] != "guides" else "Article",
+        "headline": article["title"],
+        "description": article["summary"],
+        "datePublished": article["published"],
+        "dateModified": article["updated"],
+        "mainEntityOfPage": config["base_url"] + path,
+        "inLanguage": "ru",
+        "author": {"@type": "Organization", "name": "КиноЖдун", "url": config["base_url"] + "/about"},
+        "publisher": {"@type": "Organization", "name": "КиноЖдун", "url": config["base_url"]}
+    }
     if article.get("image"):
-        schema["image"] = [article["image"]]
-    content = f'''<div class="page-shell"><div class="breadcrumbs"><a href="/">Главная</a> / <a href="/news">Материалы</a> / {category}</div><article class="article"><span class="eyebrow lime">{category}</span><h1>{esc(article['title'])}</h1><div class="meta"><span>Редакция КиноЖдуна</span><span>•</span><time datetime="{esc(article['published'])}">{'.'.join(stamp(article['published']))}</time></div><p class="article-lead">{esc(article['summary'])}</p>{image(article.get('image'), article['title'], 'article-cover', eager=True)}<div class="article-body">{body}<div class="source"><strong>Источник материала</strong><a href="{esc(article['source_url'])}" target="_blank" rel="noopener noreferrer">Открыть источник ↗</a><small>Сведения могут обновляться. Подробнее — <a href="/about">о нашей редакции</a>.</small></div><div class="article-cta"><h2>Не потеряйте то, что ждёте.</h2><p>Сохраните проект в Telegram-боте и следите за датой выхода.</p><a class="button" href="{esc(bot_url)}" target="_blank" rel="noopener">Открыть в КиноЖдуне ↗</a></div></div></article><section class="news-section"><div class="section-heading"><h2>Ещё немного кино<span class="lime">.</span></h2><a href="/news" class="text-link">Все материалы ↗</a></div><div class="news-grid">{''.join(card(a) for a in related)}</div></section></div>'''
+        article_obj["image"] = [article["image"]]
+        
+    breadcrumbs = {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "Главная", "item": config["base_url"] + "/"},
+            {"@type": "ListItem", "position": 2, "name": category, "item": cat_url},
+            {"@type": "ListItem", "position": 3, "name": article["title"], "item": config["base_url"] + path}
+        ]
+    }
+    schema = {"@context": "https://schema.org", "@graph": [article_obj, breadcrumbs]}
+
+    release_badge = ""
+    if article.get("release_date"):
+        try:
+            rd = date.fromisoformat(article["release_date"])
+            diff = (rd - today()).days
+            if diff > 0:
+                release_badge = f'<div class="article-countdown">📅 Премьера: <b>{date_ru(article["release_date"])}</b> (через {diff} дн.)</div>'
+            elif diff == 0:
+                release_badge = f'<div class="article-countdown">🎉 Премьера <b>сегодня</b> ({date_ru(article["release_date"])})!</div>'
+        except (ValueError, TypeError):
+            pass
+
+    content = f'''<div class="page-shell"><div class="breadcrumbs"><a href="/">Главная</a> / <a href="/news">Материалы</a> / {category}</div><article class="article"><span class="eyebrow lime">{category}</span><h1>{esc(article['title'])}</h1><div class="meta"><span>Редакция КиноЖдуна</span><span>•</span><time datetime="{esc(article['published'])}">{'.'.join(stamp(article['published']))}</time></div>{release_badge}<p class="article-lead">{esc(article['summary'])}</p>{image(article.get('image'), article['title'], 'article-cover', eager=True)}<div class="article-body">{body}<div class="source"><strong>Источник материала</strong><a href="{esc(article['source_url'])}" target="_blank" rel="noopener noreferrer">Открыть источник ↗</a><small>Сведения могут обновляться. Подробнее — <a href="/about">о нашей редакции</a>.</small></div><div class="article-cta"><h2>Не пропустите премьеру</h2><p>Сохраните проект в трекер: КиноЖдун пришлёт уведомление в Telegram за 3 дня до даты выхода.</p><a class="button" href="{esc(bot_url)}" target="_blank" rel="noopener">🔔 Напомнить о премьере в Telegram ↗</a></div></div></article><section class="news-section"><div class="section-heading"><h2>Ещё немного кино<span class="lime">.</span></h2><a href="/news" class="text-link">Все материалы ↗</a></div><div class="news-grid">{''.join(card(a) for a in related)}</div></section></div>'''
     return layout(config, article["title"], article["summary"][:180], content, path, "news", schema=schema, og_image=article.get("image"))
 
 
