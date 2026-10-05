@@ -64,6 +64,12 @@ async def background(app):
 
 @web.middleware
 async def errors(request, handler):
+    config = request.app[CONFIG]
+    canonical_host = urlparse(config["base_url"]).hostname
+    alias_host = "www." + canonical_host if canonical_host else None
+    # Also enforce the canonical host behind a proxy that has not reloaded yet.
+    if config["public"] and alias_host and request.url.host.lower() == alias_host.lower():
+        raise web.HTTPMovedPermanently(location=config["base_url"] + request.raw_path)
     try:
         response = await handler(request)
     except web.HTTPNotFound:

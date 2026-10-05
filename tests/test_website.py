@@ -358,3 +358,43 @@ class CatalogHTTPTests(AioHTTPTestCase):
         data = await response.json()
         self.assertEqual(data['cards_published'], 50)
         self.assertEqual(data['cards_queued'], 0)
+
+    async def test_public_seo_preserves_existing_metrika_and_verification(self):
+        self.cfg.update(public=True, base_url="https://kinojdun.ru",
+                        yandex_metrika_id="113425218",
+                        google_verification="existing-google", yandex_verification="existing-yandex")
+        response = await self.client.get('/')
+        html = await response.text()
+        self.assertIn('content="index, follow, max-image-preview:large"', html)
+        self.assertEqual(html.count('ym(113425218,"init"'), 1)
+        self.assertIn('data-metrika-id="113425218"', html)
+        self.assertIn('content="existing-google"', html)
+        self.assertIn('content="existing-yandex"', html)
+        response = await self.client.get('/catalog?q=test')
+        self.assertIn('content="noindex, follow"', await response.text())
+
+    async def test_www_redirect_preserves_path_query_and_local_access(self):
+        self.cfg.update(public=True, base_url="https://kinojdun.ru")
+        response = await self.client.get('/catalog?q=%D0%BA%D0%B8%D0%BD%D0%BE&sort=rating',
+                                         headers={'Host': 'www.kinojdun.ru'}, allow_redirects=False)
+        self.assertEqual(response.status, 301)
+        self.assertEqual(response.headers['Location'], 'https://kinojdun.ru/catalog?q=%D0%BA%D0%B8%D0%BD%D0%BE&sort=rating')
+        response = await self.client.get('/catalog', headers={'Host': 'kinojdun.ru'})
+        self.assertEqual(response.status, 200)
+        self.cfg['public'] = False
+        response = await self.client.get('/catalog', headers={'Host': 'www.kinojdun.ru'})
+        self.assertEqual(response.status, 200)
+
+    async def test_card_metadata_answers_release_query_without_changing_heading(self):
+        from website.__main__ import STORE
+        from website.editor import date_ru
+        for media in ('movie', 'tv'):
+            item = next(t for t in self.app[STORE].catalog() if t['media_type'] == media)
+            response = await self.client.get(f"/title/{media}/{item['id']}")
+            html = await response.text()
+            self.assertIn('дата выхода', html.split('</title>')[0])
+            self.assertIn(f'<h1>{item["title"]}</h1>', html)
+            self.assertIn(f'rel="canonical" href="http://127.0.0.1:8099/title/{media}/{item["id"]}"', html)
+            release = item.get('first_release') if media == 'movie' else item.get('release_date')
+            if release:
+                self.assertIn(date_ru(release), html.split('name="description"')[1].split('>')[0])

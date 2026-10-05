@@ -1,3 +1,7 @@
-kinojdun.ru, www.kinojdun.ru {
+kinojdun.ru {
     reverse_proxy kinozhdun-site:8099
+}
+
+www.kinojdun.ru {
+    redir https://kinojdun.ru{uri} permanent
 }
