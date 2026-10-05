@@ -82,6 +82,47 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(self.store.snapshot("movie:123")["trailer"], "russian1234")
         self.assertEqual(sum(":trailer:" in a["fingerprint"] for a in self.store.articles()), 1)
 
+    def test_news_immediately_opens_a_card_with_current_metadata(self):
+        self.editor.process("movie", self.movie)
+        card = self.store.catalog_item("movie:123")
+        self.assertIsNotNone(card)
+        self.assertEqual(card["title"], self.movie["title"])
+        self.assertEqual(card["overview"], self.movie["overview"])
+        self.assertEqual(card["release_date"], self.release)
+        self.assertEqual(card["source_url"], "https://www.themoviedb.org/movie/123")
+        self.editor.process("movie", {**self.movie, "status": "Post Production"})
+        self.assertEqual(len(self.store.catalog()), 1)
+        self.assertEqual(self.store.catalog_item("movie:123")["status"], "Post Production")
+
+    def test_news_promotes_hidden_card_without_using_discovery_quota(self):
+        for n in range(5):
+            self.store.queue_title({"key": f"movie:{n}", "id": n, "media_type": "movie", "title": str(n)})
+        item = {"key": "movie:4", "id": 4, "media_type": "movie", "title": "New trailer", "overview": "Plot"}
+        self.store.publish("trailer:4", "A trailer", "movies", "Trailer", [],
+                           "https://www.themoviedb.org/movie/4", media_type="movie", tmdb_id=4, item=item)
+        self.assertEqual(self.store.catalog_item("movie:4")["overview"], "Plot")
+        self.assertEqual(self.store.release_catalog(3), 3)
+        self.assertEqual(self.store.release_catalog(3), 0)
+        self.store.publish("date:6", "Date announced", "series", "Date", [],
+                           "https://www.themoviedb.org/tv/6", media_type="tv", tmdb_id=6)
+        self.assertIsNotNone(self.store.catalog_item("tv:6"))
+        # The remaining discovery card can still open on the next day.
+        with patch("website.content.today", return_value=today() + timedelta(days=1)):
+            self.assertEqual(self.store.release_catalog(3), 1)
+
+    def test_backfill_repairs_old_news_and_distinguishes_movie_and_series_ids(self):
+        self.editor.process("movie", self.movie)
+        self.store.publish("tv:123:news", "Series", "series", "Update", [],
+                           "https://www.themoviedb.org/tv/123", media_type="tv", tmdb_id=123)
+        self.store.publish("general", "Collection", "news", "Collection", [], "https://t.me/channel")
+        self.store.db.execute("DELETE FROM catalog")
+        self.store.db.commit()
+        self.store.restore_news_cards()
+        self.store.restore_news_cards()
+        self.assertEqual({t["key"] for t in self.store.catalog()}, {"movie:123", "tv:123"})
+        self.assertEqual(self.store.catalog_item("movie:123")["title"], self.movie["title"])
+        self.assertEqual(len(self.store.articles()), 3)
+
     def test_slugify_transliteration(self):
         self.assertEqual(slugify("«Фоллаут»: дата выхода — 15.11.2026"), "follaut-data-vyhoda-15-11-2026")
         self.assertEqual(slugify("Очень странные дела 5"), "ochen-strannye-dela-5")
@@ -177,6 +218,35 @@ class EditorTests(unittest.TestCase):
 
 
 class CatalogSyncTests(unittest.IsolatedAsyncioTestCase):
+    async def test_news_card_metadata_retries_tmdb_and_does_not_create_archive_news(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(Path(directory) / "site.db")
+            store.state("catalog_selected", "yes")
+            store.publish("channel:old", "Project", "movies", "Update", [],
+                          "https://www.themoviedb.org/movie/777", media_type="movie", tmdb_id=777)
+            editor = Editor(store, {**config(Path(directory) / "site.db"), "api_key": "test", "catalog_size": 50})
+            async def failing_fetch(endpoint, **params):
+                raise RuntimeError("TMDB temporarily unavailable")
+            editor.fetch = failing_fetch
+            await editor.sync()
+            self.assertTrue(store.catalog_item("movie:777")["needs_details"])
+            self.assertIn("temporarily unavailable", store.state("sync_error"))
+            async def fetch(endpoint, **params):
+                self.assertEqual(endpoint, "/movie/777")
+                return {"id": 777, "title": "Real project title", "overview": "Real plot",
+                        "poster_path": "/poster.jpg", "popularity": 0.1, "vote_count": 100,
+                        "vote_average": 4, "release_date": "2000-01-01", "status": "Released"}
+            editor.fetch = fetch
+            await editor.sync()
+            await editor.sync()
+            card = store.catalog_item("movie:777")
+            self.assertEqual(card["title"], "Real project title")
+            self.assertEqual(card["overview"], "Real plot")
+            self.assertNotIn("needs_details", card)
+            self.assertEqual(len(store.articles()), 1)
+            self.assertEqual(store.state("sync_error"), "")
+            store.db.close()
+
     async def test_live_pipeline_selects_50_and_opens_three_without_duplicate_news(self):
         with tempfile.TemporaryDirectory() as directory:
             store = Store(Path(directory) / "site.db")
@@ -236,6 +306,25 @@ class WebsiteHTTPTests(AioHTTPTestCase):
         response = await self.client.get("/movies")
         self.assertIn("/title/movie/123", await response.text())
 
+    async def test_news_creates_public_card_and_link_and_sitemap_entry(self):
+        from website.__main__ import STORE
+        store = self.app[STORE]
+        editor = Editor(store, self.cfg)
+        for media in ("movie", "tv"):
+            detail = {"id": 99999, "title": "Project", "name": "Series", "overview": "Plot",
+                      "release_date": (today() + timedelta(days=7)).isoformat(),
+                      "next_episode_to_air": {"air_date": (today() + timedelta(days=7)).isoformat()}}
+            editor.process(media, detail)
+            response = await self.client.get(f"/title/{media}/99999")
+            self.assertEqual(response.status, 200)
+            article = next(a for a in store.articles() if a["tmdb_id"] == 99999 and a["media_type"] == media)
+            response = await self.client.get("/news/" + article["slug"])
+            self.assertIn(f'/title/{media}/99999', await response.text())
+        response = await self.client.get("/sitemap.xml")
+        xml = await response.text()
+        self.assertIn("/title/movie/99999", xml)
+        self.assertIn("/title/tv/99999", xml)
+
     async def test_all_routes_and_feeds(self):
         for path in ("/", "/news", "/movies", "/series", "/calendar", "/about", "/static/site.css", "/static/mascot.jpg", "/health"):
             response = await self.client.get(path)
@@ -286,7 +375,7 @@ class WebsiteHTTPTests(AioHTTPTestCase):
             response = await self.client.get(path)
             self.assertEqual(response.status, 200)
             text = await response.text()
-            self.assertIn("news-card", text)
+            self.assertIn("poster-card", text)
             self.assertIn(label, text)
             self.assertNotIn("Пока ничего не нашлось", text)
 
@@ -327,8 +416,12 @@ class CatalogHTTPTests(AioHTTPTestCase):
     async def test_initial_collection_is_visible_and_filters_match_data(self):
         from website.__main__ import STORE
         items = self.app[STORE].catalog()
-        self.assertEqual(len(items), 50)
-        for route, count in (("/catalog", 50), ("/movies", 25), ("/series", 25)):
+        seed = json.loads(Path("website/catalog_seed.json").read_text(encoding="utf-8"))
+        expected_keys = {t["key"] for t in seed["titles"]} | {f"{m}:{i}" for m, i in self.app[STORE].news_titles()}
+        self.assertEqual({t["key"] for t in items}, expected_keys)
+        for route, count in (("/catalog", len(items)),
+                             ("/movies", sum(t["media_type"] == "movie" for t in items)),
+                             ("/series", sum(t["media_type"] == "tv" for t in items))):
             response = await self.client.get(route)
             self.assertEqual(response.status, 200)
             self.assertEqual((await response.text()).count('class="poster-card"'), count)
@@ -353,10 +446,10 @@ class CatalogHTTPTests(AioHTTPTestCase):
         self.assertIn('youtube-nocookie.com/embed/', text)
         self.assertIn('/static/site.css?v=' + ASSET_VERSION, text)
         self.assertIn('В список ожидания', text)
-        self.assertNotIn('Новости проекта', text)
+        self.assertEqual('Новости проекта' in text, any(a.get('media_type') == item['media_type'] and a.get('tmdb_id') == item['id'] for a in self.app[STORE].articles(limit=500)))
         response = await self.client.get('/health')
         data = await response.json()
-        self.assertEqual(data['cards_published'], 50)
+        self.assertEqual(data['cards_published'], len(self.app[STORE].catalog()))
         self.assertEqual(data['cards_queued'], 0)
 
     async def test_public_seo_preserves_existing_metrika_and_verification(self):

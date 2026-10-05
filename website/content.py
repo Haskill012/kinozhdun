@@ -74,7 +74,7 @@ class Store:
         self.db.commit()
 
     def publish(self, fingerprint, title, category, summary, body, source_url,
-                image=None, media_type=None, tmdb_id=None, release_date=None, published=None):
+                image=None, media_type=None, tmdb_id=None, release_date=None, published=None, item=None):
         base_slug = slugify(title)
         hash_suffix = hashlib.sha256(fingerprint.encode()).hexdigest()[:8]
         slug = f"{base_slug}-{hash_suffix}"
@@ -83,8 +83,50 @@ class Store:
             "INSERT OR IGNORE INTO articles VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (slug, fingerprint, title, category, summary, json.dumps(body, ensure_ascii=False),
              source_url, image, media_type, tmdb_id, release_date, timestamp, timestamp))
+        created = cursor.rowcount > 0
+        self.ensure_news_card(media_type, tmdb_id, title, source_url, image, release_date, item)
         self.db.commit()
-        return cursor.rowcount > 0
+        return created
+
+    def ensure_news_card(self, media, tmdb_id, title, source_url, image=None, release=None, item=None):
+        if media not in ("movie", "tv") or not isinstance(tmdb_id, int) or tmdb_id <= 0:
+            return
+        key = f"{media}:{tmdb_id}"
+        existing = self.catalog_item(key, False)
+        if existing and existing.get("published") and not existing.get("needs_details"):
+            return
+        if item is None:
+            item = self.snapshot(key)
+            if item and "first_release" not in item:
+                item = {**item, "needs_details": True}
+        if not item:
+            item = ({**existing, "needs_details": True} if existing else None) or {"key": key, "id": tmdb_id, "media_type": media,
+                                "title": title, "source_url": source_url, "image": image,
+                                "release_date": release, "needs_details": True}
+        position = self.db.execute("SELECT COALESCE(MAX(position),0)+1 FROM catalog").fetchone()[0]
+        # Use a full timestamp: news cards do not consume the daily discovery quota.
+        self.db.execute("INSERT OR IGNORE INTO catalog VALUES (?,?,?,?,?)",
+                        (key, json.dumps(item, ensure_ascii=False), position, now(), now()))
+        self.db.execute("UPDATE catalog SET data=?, published=COALESCE(published,?) WHERE key=?",
+                        (json.dumps(item, ensure_ascii=False), now(), key))
+
+    def has_news_title(self, media, tmdb_id):
+        return self.db.execute("SELECT 1 FROM articles WHERE media_type=? AND tmdb_id=? LIMIT 1",
+                               (media, tmdb_id)).fetchone() is not None
+
+    def news_titles(self):
+        return [(r[0], r[1]) for r in self.db.execute(
+            "SELECT DISTINCT media_type, tmdb_id FROM articles "
+            "WHERE media_type IN ('movie','tv') AND tmdb_id > 0")]
+
+    def restore_news_cards(self):
+        """Repair older articles too, using their snapshots before fetching new details."""
+        for row in self.db.execute(
+                "SELECT * FROM articles WHERE media_type IN ('movie','tv') AND tmdb_id > 0 "
+                "ORDER BY published DESC").fetchall():
+            self.ensure_news_card(row["media_type"], row["tmdb_id"], row["title"],
+                                   row["source_url"], row["image"], row["release_date"])
+        self.db.commit()
 
     def articles(self, category=None, query="", limit=24, offset=0):
         clauses, params = [], []
@@ -174,7 +216,8 @@ class Store:
             self.db.execute("INSERT INTO state VALUES (?,?)", ("initial_catalog_visible", now()))
 
     def seed_live_catalog(self):
-        if self.state("catalog_selected") or self.catalog(False):
+        news = set(self.news_titles())
+        if self.state("catalog_selected") or any((t["media_type"], t["id"]) not in news for t in self.catalog(False)):
             return
         path = Path(__file__).with_name("catalog_seed.json")
         if not path.exists():

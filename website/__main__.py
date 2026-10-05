@@ -92,6 +92,7 @@ def create_app(config=None):
         store.open_initial_catalog()
         store.release_catalog(config.get("daily_cards", 3))
     store.import_channel(config["bot_database"], config["channel_url"])
+    store.restore_news_cards()
     app[STORE], app[CONFIG] = store, config
     app.cleanup_ctx.append(background)
 

@@ -73,14 +73,15 @@ class Editor:
         return bool((first and lower <= first <= upper) or
                     (media == "tv" and next_air and today().isoformat() <= next_air <= upper))
 
-    def process(self, media, detail):
+    def process(self, media, detail, *, emit_news=True):
         if detail.get("adult") or not detail.get("id"):
             return
         title = detail.get("title") or detail.get("name")
         if not title:
             return
         key = f"{media}:{detail['id']}"
-        if "popularity" in detail and not self.eligible(media, detail, require_recent=False):
+        news_related = self.store.has_news_title(media, detail["id"])
+        if not news_related and "popularity" in detail and not self.eligible(media, detail, require_recent=False):
             self.store.db.execute("DELETE FROM catalog WHERE key=?", (key,))
             self.store.delete_title(key)
             return
@@ -112,7 +113,12 @@ class Editor:
                 "first_release": valid_date(detail.get("release_date") if media == "movie" else detail.get("first_air_date")),
                 "genres": [g["name"] for g in detail.get("genres", [])],
                 "source_url": f"https://www.themoviedb.org/{media}/{detail['id']}"}
+        if news_related:
+            self.store.ensure_news_card(media, detail["id"], title, item["source_url"], item=item)
         self.store.update_catalog(item)
+        if not emit_news:
+            self.store.save_title(key, item)
+            return
         if self.config.get("catalog_size") and not self.store.catalog_item(key):
             self.store.save_title(key, item)
             return
@@ -124,7 +130,7 @@ class Editor:
 
         def post(event, heading, summary, paragraphs):
             self.store.publish(f"tmdb:{key}:{event}", heading, category, summary,
-                               paragraphs, item["source_url"], item["image"], media, detail["id"], release)
+                               paragraphs, item["source_url"], item["image"], media, detail["id"], release, item=item)
 
         if release and release >= today().isoformat() and (previous or release != today().isoformat()) and (not previous or previous.get("release_date") != release):
             old = previous.get("release_date") if previous else None
@@ -146,7 +152,7 @@ class Editor:
                                "Сегодняшняя дата выхода была указана в предыдущем снимке TMDB.",
                                [f"В предыдущем снимке каталога выход был указан на {date_ru(previous['release_date'])}.",
                                 "Текущая запись уже изменилась. Проверяйте фактическую доступность у распространителя."],
-                               item['source_url'], item['image'], media, detail['id'], previous['release_date'])
+                               item['source_url'], item['image'], media, detail['id'], previous['release_date'], item=item)
         if release == today().isoformat():
             post("release:" + release, f"«{title}»: выход по календарю сегодня", f"По данным TMDB, выход {kind} указан на {date_ru(release)}.{context}",
                  [f"В каталоге TMDB указана сегодняшняя дата выхода.{context}", "Доступность в кинотеатрах и онлайн-сервисах зависит от региона. Проверяйте сведения у распространителя."])
@@ -168,6 +174,7 @@ class Editor:
             return
         async with self.lock:
             self.store.import_channel(self.config["bot_database"], self.config["channel_url"])
+            self.store.restore_news_cards()
             if not self.config["api_key"]:
                 self.store.state("sync_error", "Не задан TMDB_API_KEY. Новости канала доступны; обновление каталога ожидает ключ.")
                 return
@@ -200,6 +207,9 @@ class Editor:
                             details.setdefault(("tv", row["id"]), None)
                     except Exception as exc:
                         errors.append(error_text(exc))
+                    news_titles = set(self.store.news_titles())
+                    for media, tmdb_id in news_titles:
+                        details.setdefault((media, tmdb_id), None)
                     for item in self.store.catalog(False):
                         details.setdefault((item["media_type"], item["id"]), None)
                     for media, tmdb_id in details:
@@ -208,6 +218,12 @@ class Editor:
                             details[(media, tmdb_id)] = detail
                         except Exception as exc:
                             errors.append(error_text(exc))
+                    # Complete cards imported from news before selecting the discovery queue.
+                    # Backfilling metadata must not generate historical date/trailer news.
+                    for (media, tmdb_id), detail in details.items():
+                        card = self.store.catalog_item(f"{media}:{tmdb_id}")
+                        if detail and (media, tmdb_id) in news_titles and (not card or card.get("needs_details")):
+                            self.process(media, detail, emit_news=False)
                     size = self.config.get("catalog_size", 50)
                     if not self.store.state("catalog_selected"):
                         selected = []
