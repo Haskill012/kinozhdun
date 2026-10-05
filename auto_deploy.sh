@@ -50,16 +50,23 @@ echo ""
 echo "=== [4/4] Настройка автоматического обновления ==="
 cat << 'CRONSCRIPT' > "$APP_DIR/deploy_cron.sh"
 #!/bin/bash
+set -euo pipefail
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 cd /root/kinozhdun || exit 1
-git fetch origin master > /dev/null 2>&1
+exec >> /var/log/kinozhdun_deploy.log 2>&1
+# Prevent overlapping builds, and retry a failed deployment next cycle.
+exec 9>/root/kinozhdun_deploy.lock
+flock -n 9 || exit 0
+git fetch origin master
 LOCAL=$(git rev-parse HEAD)
 REMOTE=$(git rev-parse origin/master)
-if [ "$LOCAL" != "$REMOTE" ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') Новый коммит ($REMOTE). Обновляю..." >> /var/log/kinozhdun_deploy.log
-    git reset --hard origin/master >> /var/log/kinozhdun_deploy.log 2>&1
-    docker compose up -d --build >> /var/log/kinozhdun_deploy.log 2>&1
-    echo "$(date '+%Y-%m-%d %H:%M:%S') Обновление завершено." >> /var/log/kinozhdun_deploy.log
+DEPLOYED=$(cat data/.deployed_revision 2>/dev/null || true)
+if [ "$LOCAL" != "$REMOTE" ] || [ "$DEPLOYED" != "$REMOTE" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') Развёртываю $REMOTE..."
+    git merge --ff-only origin/master
+    docker compose up -d --build
+    printf '%s\n' "$REMOTE" > data/.deployed_revision
+    echo "$(date '+%Y-%m-%d %H:%M:%S') Обновление завершено."
 fi
 CRONSCRIPT
 chmod +x "$APP_DIR/deploy_cron.sh"

@@ -4,11 +4,14 @@ services:
     container_name: kinozhdun_bot
     restart: unless-stopped
     dns:
-      - 1.1.1.1
-      - 8.8.8.8
-      - 77.88.8.8
+      - 9.9.9.9
+      - 149.112.112.112
     env_file:
       - .env
+    # The DNS-selected Telegram edge times out on this hosting network.
+    # Keep the hostname for TLS validation; the edge can be changed in .env.
+    extra_hosts:
+      - "api.telegram.org=${TELEGRAM_API_IP:-149.154.167.220}"
     volumes:
       - ./data:/app/data
 
@@ -17,9 +20,8 @@ services:
     container_name: kinozhdun_site
     restart: unless-stopped
     dns:
-      - 1.1.1.1
-      - 8.8.8.8
-      - 77.88.8.8
+      - 9.9.9.9
+      - 149.112.112.112
     command: ["python", "-m", "website"]
     env_file:
       - .env
