@@ -37,6 +37,7 @@ SITE_PUBLIC=true
 SITE_CHANNEL_URL=https://t.me/kinojdun_channel
 SITE_SYNC_INTERVAL_MINUTES=60
 SITE_BATCH_SIZE=12
+SITE_YANDEX_METRIKA_ID=113425218
 EOF
 
 echo "=== Сборка и запуск контейнеров ==="
