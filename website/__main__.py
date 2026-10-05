@@ -75,6 +75,7 @@ def create_app(config=None):
     app = web.Application(middlewares=[errors])
     store = Store(config["database"])
     store.seed_guides(config["bot_url"])
+    store.seed_catalog(config["bot_url"])
     store.import_channel(config["bot_database"], config["channel_url"])
     app[STORE], app[CONFIG] = store, config
     app.cleanup_ctx.append(background)

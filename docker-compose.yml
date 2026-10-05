@@ -3,6 +3,10 @@ services:
     build: .
     container_name: kinozhdun_bot
     restart: unless-stopped
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+      - 77.88.8.8
     env_file:
       - .env
     volumes:
@@ -12,6 +16,10 @@ services:
     build: .
     container_name: kinozhdun_site
     restart: unless-stopped
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+      - 77.88.8.8
     command: ["python", "-m", "website"]
     env_file:
       - .env

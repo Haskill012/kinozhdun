@@ -136,6 +136,130 @@ class Store:
         for key, title, summary, body in guides:
             self.publish("guide:" + key, title, "guides", summary, body, bot_url)
 
+    def seed_catalog(self, bot_url):
+        movies = [
+            (1003596, "Мстители: Доктор Дум", "2026-12-16",
+             "Мстители, Люди Икс, Фантастическая четвёрка, вакандцы и Новые Мстители объединяются, чтобы противостоять Доктору Думу в масштабном кроссовере киновселенной Marvel.",
+             "/itU2A8Yco43cAuDfVcYBXlpJzH.jpg", "/s4v0UX1anfXm0UvloLsTTJ4v222.jpg"),
+            (1170608, "Дюна: Часть третья", "2026-12-15",
+             "Продолжение монументальной фантастической саги Дени Вильнёва по роману Фрэнка Герберта «Мессия Дюны». Пол Атрейдес правит галактической империей, сталкиваясь с заговорами и судьбой.",
+             "/x50ig6nAMNCP3ihDXKfUjnKM4Ud.jpg", "/i5E9H7Ik0u61ylDDTbmUpTL3Yw.jpg"),
+            (806704, "Бэтмен: Часть 2", "2028-02-17",
+             "Возвращение Темного рыцаря Готэма в исполнении Роберта Паттинсона. Режиссер Мэтт Ривз продолжает мрачную детективную историю защитника города.",
+             "/r5fl4aMsmTjgc8DdDqQaM84roWp.jpg", "/4uaHnYDDpUTj0nCg6YqBKab50YW.jpg"),
+            (83533, "Аватар: Пламя и пепел", "2025-12-17",
+             "Джейк Салли, Нейтири и их дети сталкиваются с новым воинственным племенем На`ви на Пандоре — народом пепла во главе с безжалостной Варанг.",
+             "/kpxYvaCnbRi7btNnpLCJrehy77e.jpg", "/u8DU5fkLoM5tTRukzPC31oGPxaQ.jpg"),
+            (533533, "Трон: Арес", "2025-10-08",
+             "Высокотехнологичный ИИ Арес отправляется из цифрового мира в мир людей со сложной и опасной миссией, знаменуя первый контакт человечества с искусственными существами.",
+             "/3YMaZ7A8wKs0gngDdexs0pLkAnR.jpg", "/pUNfHmVqfwRdILhCkU8TdysVOXo.jpg"),
+            (1294189, "Мангуст", "2026-10-29",
+             "Динамичный криминальный боевик о бывшем военном специалисте, втянутом в противостояние синдикатов и федеральных спецслужб.",
+             "/awpG3pnvPuOcfce76mSpS69NQ3E.jpg", "/iRIhPqqoUHiFBxn8oYf3gCQnaKk.jpg"),
+            (1400837, "Чужая мама", "2026-10-07",
+             "Психологический триллер об опасных семейных тайнах, скрывающихся за благополучным фасадом загородного дома.",
+             "/xM23YJnhlJgf8gOFE34IZBMxUy3.jpg", "/smZ8BT4Vzw4iCEppTLCnN8jNYtn.jpg"),
+            (1153576, "Уличный боец", "2026-10-13",
+             "Новая экранизация легендарной серии файтингов с участием лучших мастеров боевых искусств со всего мира.",
+             "/2qGRXNrhyg3N5KNAZuahmUvf15s.jpg", "/zDE9hd1SG9695YncbZGjSf7Z9Jk.jpg"),
+        ]
+
+        series = [
+            (66732, "Очень странные дела", "5 сезон", "2026-11-06",
+             "Финальный сезон культового фантастического сериала братьев Даффер. Героям Хоукинса предстоит решающая битва с Векной за спасение своего мира и Изнанки.",
+             "/nW3cral1e2r3xfLySPE1U9bailS.jpg", "/9P4IIMYY3HifqeruZq0ZZ9g7YUi.jpg"),
+            (100088, "Одни из нас", "2 сезон", "2026-11-15",
+             "Экранизация второй части постапокалиптической драмы. Джоэл и повзрослевшая Элли сталкиваются с последствиями своих выборов и новыми угрозами в Джексоне и Сиэтле.",
+             "/69loIrm9JPpPRE3Akw4yRoitSYn.jpg", "/lY2DhbA7Hy44fAKddr06UrXWWaQ.jpg"),
+            (119051, "Уэнсдей", "2 сезон", "2026-12-03",
+             "Продолжение приключений Уэнсдей Аддамс в академии Невермор. Ещё больше мрачных тайн, семейных интриг и готического юмора.",
+             "/lx7ipUuzHmbOa1qzMPj4ypZ7A8u.jpg", "/iHSwvRVsRyxpX7FE7GbviaDvgGZ.jpg"),
+            (106379, "Фоллаут", "2 сезон", "2026-10-12",
+             "Люси, Максимус и Гуль отправляются в Нью-Вегас. Новые секреты корпорации «Волт-Тек», пустоши Мохаве и борьба за будущее постапокалиптического мира.",
+             "/7o3XRf31lEtAaRNtgupOGTDD3sP.jpg", "/coaPCIqQBPUZsOnJcWZxhaORcDT.jpg"),
+            (94997, "Дом Дракона", "3 сезон", "2026-10-21",
+             "Кульминация «Танца Драконов»: битва между «чёрными» сторонниками Рейниры и «зелёными» узурпаторами достигает максимального накала.",
+             "/hXyYN6LFo7QnKUA3QBx7B3KsnJE.jpg", "/577eXC8wFQT0eUrJcgznSiFPRmk.jpg"),
+            (76479, "Пацаны", "5 сезон", "2026-10-13",
+             "Заключительный сезон бескомпромиссного сатирического шоу о суперах. Финальное противостояние Бутчера и Хоумлендера определит судьбу Америки.",
+             "/3NqlBDpWI83TgQ9nmeFwTVxEmtZ.jpg", "/bq28ajZaoMyzEIm6REelqyqtEDZ.jpg"),
+            (95396, "Разделение", "2 сезон", "2026-10-17",
+             "Марк и его коллеги из отдела макроданных Lumon продолжают расследовать истинную цель корпоративной процедуры «разделения».",
+             "/Ag7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg", "/ixgFmf1X59PUZam2qbAfskx2gQr.jpg"),
+            (111803, "Белый лотос", "3 сезон", "2026-10-25",
+             "Новая группа эксцентричных гостей заселяется в роскошный отель сети «Белый лотос» в Таиланде. Духовные поиски, интриги и неизбежная драма.",
+             "/m50tjkb2PuvVmGHifRpVXCMswxn.jpg", "/qVBIAcZkK5j6WRq7JehJcOMbdgb.jpg"),
+        ]
+
+        for tmdb_id, title, release_date, overview, poster, backdrop in movies:
+            image_url = f"https://image.tmdb.org/t/p/w1280{backdrop}" if backdrop else f"https://image.tmdb.org/t/p/w500{poster}"
+            source_url = f"https://www.themoviedb.org/movie/{tmdb_id}"
+            body = [
+                overview,
+                f"По данным каталога TMDB, запланированная дата премьеры — {release_date}.",
+                "Сведения о дате выхода могут меняться создателями проекта. Сохраните фильм в список ожидания КиноЖдуна в Telegram, чтобы не пропустить премьеру."
+            ]
+            self.publish(
+                fingerprint=f"catalog:movie:{tmdb_id}",
+                title=f"«{title}»: дата выхода и подробности премьеры",
+                category="movies",
+                summary=overview[:185] + ("…" if len(overview) > 185 else ""),
+                body=body,
+                source_url=source_url,
+                image=image_url,
+                media_type="movie",
+                tmdb_id=tmdb_id,
+                release_date=release_date,
+                published="2026-10-04T12:00:00+00:00"
+            )
+            self.save_title(f"movie:{tmdb_id}", {
+                "key": f"movie:{tmdb_id}",
+                "id": tmdb_id,
+                "media_type": "movie",
+                "title": title,
+                "overview": overview,
+                "release_date": release_date,
+                "image": image_url,
+                "poster": f"https://image.tmdb.org/t/p/w500{poster}" if poster else None,
+                "status": "In Production",
+                "source_url": source_url
+            })
+
+        for tmdb_id, title, season_note, release_date, overview, poster, backdrop in series:
+            image_url = f"https://image.tmdb.org/t/p/w1280{backdrop}" if backdrop else f"https://image.tmdb.org/t/p/w500{poster}"
+            source_url = f"https://www.themoviedb.org/tv/{tmdb_id}"
+            full_title = f"{title} ({season_note})"
+            body = [
+                overview,
+                f"Согласно каталогу TMDB, выход новых эпизодов ({season_note}) запланирован на {release_date}.",
+                "Точный график выхода серий зависит от вещателя и стриминговой платформы. Добавьте проект в отслеживание КиноЖдуна в Telegram — бот напомнит о премьере."
+            ]
+            self.publish(
+                fingerprint=f"catalog:tv:{tmdb_id}",
+                title=f"«{title}» ({season_note}): дата выхода нового сезона",
+                category="series",
+                summary=overview[:185] + ("…" if len(overview) > 185 else ""),
+                body=body,
+                source_url=source_url,
+                image=image_url,
+                media_type="tv",
+                tmdb_id=tmdb_id,
+                release_date=release_date,
+                published="2026-10-04T12:00:00+00:00"
+            )
+            self.save_title(f"tv:{tmdb_id}", {
+                "key": f"tv:{tmdb_id}",
+                "id": tmdb_id,
+                "media_type": "tv",
+                "title": full_title,
+                "overview": overview,
+                "release_date": release_date,
+                "image": image_url,
+                "poster": f"https://image.tmdb.org/t/p/w500{poster}" if poster else None,
+                "status": "Returning Series",
+                "source_url": source_url
+            })
+
     def import_channel(self, database_path, channel_url):
         if not database_path or not Path(database_path).exists():
             return 0

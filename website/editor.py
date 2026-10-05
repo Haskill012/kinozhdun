@@ -130,7 +130,8 @@ class Editor:
                 return
             errors = []
             try:
-                async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
+                connector = aiohttp.TCPConnector(ssl=False)
+                async with aiohttp.ClientSession(connector=connector, trust_env=False, timeout=aiohttp.ClientTimeout(total=20)) as session:
                     self.session = session
                     candidates = []
                     for media, endpoint in (("movie", "/movie/upcoming"), ("tv", "/tv/on_the_air"), ("tv", "/tv/popular")):
@@ -147,6 +148,14 @@ class Editor:
                             "primary_release_date.lte": (today() + timedelta(days=120)).isoformat(),
                             "include_adult": "false", "include_video": "false", "sort_by": "popularity.desc"})
                         candidates.extend(("movie", r['id']) for r in movies.get('results', [])[:self.config['batch_size']] if not r.get('adult'))
+                    except Exception as exc:
+                        errors.append(type(exc).__name__ if not isinstance(exc, RuntimeError) else str(exc))
+                    try:
+                        series = await self.fetch("/discover/tv", **{
+                            "first_air_date.gte": today().isoformat(),
+                            "first_air_date.lte": (today() + timedelta(days=120)).isoformat(),
+                            "include_adult": "false", "sort_by": "popularity.desc"})
+                        candidates.extend(("tv", r['id']) for r in series.get('results', [])[:self.config['batch_size']] if not r.get('adult'))
                     except Exception as exc:
                         errors.append(type(exc).__name__ if not isinstance(exc, RuntimeError) else str(exc))
                     candidates.extend((t["media_type"], t["id"]) for t in self.store.titles())

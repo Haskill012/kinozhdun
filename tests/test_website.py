@@ -157,9 +157,20 @@ class WebsiteHTTPTests(AioHTTPTestCase):
         self.assertEqual(response.status, 404)
         self.assertIn("Эта сцена не найдена", await response.text())
 
+    async def test_movies_and_series_have_content(self):
+        for path, label in (("/movies", "Фильмы"), ("/series", "Сериалы")):
+            response = await self.client.get(path)
+            self.assertEqual(response.status, 200)
+            text = await response.text()
+            self.assertIn("news-card", text)
+            self.assertIn(label, text)
+            self.assertNotIn("Пока ничего не нашлось", text)
+
     async def test_sync_failure_retains_content_and_reports_status(self):
         response = await self.client.get("/health")
         data = await response.json()
-        self.assertEqual(data["articles"], 3)
+        self.assertEqual(data["articles"], 19)
+        self.assertEqual(data["titles"], 16)
         self.assertIn("TMDB_API_KEY", data["sync_error"])
         self.assertNotIn("api_key", data)
+
