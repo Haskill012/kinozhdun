@@ -200,7 +200,7 @@ def setup_scheduler(
     bot: Bot, session_factory, tmdb_client: TMDBClient, settings: Settings
 ) -> AsyncIOScheduler:
     """Настройка и конфигурирование планировщика задач."""
-    scheduler = AsyncIOScheduler(timezone="UTC")
+    scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
     now_utc = datetime.now(timezone.utc)
 
     # Основная проверка выхода новых сезонов / дат и публикация в канал (первый запуск через 5 сек)
@@ -275,4 +275,3 @@ def setup_scheduler(
     )
 
     return scheduler
-

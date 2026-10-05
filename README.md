@@ -9,6 +9,11 @@
 Сайт с автономной редакцией: `.venv/Scripts/python.exe -m website`.
 Откройте http://127.0.0.1:8099. Инструкция и настройки: [website/README.md](website/README.md).
 
+Для серверного размещения подготовлены Docker Compose (бот, сайт, Caddy), HTTPS для
+`kinojdun.ru` и `www.kinojdun.ru`, а также обновление из ветки `master` через cron.
+Фактический статус сервера проверяется отдельно. Подробности развёртывания — в
+[website/README.md](website/README.md).
+
 ## ✨ Возможности и механики органического роста
 
 ### Основной функционал
@@ -54,6 +59,8 @@
 - **SQLAlchemy 2.0 (async)** + **aiosqlite** — легковесная асинхронная база данных SQLite
 - **TMDB API v3 / v4** — официальный каталог фильмов и сериалов The Movie Database
 - **APScheduler** — планировщик периодических фоновых проверок и публикаций
+- **aiohttp** — сайт с серверным HTML и автономной редакцией; отдельная SQLite-база `data/website.db`
+- **Docker Compose + Caddy** — серверный запуск и HTTPS
 
 ---
 

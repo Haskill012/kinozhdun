@@ -7,6 +7,8 @@ from contextlib import closing
 from datetime import timedelta
 from pathlib import Path
 from xml.etree import ElementTree
+from unittest.mock import patch
+from datetime import date
 
 from aiohttp.test_utils import AioHTTPTestCase
 
@@ -47,6 +49,33 @@ class EditorTests(unittest.TestCase):
         self.editor = Editor(self.store, config(Path(self.tmp.name) / "site.db"))
         self.editor.process("movie", self.movie)
         self.assertEqual(len(self.store.articles()), 1)
+
+    def test_catalog_restart_preserves_live_dates_and_removed_titles(self):
+        with patch("website.content.today", return_value=date(2026, 10, 5)):
+            self.store.seed_catalog("https://t.me/kinojdun_bot")
+            item = self.store.snapshot("movie:1170608")
+            item["release_date"] = "2027-01-01"
+            item["status"] = "Post Production"
+            self.store.save_title(item["key"], item)
+            self.store.delete_title("tv:224377")
+            self.store.db.close()
+            self.store = Store(Path(self.tmp.name) / "site.db")
+            self.store.seed_catalog("https://t.me/kinojdun_bot")
+            self.assertEqual(self.store.snapshot(item["key"]), item)
+            self.assertIsNone(self.store.snapshot("tv:224377"))
+
+    def test_catalog_preserves_existing_snapshot_before_first_seed(self):
+        item = {"key": "movie:1170608", "release_date": "2027-01-01", "title": "Обновлённый фильм"}
+        self.store.save_title(item["key"], item)
+        with patch("website.content.today", return_value=date(2026, 10, 5)):
+            self.store.seed_catalog("https://t.me/kinojdun_bot")
+        self.assertEqual(self.store.snapshot(item["key"]), item)
+
+    def test_catalog_never_seeds_expired_dates(self):
+        with patch("website.content.today", return_value=date(2027, 1, 1)):
+            self.store.seed_catalog("https://t.me/kinojdun_bot")
+            self.assertEqual(self.store.titles(), [])
+            self.assertEqual(self.store.articles(), [])
 
     def test_changed_date_publishes_old_and_new_dates(self):
         self.editor.process("movie", self.movie)
@@ -188,4 +217,3 @@ class WebsiteHTTPTests(AioHTTPTestCase):
         self.assertIn("Дюна: Часть третья", html)
         self.assertIn("Кэрри", html)
         self.assertIn("Бегущий по лезвию 2099", html)
-

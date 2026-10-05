@@ -138,7 +138,7 @@ def create_app(config=None):
     async def health(request):
         return web.json_response({
             "status": "ok",
-            "version": "1.2.0",
+            "version": "1.2.1",
             "last_sync": store.state("last_sync"),
             "sync_error": store.state("sync_error"),
             "titles": len(store.titles()),

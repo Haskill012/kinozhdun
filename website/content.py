@@ -146,12 +146,7 @@ class Store:
 
     def seed_catalog(self, bot_url):
         # 1. Clean up obsolete / past-year catalog entries from both titles and articles
-        obsolete_titles = [
-            "tv:95396", "tv:111803", "tv:100088", "tv:66732", "tv:119051",
-            "tv:106379", "tv:76479", "tv:94997", "movie:83533", "movie:533533"
-        ]
-        for k in obsolete_titles:
-            self.db.execute("DELETE FROM titles WHERE key = ?", (k,))
+        # Live snapshots are retained; expired dates are removed below.
 
         obsolete_fingerprints = [
             "catalog:tv:95396", "catalog:tv:111803", "catalog:tv:100088", "catalog:tv:66732",
@@ -227,6 +222,8 @@ class Store:
         ]
 
         for tmdb_id, title, release_date, overview, poster, backdrop in movies:
+            if not self._needs_catalog_seed(f"movie:{tmdb_id}", release_date):
+                continue
             image_url = f"https://image.tmdb.org/t/p/w1280{backdrop}" if backdrop else f"https://image.tmdb.org/t/p/w500{poster}"
             source_url = f"https://www.themoviedb.org/movie/{tmdb_id}"
             body = [
@@ -261,6 +258,8 @@ class Store:
             })
 
         for tmdb_id, title, season_note, release_date, overview, poster, backdrop in series:
+            if not self._needs_catalog_seed(f"tv:{tmdb_id}", release_date):
+                continue
             image_url = f"https://image.tmdb.org/t/p/w1280{backdrop}" if backdrop else f"https://image.tmdb.org/t/p/w500{poster}"
             source_url = f"https://www.themoviedb.org/tv/{tmdb_id}"
             full_title = f"{title} ({season_note})"
@@ -294,6 +293,14 @@ class Store:
                 "status": "In Production",
                 "source_url": source_url
             })
+
+    def _needs_catalog_seed(self, key, release_date):
+        # The initial catalogue must never replace live TMDB data or resurrect
+        # a title removed by the editor. Its article records prior seeding.
+        return (release_date >= today().isoformat()
+                and self.snapshot(key) is None
+                and self.db.execute("SELECT 1 FROM articles WHERE fingerprint = ?",
+                                    ("catalog:" + key,)).fetchone() is None)
 
     def import_channel(self, database_path, channel_url):
         if not database_path or not Path(database_path).exists():

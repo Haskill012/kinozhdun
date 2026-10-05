@@ -133,7 +133,7 @@ class Editor:
                 return
             errors = []
             try:
-                connector = aiohttp.TCPConnector(ssl=False)
+                connector = aiohttp.TCPConnector()
                 async with aiohttp.ClientSession(connector=connector, trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
                     self.session = session
                     candidates = []

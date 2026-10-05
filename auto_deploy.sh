@@ -27,7 +27,7 @@ echo ""
 echo "=== [2/4] Получение кода из GitHub ==="
 APP_DIR="/root/kinozhdun"
 if [ ! -d "$APP_DIR/.git" ]; then
-    rm -rf "$APP_DIR"
+    # git clone refuses a nonempty directory, preserving existing .env/data.
     git clone https://github.com/Haskill012/kinozhdun.git "$APP_DIR"
     echo "  Репозиторий склонирован"
 else

@@ -12,38 +12,24 @@ else
     cd kinozhdun
 fi
 
-echo "=== Создание боевого .env ==="
-cat << 'EOF' > .env
-TELEGRAM_BOT_TOKEN=8859530073:AAGIWKxhkuLJTLUXnVFnNMRzLKhqAVd5M_U
-TMDB_API_KEY=3fd2be6f0c70a2a598f084ddfb75487c
-TMDB_BASE_URL=https://api.themoviedb.org/3
-DATABASE_URL=sqlite+aiosqlite:///./data/kinozhdun.db
-CHECK_INTERVAL_HOURS=6
-ANNOUNCED_CHECK_INTERVAL_HOURS=2
-MAX_ITEMS_PER_USER=50
-TMDB_IMAGE_BASE_URL=https://image.tmdb.org/t/p/w500
-
-TELEGRAM_CHANNEL_ID=@kinojdun_channel
-CHANNEL_POSTING_ENABLED=true
-CHANNEL_AUTO_PUBLISH=true
-CHANNEL_MIN_POST_INTERVAL_MINUTES=15
-ADMIN_USER_IDS=330413281
-
-DAILY_DIGEST_ENABLED=true
-DAILY_DIGEST_HOUR=9
-WEEKLY_DIGEST_ENABLED=true
-WEEKLY_DIGEST_DAY=0
-WEEKLY_DIGEST_HOUR=10
-
-SITE_HOST=0.0.0.0
-SITE_PORT=8099
-SITE_BASE_URL=https://kinojdun.ru
-SITE_PUBLIC=true
-SITE_CHANNEL_URL=https://t.me/kinojdun_channel
-SITE_SYNC_INTERVAL_MINUTES=60
-SITE_BATCH_SIZE=12
-SITE_YANDEX_METRIKA_ID=113425218
-EOF
+echo "=== Проверка конфигурации .env ==="
+if [ ! -f .env ]; then
+    (umask 077; cp .env.example .env)
+    echo "Создан шаблон /root/kinozhdun/.env. Заполните токены и настройки перед запуском."
+    exit 1
+fi
+chmod 600 .env
+# Read only the credential lines; never execute .env as a shell script.
+for key in TELEGRAM_BOT_TOKEN TMDB_API_KEY; do
+    value=$(sed -n "s/^${key}=//p" .env | tail -n 1 | tr -d '\r')
+    case "$value" in
+        ""|your_telegram_bot_token_here|your_tmdb_api_key_here)
+            echo "Заполните $key в /root/kinozhdun/.env перед запуском."
+            exit 1
+            ;;
+    esac
+done
+unset value
 
 echo "=== Сборка и запуск контейнеров ==="
 docker compose down || true
