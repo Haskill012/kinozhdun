@@ -357,72 +357,80 @@ async def cmd_mode(message: Message) -> None:
     await message.answer(instructions)
 
 
-@router.message(Command("channel_digest"))
-@router.message(Command("digest_today"))
+@router.message(Command("channel_digest", "digest_today", "digest"))
 async def cmd_channel_digest(message: Message) -> None:
     """Генерация и публикация утреннего дайджеста «Что выходит сегодня»."""
     settings: Settings = message.bot["settings"]
     if not is_admin(message.from_user.id, settings):
+        await message.answer(f"⛔ Команда доступна только администраторам (ваш ID: <code>{message.from_user.id}</code>).")
         return
 
     session_factory = message.bot["session_factory"]
-    tmdb_client = message.bot.get("tmdb_client")
+    tmdb_client = getattr(message.bot, "tmdb_client", None)
     publisher = ChannelPublisher(session_factory, settings, message.bot, tmdb_client=tmdb_client)
 
     status_msg = await message.answer("🔄 Формирую дайджест «Что выходит сегодня»...")
-    post = await publisher.create_daily_digest()
-    if not post:
-        await status_msg.edit_text("ℹ️ На сегодня не найдено запланированных релизов для дайджеста.")
-        return
+    try:
+        post = await publisher.create_daily_digest()
+        if not post:
+            await status_msg.edit_text("ℹ️ На сегодня не найдено запланированных релизов в каталоге для дайджеста.")
+            return
 
-    if post.status == "published":
-        await status_msg.edit_text(f"✅ <b>Дайджест успешно опубликован в канале!</b>\nID: <code>{post.id}</code>")
-    else:
-        published = await publisher.publish_post_by_id(post.id)
-        if published:
-            await status_msg.edit_text(f"✅ <b>Дайджест #{post.id} успешно опубликован в канале!</b>")
+        if post.status == "published":
+            await status_msg.edit_text(f"✅ <b>Дайджест успешно опубликован в канале!</b>\nID: <code>{post.id}</code>")
         else:
-            await status_msg.edit_text(f"⚠️ Дайджест #{post.id} создан и находится в /queue. Проверьте права бота в канале.")
+            published = await publisher.publish_post_by_id(post.id)
+            if published:
+                await status_msg.edit_text(f"✅ <b>Дайджест #{post.id} успешно опубликован в канале!</b>")
+            else:
+                await status_msg.edit_text(f"⚠️ Дайджест #{post.id} создан и находится в /queue. Проверьте права бота в канале.")
+    except Exception as e:
+        logger.error(f"Ошибка в cmd_channel_digest: {e}", exc_info=True)
+        await status_msg.edit_text(f"❌ <b>Ошибка генерации дайджеста:</b> <code>{e}</code>")
 
 
-@router.message(Command("channel_weekly"))
-@router.message(Command("digest_weekly"))
+@router.message(Command("channel_weekly", "digest_weekly", "weekly"))
 async def cmd_channel_weekly(message: Message) -> None:
     """Генерация и публикация еженедельного дайджеста «Главные премьеры недели»."""
     settings: Settings = message.bot["settings"]
     if not is_admin(message.from_user.id, settings):
+        await message.answer(f"⛔ Команда доступна только администраторам (ваш ID: <code>{message.from_user.id}</code>).")
         return
 
     session_factory = message.bot["session_factory"]
-    tmdb_client = message.bot.get("tmdb_client")
+    tmdb_client = getattr(message.bot, "tmdb_client", None)
     publisher = ChannelPublisher(session_factory, settings, message.bot, tmdb_client=tmdb_client)
 
     status_msg = await message.answer("🔄 Формирую еженедельный дайджест «Главные премьеры недели»...")
-    post = await publisher.create_weekly_digest()
-    if not post:
-        await status_msg.edit_text("ℹ️ На эту неделю не найдено достаточного количества релизов (минимум 2).")
-        return
+    try:
+        post = await publisher.create_weekly_digest()
+        if not post:
+            await status_msg.edit_text("ℹ️ На эту неделю не найдено достаточного количества релизов (минимум 2).")
+            return
 
-    if post.status == "published":
-        await status_msg.edit_text(f"✅ <b>Еженедельный дайджест успешно опубликован в канале!</b>\nID: <code>{post.id}</code>")
-    else:
-        published = await publisher.publish_post_by_id(post.id)
-        if published:
-            await status_msg.edit_text(f"✅ <b>Еженедельный дайджест #{post.id} успешно опубликован в канале!</b>")
+        if post.status == "published":
+            await status_msg.edit_text(f"✅ <b>Еженедельный дайджест успешно опубликован в канале!</b>\nID: <code>{post.id}</code>")
         else:
-            await status_msg.edit_text(f"⚠️ Еженедельный дайджест #{post.id} создан и находится в /queue.")
+            published = await publisher.publish_post_by_id(post.id)
+            if published:
+                await status_msg.edit_text(f"✅ <b>Еженедельный дайджест #{post.id} успешно опубликован в канале!</b>")
+            else:
+                await status_msg.edit_text(f"⚠️ Еженедельный дайджест #{post.id} создан и находится в /queue.")
+    except Exception as e:
+        logger.error(f"Ошибка в cmd_channel_weekly: {e}", exc_info=True)
+        await status_msg.edit_text(f"❌ <b>Ошибка генерации еженедельного дайджеста:</b> <code>{e}</code>")
 
 
-@router.message(Command("channel_check"))
-@router.message(Command("force_check"))
+@router.message(Command("channel_check", "force_check", "check"))
 async def cmd_channel_check(message: Message) -> None:
     """Принудительный запуск фоновой проверки обновлений каталога TMDB."""
     settings: Settings = message.bot["settings"]
     if not is_admin(message.from_user.id, settings):
+        await message.answer(f"⛔ Команда доступна только администраторам (ваш ID: <code>{message.from_user.id}</code>).")
         return
 
     session_factory = message.bot["session_factory"]
-    tmdb_client = message.bot.get("tmdb_client")
+    tmdb_client = getattr(message.bot, "tmdb_client", None)
     if not tmdb_client:
         await message.answer("❌ TMDB клиент недоступен.")
         return
@@ -433,5 +441,6 @@ async def cmd_channel_check(message: Message) -> None:
         await check_updates_job(message.bot, session_factory, tmdb_client, settings)
         await status_msg.edit_text("✅ <b>Проверка обновлений завершена!</b>\nВсе подтверждённые новинки обработаны.")
     except Exception as e:
+        logger.error(f"Ошибка в cmd_channel_check: {e}", exc_info=True)
         await status_msg.edit_text(f"❌ <b>Ошибка при проверке:</b> <code>{e}</code>")
 

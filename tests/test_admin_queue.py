@@ -233,10 +233,12 @@ class TestAdminQueue(unittest.IsolatedAsyncioTestCase):
         status_msg.edit_text.assert_called_once()
         self.assertIn("не найдено", status_msg.edit_text.call_args[0][0])
 
-        # 2. Не админ игнорируется
+        # 2. Не админ получает предупреждение о правах
         non_admin_msg = self._create_mock_message(user_id=self.non_admin_id, text="/channel_digest")
+        non_admin_msg.answer = AsyncMock()
         await cmd_channel_digest(non_admin_msg)
-        non_admin_msg.answer.assert_not_called()
+        non_admin_msg.answer.assert_called_once()
+        self.assertIn("только администраторам", non_admin_msg.answer.call_args[0][0])
 
     async def test_cmd_channel_check(self):
         """Проверка ручного вызова проверки обновлений /channel_check."""
