@@ -4,8 +4,12 @@ import json
 import re
 import sqlite3
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+
+def today():
+    return datetime.now(timezone(timedelta(hours=3))).date()
 
 
 def now():
@@ -111,6 +115,10 @@ class Store:
                         (key, json.dumps(data, ensure_ascii=False), now()))
         self.db.commit()
 
+    def delete_title(self, key):
+        self.db.execute("DELETE FROM titles WHERE key = ?", (key,))
+        self.db.commit()
+
     def state(self, key, value=None):
         if value is not None:
             self.db.execute("INSERT OR REPLACE INTO state VALUES (?,?)", (key, value))
@@ -137,58 +145,85 @@ class Store:
             self.publish("guide:" + key, title, "guides", summary, body, bot_url)
 
     def seed_catalog(self, bot_url):
+        # 1. Clean up obsolete / past-year catalog entries from both titles and articles
+        obsolete_titles = [
+            "tv:95396", "tv:111803", "tv:100088", "tv:66732", "tv:119051",
+            "tv:106379", "tv:76479", "tv:94997", "movie:83533", "movie:533533"
+        ]
+        for k in obsolete_titles:
+            self.db.execute("DELETE FROM titles WHERE key = ?", (k,))
+
+        obsolete_fingerprints = [
+            "catalog:tv:95396", "catalog:tv:111803", "catalog:tv:100088", "catalog:tv:66732",
+            "catalog:tv:119051", "catalog:tv:106379", "catalog:tv:76479", "catalog:tv:94997",
+            "catalog:movie:83533", "catalog:movie:533533"
+        ]
+        for fp in obsolete_fingerprints:
+            self.db.execute("DELETE FROM articles WHERE fingerprint = ?", (fp,))
+
+        # 2. Delete any titles whose release_date has already passed
+        today_iso = today().isoformat()
+        for row in self.db.execute("SELECT key, data FROM titles").fetchall():
+            try:
+                t = json.loads(row[1])
+                if t.get("release_date") and t["release_date"] < today_iso:
+                    self.db.execute("DELETE FROM titles WHERE key = ?", (row[0],))
+            except Exception:
+                pass
+        self.db.commit()
+
         movies = [
-            (1003596, "Мстители: Доктор Дум", "2026-12-16",
-             "Мстители, Люди Икс, Фантастическая четвёрка, вакандцы и Новые Мстители объединяются, чтобы противостоять Доктору Думу в масштабном кроссовере киновселенной Marvel.",
-             "/itU2A8Yco43cAuDfVcYBXlpJzH.jpg", "/s4v0UX1anfXm0UvloLsTTJ4v222.jpg"),
+            (1400837, "Чужая мама", "2026-10-07",
+             "Бэла, 8-летняя девочка из семьи, переживающей супружеский кризис, сталкивается со зловещей сущностью, появляющейся из её шкафа. Эта сущность становится всё более угрожающей для неё и её близких.",
+             "/xM23YJnhlJgf8gOFE34IZBMxUy3.jpg", "/smZ8BT4Vzw4iCEppTLCnN8jNYtn.jpg"),
+            (1281331, "Социальная расплата", "2026-10-07",
+             "Фрэнсис Хоген, молодая сотрудница Facebook, обращается за помощью к репортеру Wall Street Journal, чтобы начать расследование, раскрывающее самые охраняемые секреты гиганта соцсетей.",
+             "/nZ8cQbjAQHRuSqwxvuYhOfxyhfW.jpg", "/wXTaGcqX3jvdXSKCJAkl5jZyrKp.jpg"),
+            (1153576, "Уличный боец", "2026-10-13",
+             "Уличные бойцы Рю и Кен встречаются вновь и оказываются втянуты в турнир World Warrior. За зрелищными поединками скрывается опасный заговор, угрожающий будущему всех участников.",
+             "/2qGRXNrhyg3N5KNAZuahmUvf15s.jpg", "/zDE9hd1SG9695YncbZGjSf7Z9Jk.jpg"),
+            (1255833, "Кит: Во тьме глубин", "2026-10-14",
+             "Молодой аквалангист Джей Гардинер погружается в океан и оказывается внутри гигантского кашалота. У него есть всего час, чтобы найти путь наружу, пока не закончился кислород.",
+             "/sqrx5rMkdSSaXTmd19jAbUx5Cpc.jpg", "/dUzzwJpX4Fiet2QJy5P1TxpW1Qa.jpg"),
+            (1400940, "Клэйфейс", "2026-10-21",
+             "После тяжелой травмы молодой актёр Мэтт Хейген соглашается на экспериментальное лечение, превращающее его тело в податливую глину, а жажда мести делает его опасным монстром.",
+             "/t6Dso7ojC23ztZSZtf6sje9iTPN.jpg", "/1A7s8zG4PF6YoJrncrTO6N4r0Sx.jpg"),
+            (1294189, "Мангуст", "2026-10-29",
+             "Обвинённый в преступлении, которого он не совершал, герой войны Райан Флэнаган пускается в бега. Полиция идёт по его следу, а миллионы зрителей следят за погоней в прямом эфире.",
+             "/awpG3pnvPuOcfce76mSpS69NQ3E.jpg", "/iRIhPqqoUHiFBxn8oYf3gCQnaKk.jpg"),
             (1170608, "Дюна: Часть третья", "2026-12-15",
              "Продолжение монументальной фантастической саги Дени Вильнёва по роману Фрэнка Герберта «Мессия Дюны». Пол Атрейдес правит галактической империей, сталкиваясь с заговорами и судьбой.",
              "/x50ig6nAMNCP3ihDXKfUjnKM4Ud.jpg", "/i5E9H7Ik0u61ylDDTbmUpTL3Yw.jpg"),
-            (806704, "Бэтмен: Часть 2", "2028-02-17",
-             "Возвращение Темного рыцаря Готэма в исполнении Роберта Паттинсона. Режиссер Мэтт Ривз продолжает мрачную детективную историю защитника города.",
-             "/r5fl4aMsmTjgc8DdDqQaM84roWp.jpg", "/4uaHnYDDpUTj0nCg6YqBKab50YW.jpg"),
-            (83533, "Аватар: Пламя и пепел", "2025-12-17",
-             "Джейк Салли, Нейтири и их дети сталкиваются с новым воинственным племенем На`ви на Пандоре — народом пепла во главе с безжалостной Варанг.",
-             "/kpxYvaCnbRi7btNnpLCJrehy77e.jpg", "/u8DU5fkLoM5tTRukzPC31oGPxaQ.jpg"),
-            (533533, "Трон: Арес", "2025-10-08",
-             "Высокотехнологичный ИИ Арес отправляется из цифрового мира в мир людей со сложной и опасной миссией, знаменуя первый контакт человечества с искусственными существами.",
-             "/3YMaZ7A8wKs0gngDdexs0pLkAnR.jpg", "/pUNfHmVqfwRdILhCkU8TdysVOXo.jpg"),
-            (1294189, "Мангуст", "2026-10-29",
-             "Динамичный криминальный боевик о бывшем военном специалисте, втянутом в противостояние синдикатов и федеральных спецслужб.",
-             "/awpG3pnvPuOcfce76mSpS69NQ3E.jpg", "/iRIhPqqoUHiFBxn8oYf3gCQnaKk.jpg"),
-            (1400837, "Чужая мама", "2026-10-07",
-             "Психологический триллер об опасных семейных тайнах, скрывающихся за благополучным фасадом загородного дома.",
-             "/xM23YJnhlJgf8gOFE34IZBMxUy3.jpg", "/smZ8BT4Vzw4iCEppTLCnN8jNYtn.jpg"),
-            (1153576, "Уличный боец", "2026-10-13",
-             "Новая экранизация легендарной серии файтингов с участием лучших мастеров боевых искусств со всего мира.",
-             "/2qGRXNrhyg3N5KNAZuahmUvf15s.jpg", "/zDE9hd1SG9695YncbZGjSf7Z9Jk.jpg"),
+            (1003596, "Мстители: Доктор Дум", "2026-12-16",
+             "Мстители, Люди Икс, Фантастическая четвёрка, вакандцы и Новые Мстители объединяются, чтобы противостоять Доктору Думу в масштабном кроссовере киновселенной Marvel.",
+             "/itU2A8Yco43cAuDfVcYBXlpJzH.jpg", "/s4v0UX1anfXm0UvloLsTTJ4v222.jpg"),
         ]
 
         series = [
-            (66732, "Очень странные дела", "5 сезон", "2026-11-06",
-             "Финальный сезон культового фантастического сериала братьев Даффер. Героям Хоукинса предстоит решающая битва с Векной за спасение своего мира и Изнанки.",
-             "/nW3cral1e2r3xfLySPE1U9bailS.jpg", "/9P4IIMYY3HifqeruZq0ZZ9g7YUi.jpg"),
-            (100088, "Одни из нас", "2 сезон", "2026-11-15",
-             "Экранизация второй части постапокалиптической драмы. Джоэл и повзрослевшая Элли сталкиваются с последствиями своих выборов и новыми угрозами в Джексоне и Сиэтле.",
-             "/69loIrm9JPpPRE3Akw4yRoitSYn.jpg", "/lY2DhbA7Hy44fAKddr06UrXWWaQ.jpg"),
-            (119051, "Уэнсдей", "2 сезон", "2026-12-03",
-             "Продолжение приключений Уэнсдей Аддамс в академии Невермор. Ещё больше мрачных тайн, семейных интриг и готического юмора.",
-             "/lx7ipUuzHmbOa1qzMPj4ypZ7A8u.jpg", "/iHSwvRVsRyxpX7FE7GbviaDvgGZ.jpg"),
-            (106379, "Фоллаут", "2 сезон", "2026-10-12",
-             "Люси, Максимус и Гуль отправляются в Нью-Вегас. Новые секреты корпорации «Волт-Тек», пустоши Мохаве и борьба за будущее постапокалиптического мира.",
-             "/7o3XRf31lEtAaRNtgupOGTDD3sP.jpg", "/coaPCIqQBPUZsOnJcWZxhaORcDT.jpg"),
-            (94997, "Дом Дракона", "3 сезон", "2026-10-21",
-             "Кульминация «Танца Драконов»: битва между «чёрными» сторонниками Рейниры и «зелёными» узурпаторами достигает максимального накала.",
-             "/hXyYN6LFo7QnKUA3QBx7B3KsnJE.jpg", "/577eXC8wFQT0eUrJcgznSiFPRmk.jpg"),
-            (76479, "Пацаны", "5 сезон", "2026-10-13",
-             "Заключительный сезон бескомпромиссного сатирического шоу о суперах. Финальное противостояние Бутчера и Хоумлендера определит судьбу Америки.",
-             "/3NqlBDpWI83TgQ9nmeFwTVxEmtZ.jpg", "/bq28ajZaoMyzEIm6REelqyqtEDZ.jpg"),
-            (95396, "Разделение", "2 сезон", "2026-10-17",
-             "Марк и его коллеги из отдела макроданных Lumon продолжают расследовать истинную цель корпоративной процедуры «разделения».",
-             "/Ag7gBPnh8Cpn5xvCdPPA4RJRN1L.jpg", "/ixgFmf1X59PUZam2qbAfskx2gQr.jpg"),
-            (111803, "Белый лотос", "3 сезон", "2026-10-25",
-             "Новая группа эксцентричных гостей заселяется в роскошный отель сети «Белый лотос» в Таиланде. Духовные поиски, интриги и неизбежная драма.",
-             "/m50tjkb2PuvVmGHifRpVXCMswxn.jpg", "/qVBIAcZkK5j6WRq7JehJcOMbdgb.jpg"),
+            (288673, "Кэрри", "1 сезон", "2026-10-07",
+             "После загадочного пожара на школьном выпускном полиция пытается восстановить цепочку событий. Кэрри Уайт, выросшая под строгим контролем матери, впервые сталкивается с внешним миром.",
+             "/qrmBRcNOQ3eHv4zdXlO1anTELq0.jpg", "/x4HuDkzyAfGfZpuJURU8mg43q6H.jpg"),
+            (285322, "Вглубь", "1 сезон", "2026-10-08",
+             "Когда таинственное морское существо начинает наводить ужас на жителей отдалённого городка, опытный рыбак должен вступить в борьбу, чтобы защитить семью и привычный уклад жизни.",
+             "/qadm9To9UfMVenVzGVLt0m0iuxv.jpg", "/cn0feYcDvVzVjUDoXa1O8sRgzz.jpg"),
+            (213375, "Квест Вижна", "1 сезон", "2026-10-14",
+             "После возвращения к жизни Вижн пытается восстановить свою личность и воспоминания, сталкиваясь с новыми угрозами и тайнами своего происхождения во вселенной Marvel.",
+             "/WGyAyBPncfuu8MZhLY9RtfZPM0.jpg", "/v50p9hearMiu6BlYfp4O7FACmXl.jpg"),
+            (213562, "Хрустальное озеро", "1 сезон", "2026-10-15",
+             "Приквел культовой франшизы ужасов. История событий в лагере у Хрустального озера, положивших начало одной из самых пугающих легенд кинематографа.",
+             "/3ENhExiD2fcjk5FX0AcAXcvLu9N.jpg", "/3qbNgNqMFrEEhIl43UKD9oxCkOw.jpg"),
+            (314360, "Яга", "1 сезон", "2026-10-23",
+             "Миф о Бабе-Яге оживает в наши дни: частный детектив расследует исчезновение молодого наследника в прибрежном городке, сталкиваясь с древней магией и скрытыми тайнами.",
+             "/aERpptLNgIbrIuSeP1eWT9TmRXx.jpg", "/iqXeoigqrsRw81lMYVMs0Vg7Gdy.jpg"),
+            (292741, "Ноктюрн", "1 сезон", "2026-10-29",
+             "Когда жертва опасного преступника неожиданно оказывается жива, детектив Йона Линна спешит найти пропавших, пока его напарница ведёт смертельно опасную игру под прикрытием.",
+             "/ueZzyDf0sAAu6FLUAD0L4ux4c8y.jpg", "/DCSa6Fd3NN075JOqcJqO3VU6fM.jpg"),
+            (171802, "Бегущий по лезвию 2099", "1 сезон", "2026-11-25",
+             "Продолжение культовой вселенной Ридли Скотта. В возрождённом Лос-Анджелесе будущего беглянка Кора объединяется с репликантом Олвен в борьбе за выживание и раскрытие заговора.",
+             "/8yqy4ddY1LV147SxWvModlFZV1D.jpg", "/uOlIq21Rx0Sl7y39b1znTfQYGb7.jpg"),
+            (224377, "Гарри Поттер", "1 сезон", "2026-12-25",
+             "Новая многосерийная адаптация литературной саги Дж. К. Роулинг от HBO. Первый сезон подробно погружает в первый год обучения юного волшебника в школе чародейства и волшебства Хогвартс.",
+             "/SJCnXVBJZh7X7ePLt6XMp6TZAj.jpg", "/g0VmjKGMyipJSlPwlQvlLBvXTAQ.jpg"),
         ]
 
         for tmdb_id, title, release_date, overview, poster, backdrop in movies:
@@ -210,7 +245,7 @@ class Store:
                 media_type="movie",
                 tmdb_id=tmdb_id,
                 release_date=release_date,
-                published="2026-10-04T12:00:00+00:00"
+                published="2026-10-05T12:00:00+00:00"
             )
             self.save_title(f"movie:{tmdb_id}", {
                 "key": f"movie:{tmdb_id}",
@@ -245,7 +280,7 @@ class Store:
                 media_type="tv",
                 tmdb_id=tmdb_id,
                 release_date=release_date,
-                published="2026-10-04T12:00:00+00:00"
+                published="2026-10-05T12:00:00+00:00"
             )
             self.save_title(f"tv:{tmdb_id}", {
                 "key": f"tv:{tmdb_id}",
@@ -256,7 +291,7 @@ class Store:
                 "release_date": release_date,
                 "image": image_url,
                 "poster": f"https://image.tmdb.org/t/p/w500{poster}" if poster else None,
-                "status": "Returning Series",
+                "status": "In Production",
                 "source_url": source_url
             })
 

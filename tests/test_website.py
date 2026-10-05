@@ -174,3 +174,18 @@ class WebsiteHTTPTests(AioHTTPTestCase):
         self.assertIn("TMDB_API_KEY", data["sync_error"])
         self.assertNotIn("api_key", data)
 
+    async def test_calendar_has_no_past_premieres_and_purges_obsolete(self):
+        response = await self.client.get("/calendar")
+        self.assertEqual(response.status, 200)
+        html = await response.text()
+        # Verify obsolete/past titles are absent
+        self.assertNotIn("Разделение", html)
+        self.assertNotIn("Белый лотос", html)
+        self.assertNotIn("Пламя и пепел", html)
+        self.assertNotIn("Трон: Арес", html)
+        # Verify genuine upcoming titles are present
+        self.assertIn("Мстители: Доктор Дум", html)
+        self.assertIn("Дюна: Часть третья", html)
+        self.assertIn("Кэрри", html)
+        self.assertIn("Бегущий по лезвию 2099", html)
+

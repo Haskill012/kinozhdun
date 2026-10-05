@@ -102,6 +102,8 @@ def premiere_rows(items, config, limit=5):
 def home(store, config):
     articles, seen = [], set()
     for article in store.articles(limit=40):
+        if article.get("release_date") and article["release_date"] < today().isoformat():
+            continue
         key = (article['media_type'], article['tmdb_id']) if article.get('tmdb_id') else article['slug']
         if key not in seen:
             articles.append(article)
@@ -190,13 +192,13 @@ def article_page(store, config, article):
 
 
 def calendar(store, config, media=None, period="all"):
-    items = store.titles()
+    items = [t for t in store.titles() if t.get("release_date") and t["release_date"] >= today().isoformat()]
     if media:
-        items = [t for t in items if t["media_type"] == media]
+        items = [t for t in items if t.get("media_type") == media]
     if period == "week":
         from datetime import timedelta
         end = (today() + timedelta(days=7)).isoformat()
-        items = [t for t in items if t.get("release_date") and t["release_date"] <= end]
+        items = [t for t in items if t["release_date"] <= end]
     filters = '<div class="tabs">' + ''.join(f'<a class="{"selected" if media == m else ""}" href="/calendar{("?" + urlencode({"type":m})) if m else ""}">{label}</a>' for m,label in ((None,"Все премьеры"),("movie","Фильмы"),("tv","Сериалы"))) + '<a href="/calendar?period=week">Ближайшие 7 дней</a></div>'
     content = f'''<div class="page-shell"><section class="page-intro"><span class="eyebrow muted">ЕСТЬ ЧТО ЖДАТЬ</span><h1>Календарь премьер<span class="lime">.</span></h1><p>Даты фильмов и ближайших эпизодов сериалов по данным TMDB.<br>Дата в каталоге может отличаться от даты выхода в вашей стране.</p></section>{filters}<div class="calendar-full">{premiere_rows(items, config, 150)}</div>{bot_banner(config)}</div>'''
     return layout(config, "Календарь премьер фильмов и сериалов", "Ближайшие даты выхода фильмов и новых эпизодов сериалов. Добавьте проект в Telegram-бота КиноЖдун.", content, "/calendar", "calendar", noindex=bool(media or period == "week"))

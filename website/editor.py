@@ -117,8 +117,11 @@ class Editor:
         if trailer and previous and previous.get("trailer") != trailer:
             post("trailer:" + trailer, f"«{title}»: новый трейлер в каталоге TMDB", "В записи проекта появился трейлер с отметкой official.",
                  ["В каталоге TMDB появился новый ролик типа Trailer с отметкой official.", f"Смотреть: https://www.youtube.com/watch?v={trailer}"])
-        # Preserve last known next episode for a release-day check if TMDB rolls it over.
-        self.store.save_title(key, item)
+        # Preserve only current or future titles in the upcoming calendar
+        if release and release >= today().isoformat():
+            self.store.save_title(key, item)
+        elif release and release < today().isoformat():
+            self.store.delete_title(key)
 
     async def sync(self):
         if self.lock.locked():
@@ -131,7 +134,7 @@ class Editor:
             errors = []
             try:
                 connector = aiohttp.TCPConnector(ssl=False)
-                async with aiohttp.ClientSession(connector=connector, trust_env=False, timeout=aiohttp.ClientTimeout(total=20)) as session:
+                async with aiohttp.ClientSession(connector=connector, trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
                     self.session = session
                     candidates = []
                     for media, endpoint in (("movie", "/movie/upcoming"), ("tv", "/tv/on_the_air"), ("tv", "/tv/popular")):
@@ -139,7 +142,7 @@ class Editor:
                             data = await self.fetch(endpoint)
                             candidates.extend((media, r["id"]) for r in data.get("results", [])[:self.config["batch_size"]] if not r.get("adult"))
                         except Exception as exc:
-                            errors.append(type(exc).__name__ if not isinstance(exc, RuntimeError) else str(exc))
+                            errors.append(f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__)
                     # Upcoming may include films whose primary release already passed.
                     # Discover explicitly supplies genuinely future international dates.
                     try:
@@ -149,7 +152,7 @@ class Editor:
                             "include_adult": "false", "include_video": "false", "sort_by": "popularity.desc"})
                         candidates.extend(("movie", r['id']) for r in movies.get('results', [])[:self.config['batch_size']] if not r.get('adult'))
                     except Exception as exc:
-                        errors.append(type(exc).__name__ if not isinstance(exc, RuntimeError) else str(exc))
+                        errors.append(f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__)
                     try:
                         series = await self.fetch("/discover/tv", **{
                             "first_air_date.gte": today().isoformat(),
@@ -157,7 +160,7 @@ class Editor:
                             "include_adult": "false", "sort_by": "popularity.desc"})
                         candidates.extend(("tv", r['id']) for r in series.get('results', [])[:self.config['batch_size']] if not r.get('adult'))
                     except Exception as exc:
-                        errors.append(type(exc).__name__ if not isinstance(exc, RuntimeError) else str(exc))
+                        errors.append(f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__)
                     candidates.extend((t["media_type"], t["id"]) for t in self.store.titles())
                     # Bounded refresh; rotate entries if the catalogue grows.
                     unique = list(dict.fromkeys(candidates))
@@ -168,13 +171,13 @@ class Editor:
                             detail = await self.fetch(f"/{media}/{tmdb_id}", append_to_response="videos")
                             self.process(media, detail)
                         except Exception as exc:
-                            errors.append(type(exc).__name__ if not isinstance(exc, RuntimeError) else str(exc))
+                            errors.append(f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__)
                     self.store.state("refresh_cursor", str((cursor + 150) % max(1, len(unique))))
                     if not errors:
                         self.store.state("last_sync", datetime.now(timezone.utc).isoformat())
                     self.store.state("sync_error", "; ".join(sorted(set(errors))) if errors else "")
             except Exception as exc:
-                self.store.state("sync_error", type(exc).__name__)
+                self.store.state("sync_error", f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__)
             finally:
                 self.session = None
             logger.info("Website sync finished: %s titles; %s errors", len(self.store.titles()), len(errors))
