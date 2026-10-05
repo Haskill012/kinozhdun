@@ -90,7 +90,7 @@ def trailer_player(key, language=None):
 def title_page(store, config, item):
     rating = f"{float(item.get('rating') or 0):.1f} / 10 · {item.get('votes', 0)} голосов" if item.get("votes", 0) >= 50 else "Рейтинг ещё формируется"
     related = [a for a in store.articles(limit=500) if a.get("media_type") == item["media_type"] and a.get("tmdb_id") == item["id"]][:6]
-    content = f'''<div class="page-shell"><article class="article"><span class="eyebrow lime">{'Фильм' if item['media_type'] == 'movie' else 'Сериал'}</span><h1>{esc(item['title'])}</h1><div class="title-detail"><div>{image(item.get('poster'), item['title'], 'title-poster', eager=True)}</div><div class="article-body"><p class="article-lead">{esc(item.get('overview'))}</p><p><strong>Рейтинг TMDB:</strong> {rating}</p><p>{esc(', '.join(item.get('genres', [])))}</p><p><strong>Первая премьера:</strong> {date_ru(item.get('first_release'))}</p><p><strong>Ближайший выход:</strong> {date_ru(item.get('release_date'))}</p><a class="button" href="{esc(title_link(item, config))}" target="_blank" rel="noopener">Отслеживать в Telegram ↗</a><p class="source"><a href="{esc(item['source_url'])}" target="_blank" rel="noopener">Источник: TMDB ↗</a></p></div></div>{trailer_player(item.get('trailer'), item.get('trailer_language'))}</article><section class="news-section"><h2>Новости проекта</h2><div class="news-grid">{''.join(card(a) for a in related)}</div></section></div>'''
+    content = f'''<div class="page-shell"><article class="article"><span class="eyebrow lime">{'Фильм' if item['media_type'] == 'movie' else 'Сериал'}</span><h1>{esc(item['title'])}</h1><div class="title-detail"><div>{image(item.get('poster'), item['title'], 'title-poster', eager=True)}</div><div class="article-body"><p class="article-lead">{esc(item.get('overview'))}</p><p><strong>Рейтинг TMDB:</strong> {rating}</p><p>{esc(', '.join(item.get('genres', [])))}</p><p><strong>Первая премьера:</strong> {date_ru(item.get('first_release'))}</p><p><strong>{"Следующий эпизод" if item["media_type"] == "tv" else "Дата выхода"}:</strong> {date_ru(item.get('release_date'))}</p><a class="button" href="{esc(title_link(item, config))}" target="_blank" rel="noopener">Отслеживать в Telegram ↗</a><p class="source"><a href="{esc(item['source_url'])}" target="_blank" rel="noopener">Источник: TMDB ↗</a></p></div></div>{trailer_player(item.get('trailer'), item.get('trailer_language'))}</article><section class="news-section"><h2>Новости проекта</h2><div class="news-grid">{''.join(card(a) for a in related)}</div></section></div>'''
     schema = {"@context": "https://schema.org", "@type": "Movie" if item["media_type"] == "movie" else "TVSeries", "name": item["title"], "description": item.get("overview"), "url": config["base_url"] + title_path(item)}
     return layout(config, item["title"], item.get("overview", "")[:180], content, title_path(item), "movies" if item["media_type"] == "movie" else "series", schema=schema, og_image=item.get("image"))
 
@@ -128,7 +128,7 @@ def premiere_rows(items, config, limit=5):
 def home(store, config):
     articles, seen = [], set()
     for article in store.articles(limit=40):
-        if article.get("release_date") and article["release_date"] < today().isoformat():
+        if article.get("release_date") and article["release_date"] < today().isoformat() and ":trailer:" not in article.get("fingerprint", ""):
             continue
         key = (article['media_type'], article['tmdb_id']) if article.get('tmdb_id') else article['slug']
         if key not in seen:
