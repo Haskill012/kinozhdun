@@ -28,6 +28,7 @@ class Settings:
     WEEKLY_DIGEST_ENABLED: bool = True
     WEEKLY_DIGEST_DAY: int = 0  # 0 = Monday
     WEEKLY_DIGEST_HOUR: int = 10
+    SITE_BASE_URL: str = "https://kinojdun.ru"
 
     def __post_init__(self):
         if self.ADMIN_USER_IDS is None:
@@ -83,5 +84,6 @@ class Settings:
             WEEKLY_DIGEST_ENABLED=os.getenv("WEEKLY_DIGEST_ENABLED", "true").lower() in ("true", "1", "yes"),
             WEEKLY_DIGEST_DAY=int(os.getenv("WEEKLY_DIGEST_DAY", "0")),
             WEEKLY_DIGEST_HOUR=int(os.getenv("WEEKLY_DIGEST_HOUR", "10")),
+            SITE_BASE_URL=os.getenv("SITE_BASE_URL", "https://kinojdun.ru"),
         )
 

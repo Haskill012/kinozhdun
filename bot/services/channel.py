@@ -326,6 +326,7 @@ def channel_post_keyboard(
     season_number: Optional[int] = None,
     trailer_url: Optional[str] = None,
     post_type: str = "news",
+    site_url: Optional[str] = None,
 ) -> InlineKeyboardMarkup:
     """Создаёт контекстные кнопки для перехода из публикации канала обратно в бота."""
     clean_title = title if len(title) <= 20 else title[:17] + "..."
@@ -351,7 +352,11 @@ def channel_post_keyboard(
     if trailer_url:
         buttons.append([InlineKeyboardButton(text="▶️ Смотреть трейлер", url=trailer_url)])
 
-    buttons.append([InlineKeyboardButton(text=btn_text, url=deep_link)])
+    action_row = [InlineKeyboardButton(text=btn_text, url=deep_link)]
+    if site_url:
+        action_row.append(InlineKeyboardButton(text="🌐 На сайт", url=site_url))
+    buttons.append(action_row)
+
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -666,6 +671,7 @@ class ChannelPublisher:
                 season_number=season_number,
                 trailer_url=trailer_url,
                 post_type=post_type,
+                site_url=getattr(self.settings, "SITE_BASE_URL", None),
             )
 
             try:
@@ -713,6 +719,7 @@ class ChannelPublisher:
                 season_number=post.season_number,
                 trailer_url=post.trailer_url,
                 post_type=post.post_type,
+                site_url=getattr(self.settings, "SITE_BASE_URL", None),
             )
 
             try:
@@ -1011,7 +1018,11 @@ class ChannelPublisher:
                         InlineKeyboardButton(
                             text="🍿 Открыть Кинождуна",
                             url=f"https://t.me/{username}?start=channel_test",
-                        )
+                        ),
+                        InlineKeyboardButton(
+                            text="🌐 На сайт",
+                            url=getattr(self.settings, "SITE_BASE_URL", "https://kinojdun.ru"),
+                        ),
                     ]
                 ]
             )

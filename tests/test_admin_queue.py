@@ -18,6 +18,9 @@ from bot.handlers.admin import (
     process_admin_edited_text,
     cmd_channel_test,
     cmd_channel_stats,
+    cmd_channel_digest,
+    cmd_channel_weekly,
+    cmd_channel_check,
     AdminEditPostState,
 )
 
@@ -212,6 +215,43 @@ class TestAdminQueue(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Опубликовано постов", text)
         self.assertIn("Переходов в бота", text)
         self.assertIn("Конверсия воронки", text)
+
+    async def test_cmd_channel_digest_and_weekly(self):
+        """Проверка ручного вызова дайджестов администратором."""
+        mock_tmdb = MagicMock()
+        mock_tmdb.get_airing_today_tv = AsyncMock(return_value=[])
+        mock_tmdb.get_upcoming_movies = AsyncMock(return_value=[])
+        self.mock_bot.get = lambda k, default=None: mock_tmdb if k == "tmdb_client" else getattr(self.mock_bot, k, default)
+
+        # 1. Попытка создания без релизов
+        msg = self._create_mock_message(user_id=self.admin_id, text="/channel_digest")
+        status_msg = MagicMock()
+        status_msg.edit_text = AsyncMock()
+        msg.answer = AsyncMock(return_value=status_msg)
+
+        await cmd_channel_digest(msg)
+        status_msg.edit_text.assert_called_once()
+        self.assertIn("не найдено", status_msg.edit_text.call_args[0][0])
+
+        # 2. Не админ игнорируется
+        non_admin_msg = self._create_mock_message(user_id=self.non_admin_id, text="/channel_digest")
+        await cmd_channel_digest(non_admin_msg)
+        non_admin_msg.answer.assert_not_called()
+
+    async def test_cmd_channel_check(self):
+        """Проверка ручного вызова проверки обновлений /channel_check."""
+        msg = self._create_mock_message(user_id=self.admin_id, text="/channel_check")
+        status_msg = MagicMock()
+        status_msg.edit_text = AsyncMock()
+        msg.answer = AsyncMock(return_value=status_msg)
+
+        mock_tmdb = MagicMock()
+        mock_tmdb.close = AsyncMock()
+        self.mock_bot.get = lambda k, default=None: mock_tmdb if k == "tmdb_client" else getattr(self.mock_bot, k, default)
+
+        await cmd_channel_check(msg)
+        status_msg.edit_text.assert_called_once()
+        self.assertIn("Проверка обновлений завершена", status_msg.edit_text.call_args[0][0])
 
 
 if __name__ == "__main__":
