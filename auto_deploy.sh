@@ -50,6 +50,7 @@ echo ""
 echo "=== [4/4] Настройка автоматического обновления ==="
 cat << 'CRONSCRIPT' > "$APP_DIR/deploy_cron.sh"
 #!/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 cd /root/kinozhdun || exit 1
 git fetch origin master > /dev/null 2>&1
 LOCAL=$(git rev-parse HEAD)
