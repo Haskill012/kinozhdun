@@ -35,8 +35,12 @@ def project_page(store, config, item):
     release = item.get("release_date") if not movie else item.get("first_release")
     future = bool(release and release > today().isoformat())
     state = "Скоро премьера" if future else "Уже вышел" if movie and release else "Сериал"
+    if not movie and future and item.get("season"):
+        state = "Новый сезон скоро" if item.get("episode") == 1 else "Новая серия скоро"
     meta = f'<span class="score">★ {rating} <small>TMDB</small></span>' if rating else '<span class="unrated">Рейтинг формируется</span>'
     meta += f'<span>{esc(year)}</span><span>{kind}</span>'
+    if not movie and item.get("season"):
+        meta += f'<span>{item["season"]} сезон</span>'
     tracker = title_link(item, config)
     watch = '<a class="button" href="#trailer"><span aria-hidden="true">▶</span> Смотреть трейлер</a>' if item.get("trailer") else ''
     date_label = "Премьера" if future and movie else "Дата выхода" if movie else "Следующий эпизод"
