@@ -13,6 +13,11 @@ def today():
     return datetime.now(timezone(timedelta(hours=3))).date()
 
 
+def error_text(exc):
+    # Network exceptions may carry a request URL and its API key.
+    return str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__
+
+
 def valid_date(value):
     try:
         return date.fromisoformat(value).isoformat()
@@ -47,6 +52,27 @@ class Editor:
                     raise RuntimeError(f"TMDB вернул HTTP {response.status}")
                 return await response.json()
 
+    def eligible(self, media, detail, require_recent=True):
+        if detail.get("adult") or not detail.get("poster_path") or not detail.get("overview"):
+            return False
+        if media == "tv" and (detail.get("type") in ("Reality", "Talk Show", "News", "Video") or any(g.get("id") in (10763, 10764, 10767, 10766) for g in detail.get("genres", []))):
+            return False
+        popularity = float(detail.get("popularity") or 0)
+        votes = int(detail.get("vote_count") or 0)
+        rating = float(detail.get("vote_average") or 0)
+        if votes >= self.config.get("min_votes", 50) and rating < self.config.get("min_rating", 6):
+            return False
+        if popularity < self.config.get("min_popularity", 5):
+            return False
+        if not require_recent:
+            return True
+        first = valid_date(detail.get("release_date") if media == "movie" else detail.get("first_air_date"))
+        next_air = valid_date((detail.get("next_episode_to_air") or {}).get("air_date"))
+        lower = (today() - timedelta(days=180)).isoformat()
+        upper = (today() + timedelta(days=365)).isoformat()
+        return bool((first and lower <= first <= upper) or
+                    (media == "tv" and next_air and today().isoformat() <= next_air <= upper))
+
     def process(self, media, detail):
         if detail.get("adult") or not detail.get("id"):
             return
@@ -54,16 +80,20 @@ class Editor:
         if not title:
             return
         key = f"{media}:{detail['id']}"
+        if "popularity" in detail and not self.eligible(media, detail, require_recent=False):
+            self.store.db.execute("DELETE FROM catalog WHERE key=?", (key,))
+            self.store.delete_title(key)
+            return
         previous = self.store.snapshot(key)
         episode = detail.get("next_episode_to_air") or {}
         release = valid_date(detail.get("release_date") if media == "movie" else episode.get("air_date"))
-        if media == "tv" and not release and not previous:
+        if media == "tv" and not release:
             # First-air date is not the date of a new season/episode.
             first = valid_date(detail.get("first_air_date"))
             if first and first >= today().isoformat():
                 release = first
         videos = detail.get("videos", {}).get("results", [])
-        trailers = sorted([v for v in videos if v.get("official") and v.get("site") == "YouTube" and v.get("type") == "Trailer"], key=lambda v: v.get("published_at", ""))
+        trailers = sorted([v for v in videos if v.get("official") and v.get("site") == "YouTube" and v.get("type") == "Trailer"], key=lambda v: (v.get("iso_639_1") == "ru", v.get("published_at", "")))
         trailer = trailers[-1].get("key") if trailers else None
         if trailer and not re.fullmatch(r"[\w-]{6,32}", trailer):
             trailer = None
@@ -74,7 +104,18 @@ class Editor:
                 "poster": "https://image.tmdb.org/t/p/w500" + detail["poster_path"] if detail.get("poster_path") else None,
                 "season": episode.get("season_number"), "episode": episode.get("episode_number"),
                 "status": detail.get("status"), "trailer": trailer,
+                "trailer_keys": [v["key"] for v in trailers if re.fullmatch(r"[A-Za-z0-9_-]{6,32}", v.get("key", ""))],
+                "trailer_languages": {v["key"]: v.get("iso_639_1") for v in trailers},
+                "trailer_language": trailers[-1].get("iso_639_1", "en") if trailer else None,
+                "rating": detail.get("vote_average"), "votes": detail.get("vote_count", 0),
+                "popularity": detail.get("popularity", 0),
+                "first_release": valid_date(detail.get("release_date") if media == "movie" else detail.get("first_air_date")),
+                "genres": [g["name"] for g in detail.get("genres", [])],
                 "source_url": f"https://www.themoviedb.org/{media}/{detail['id']}"}
+        self.store.update_catalog(item)
+        if self.config.get("catalog_size") and not self.store.catalog_item(key):
+            self.store.save_title(key, item)
+            return
         category = "movies" if media == "movie" else "series"
         kind = "фильма" if media == "movie" else "сериала"
         context = ""
@@ -114,14 +155,13 @@ class Editor:
             status = labels.get(item["status"], item["status"])
             post("status:" + item["status"], f"«{title}»: изменился статус проекта", f"Текущий статус в TMDB: {status}.",
                  [f"При автоматической проверке обнаружено изменение статуса: {status}.", "Изменение статуса в каталоге не означает анонс нового сезона. Для подтверждения деталей проверяйте страницу проекта и сообщения создателей."])
-        if trailer and previous and previous.get("trailer") != trailer:
-            post("trailer:" + trailer, f"«{title}»: новый трейлер в каталоге TMDB", "В записи проекта появился трейлер с отметкой official.",
-                 ["В каталоге TMDB появился новый ролик типа Trailer с отметкой official.", f"Смотреть: https://www.youtube.com/watch?v={trailer}"])
-        # Preserve only current or future titles in the upcoming calendar
-        if release and release >= today().isoformat():
-            self.store.save_title(key, item)
-        elif release and release < today().isoformat():
-            self.store.delete_title(key)
+        old_keys = (previous.get("trailer_keys", [previous.get("trailer")]) if previous else [])
+        for new_key in item["trailer_keys"]:
+            if not previous or new_key in old_keys:
+                continue
+            post("trailer:" + new_key, f"«{title}»: новый трейлер в каталоге TMDB", "В записи проекта появился трейлер с отметкой official.",
+                 ["В каталоге TMDB появился новый ролик типа Trailer с отметкой official.", f"Смотреть: https://www.youtube.com/watch?v={new_key}"])
+        self.store.save_title(key, item)
 
     async def sync(self):
         if self.lock.locked():
@@ -136,48 +176,64 @@ class Editor:
                 connector = aiohttp.TCPConnector()
                 async with aiohttp.ClientSession(connector=connector, trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
                     self.session = session
-                    candidates = []
-                    for media, endpoint in (("movie", "/movie/upcoming"), ("tv", "/tv/on_the_air"), ("tv", "/tv/popular")):
+                    details = {}
+                    # Date-bounded discovery prevents old evergreen hits dominating the queue.
+                    for media in (() if self.store.state("catalog_selected") else ("movie", "tv")):
+                        date_field = "primary_release_date" if media == "movie" else "first_air_date"
+                        for page in range(1, 5):
+                            try:
+                                data = await self.fetch(f"/discover/{media}", **{
+                                    date_field + ".gte": (today()-timedelta(days=180)).isoformat(),
+                                    date_field + ".lte": (today()+timedelta(days=365)).isoformat(),
+                                    "include_adult": "false", "sort_by": "popularity.desc", "page": page})
+                                for row in data.get("results", []):
+                                    if not row.get("adult") and float(row.get("popularity") or 0) >= self.config.get("min_popularity", 5) and (int(row.get("vote_count") or 0) < self.config.get("min_votes", 50) or float(row.get("vote_average") or 0) >= self.config.get("min_rating", 6)):
+                                        details.setdefault((media, row["id"]), None)
+                            except Exception as exc:
+                                errors.append(error_text(exc))
+                    # Continuing series are selected by their next episode, not first season.
+                    try:
+                        data = await self.fetch("/tv/on_the_air") if not self.store.state("catalog_selected") else {}
+                        for row in data.get("results", []):
+                            details.setdefault(("tv", row["id"]), None)
+                    except Exception as exc:
+                        errors.append(error_text(exc))
+                    for item in self.store.catalog(False):
+                        details.setdefault((item["media_type"], item["id"]), None)
+                    for media, tmdb_id in details:
                         try:
-                            data = await self.fetch(endpoint)
-                            candidates.extend((media, r["id"]) for r in data.get("results", [])[:self.config["batch_size"]] if not r.get("adult"))
+                            detail = await self.fetch(f"/{media}/{tmdb_id}", append_to_response="videos", include_video_language="ru,en,null")
+                            details[(media, tmdb_id)] = detail
                         except Exception as exc:
-                            errors.append(f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__)
-                    # Upcoming may include films whose primary release already passed.
-                    # Discover explicitly supplies genuinely future international dates.
-                    try:
-                        movies = await self.fetch("/discover/movie", **{
-                            "primary_release_date.gte": today().isoformat(),
-                            "primary_release_date.lte": (today() + timedelta(days=120)).isoformat(),
-                            "include_adult": "false", "include_video": "false", "sort_by": "popularity.desc"})
-                        candidates.extend(("movie", r['id']) for r in movies.get('results', [])[:self.config['batch_size']] if not r.get('adult'))
-                    except Exception as exc:
-                        errors.append(f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__)
-                    try:
-                        series = await self.fetch("/discover/tv", **{
-                            "first_air_date.gte": today().isoformat(),
-                            "first_air_date.lte": (today() + timedelta(days=120)).isoformat(),
-                            "include_adult": "false", "sort_by": "popularity.desc"})
-                        candidates.extend(("tv", r['id']) for r in series.get('results', [])[:self.config['batch_size']] if not r.get('adult'))
-                    except Exception as exc:
-                        errors.append(f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__)
-                    candidates.extend((t["media_type"], t["id"]) for t in self.store.titles())
-                    # Bounded refresh; rotate entries if the catalogue grows.
-                    unique = list(dict.fromkeys(candidates))
-                    cursor = int(self.store.state("refresh_cursor") or 0) % max(1, len(unique))
-                    ordered = unique[cursor:] + unique[:cursor]
-                    for media, tmdb_id in ordered[:150]:
-                        try:
-                            detail = await self.fetch(f"/{media}/{tmdb_id}", append_to_response="videos")
+                            errors.append(error_text(exc))
+                    size = self.config.get("catalog_size", 50)
+                    if not self.store.state("catalog_selected"):
+                        selected = []
+                        for media in ("movie", "tv"):
+                            pool = [d for (m, _), d in details.items() if m == media and d and self.eligible(m, d)]
+                            pool.sort(key=lambda d: float(d.get("popularity") or 0), reverse=True)
+                            selected.append([(media, d) for d in pool[:size//2]])
+                        # Alternate movies and series in the daily publication queue.
+                        ordered = [entry for pair in zip(*selected) for entry in pair]
+                        ordered += selected[0][len(selected[1]):] + selected[1][len(selected[0]):]
+                        for media, detail in ordered:
+                            self.store.queue_title({"key": f"{media}:{detail['id']}", "id": detail["id"], "media_type": media, "title": detail.get("title") or detail.get("name")})
+                        if len(ordered) >= size:
+                            self.store.state("catalog_selected", datetime.now(timezone.utc).isoformat())
+                    # Refresh hidden cards too; they must stay current until publication.
+                    for (media, tmdb_id), detail in details.items():
+                        if detail and self.store.catalog_item(f"{media}:{tmdb_id}", False) and not self.store.catalog_item(f"{media}:{tmdb_id}"):
                             self.process(media, detail)
-                        except Exception as exc:
-                            errors.append(f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__)
-                    self.store.state("refresh_cursor", str((cursor + 150) % max(1, len(unique))))
+                    self.store.release_catalog(self.config.get("daily_cards", 3))
+                    # Published entries now receive normal date/trailer event monitoring.
+                    for (media, tmdb_id), detail in details.items():
+                        if detail and self.store.catalog_item(f"{media}:{tmdb_id}"):
+                            self.process(media, detail)
                     if not errors:
                         self.store.state("last_sync", datetime.now(timezone.utc).isoformat())
                     self.store.state("sync_error", "; ".join(sorted(set(errors))) if errors else "")
             except Exception as exc:
-                self.store.state("sync_error", f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__)
+                self.store.state("sync_error", error_text(exc))
             finally:
                 self.session = None
             logger.info("Website sync finished: %s titles; %s errors", len(self.store.titles()), len(errors))

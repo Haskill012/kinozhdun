@@ -1,6 +1,7 @@
 """HTML rendering: all indexable content is served without JavaScript."""
 import html
 import json
+import re
 from datetime import date, datetime
 from urllib.parse import urlencode
 
@@ -69,6 +70,31 @@ def card(article, featured=False):
       <h3>{esc(article['title'])}</h3><p>{esc(article['summary'])}</p></div></a>'''
 
 
+def title_path(item):
+    return f"/title/{item['media_type']}/{item['id']}"
+
+
+def title_card(item):
+    rating = f"★ {float(item['rating']):.1f}" if item.get("votes", 0) >= 50 else "Рейтинг формируется"
+    label = "Фильм" if item["media_type"] == "movie" else "Сериал"
+    return f'''<a class="news-card title-card" href="{title_path(item)}"><div class="card-image">{image(item.get('poster') or item.get('image'), item['title'])}<span class="card-tag">{label}</span></div><div class="card-copy"><span class="meta">{rating} · {esc((item.get('first_release') or '')[:4])}</span><h3>{esc(item['title'])}</h3><p>{esc(item.get('overview', '')[:180])}</p></div></a>'''
+
+
+def trailer_player(key, language=None):
+    if not key or not re.fullmatch(r"[\w-]{6,32}", key, flags=re.ASCII):
+        return ""
+    label = "На русском языке" if language == "ru" else "На языке источника"
+    return f'''<section class="trailer-section"><h2>Смотреть трейлер</h2><p>{label}</p><div class="trailer-frame"><iframe src="https://www.youtube-nocookie.com/embed/{esc(key)}" title="Трейлер" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div><p><a href="https://www.youtube.com/watch?v={esc(key)}" target="_blank" rel="noopener">Открыть трейлер на YouTube ↗</a></p></section>'''
+
+
+def title_page(store, config, item):
+    rating = f"{float(item.get('rating') or 0):.1f} / 10 · {item.get('votes', 0)} голосов" if item.get("votes", 0) >= 50 else "Рейтинг ещё формируется"
+    related = [a for a in store.articles(limit=500) if a.get("media_type") == item["media_type"] and a.get("tmdb_id") == item["id"]][:6]
+    content = f'''<div class="page-shell"><article class="article"><span class="eyebrow lime">{'Фильм' if item['media_type'] == 'movie' else 'Сериал'}</span><h1>{esc(item['title'])}</h1><div class="title-detail"><div>{image(item.get('poster'), item['title'], 'title-poster', eager=True)}</div><div class="article-body"><p class="article-lead">{esc(item.get('overview'))}</p><p><strong>Рейтинг TMDB:</strong> {rating}</p><p>{esc(', '.join(item.get('genres', [])))}</p><p><strong>Первая премьера:</strong> {date_ru(item.get('first_release'))}</p><p><strong>Ближайший выход:</strong> {date_ru(item.get('release_date'))}</p><a class="button" href="{esc(title_link(item, config))}" target="_blank" rel="noopener">Отслеживать в Telegram ↗</a><p class="source"><a href="{esc(item['source_url'])}" target="_blank" rel="noopener">Источник: TMDB ↗</a></p></div></div>{trailer_player(item.get('trailer'), item.get('trailer_language'))}</article><section class="news-section"><h2>Новости проекта</h2><div class="news-grid">{''.join(card(a) for a in related)}</div></section></div>'''
+    schema = {"@context": "https://schema.org", "@type": "Movie" if item["media_type"] == "movie" else "TVSeries", "name": item["title"], "description": item.get("overview"), "url": config["base_url"] + title_path(item)}
+    return layout(config, item["title"], item.get("overview", "")[:180], content, title_path(item), "movies" if item["media_type"] == "movie" else "series", schema=schema, og_image=item.get("image"))
+
+
 def bot_banner(config):
     return f'''<section class="bot-banner"><div><span class="eyebrow">ВАШ ЛИЧНЫЙ ТРЕКЕР ПРЕМЬЕР</span><h2>Ждать — ваше дело.<br>Напомнить — наше<span class="lime">.</span></h2><p>Добавьте фильм или сериал в Telegram-бота.<br>КиноЖдун сообщит, когда появится дата выхода.</p><a class="button" href="{esc(config['bot_url'])}" target="_blank" rel="noopener">Начать ждать в боте <span>↗</span></a><small>Бесплатно. Без установки. В вашем Telegram.</small></div><div class="chat-scene" aria-label="Пример работы бота"><div class="chat-top"><img class="chat-avatar" src="/static/logo_mascot.jpg" alt="КиноЖдун"><div>КиноЖдун<small>бот · ваш список ожидания</small></div><span>•••</span></div><div class="bubble own">Хочу следить за новым сезоном</div><div class="bubble"><strong>🍿 Уже ждём вместе!</strong><p>Добавьте любимый сериал в список. Я проверю дату и пришлю уведомление, когда она появится.</p><span class="chat-action">✓ В списке ожидания</span></div><div class="chat-input">Написать сообщение… <span>➤</span></div></div></section>'''
 
@@ -110,7 +136,7 @@ def home(store, config):
             seen.add(key)
         if len(articles) == 7:
             break
-    titles = store.titles()
+    titles = store.catalog() if config.get("catalog_size") else store.titles()
     main_article = next((a for a in articles if a.get("image")), articles[0] if articles else None)
     hero_media = image((main_article.get("image") if main_article else None) or "/static/mascot.jpg", main_article["title"] if main_article and main_article.get("image") else "Ждун в кинотеатре — талисман КиноЖдуна", "hero-image", eager=True)
     spotlight = f'''<a class="hero-story" href="/news/{esc(main_article['slug'])}"><span>В ФОКУСЕ</span><strong>{esc(main_article['title'])}</strong><i>↗</i></a>''' if main_article else ""
@@ -120,6 +146,7 @@ def home(store, config):
     <section class="news-section"><div class="section-heading"><div><span class="eyebrow muted">ЛЕНТА КИНОЖДУНА</span><h2>Пока вы ждёте<span class="lime">.</span></h2></div><a class="text-link" href="/news">Все материалы ↗</a></div>
     <div class="tabs"><a class="selected" href="/news">Всё интересное</a><a href="/movies">Фильмы</a><a href="/series">Сериалы</a><a href="/news?category=guides">Гид КиноЖдуна</a><span class="tabs-note">Ничего лишнего. Только кино.</span></div><div class="news-grid">{''.join(card(a) for a in articles[:6])}</div></section>
     <section class="calendar-teaser"><div><span class="eyebrow muted">СОХРАНИТЕ ДАТУ</span><h2>Скоро<br>на экранах<span class="lime">.</span></h2><p>Премьеры, которые уже<br>появились в календаре.</p><a class="text-link" href="/calendar">Весь календарь ↗</a></div><div class="premiere-list">{premiere_rows(titles, config)}</div></section>
+    <section class="news-section"><div class="section-heading"><h2>Что посмотреть<span class="lime">.</span></h2><a href="/movies">Все фильмы и сериалы ↗</a></div><div class="news-grid">{''.join(title_card(t) for t in store.catalog()[-6:])}</div></section>
     {bot_banner(config)}
     <section class="channel-section"><span class="channel-symbol">↗</span><div><span class="eyebrow muted">КИНОЖДУН В TELEGRAM</span><h2>Хорошие новости.<br>В хорошей компании.</h2><p>Новости кино, трейлеры и главные премьеры — в нашем канале.</p></div><a class="button outline" href="{esc(config['channel_url'])}" target="_blank" rel="noopener">Перейти в канал ↗</a></section></div>'''
     return layout(config, "Новости кино и сериалов, даты выхода и новые сезоны", "КиноЖдун — новости фильмов и сериалов, календарь премьер и Telegram-бот для отслеживания дат выхода.", content, active="home")
@@ -128,15 +155,22 @@ def home(store, config):
 def listing(store, config, category, query, page):
     size = 12
     articles = store.articles(category, query, size + 1, (page - 1) * size)
+    catalog = [t for t in store.catalog() if t["media_type"] == ("movie" if category == "movies" else "tv") and query.casefold() in t["title"].casefold()] if category in ("movies", "series") else []
+    if catalog or (config.get("catalog_size") and category in ("movies", "series")):
+        entries = catalog[(page-1)*size:page*size+1]
+        cards = "".join(title_card(t) for t in entries[:size])
+    else:
+        entries = articles
+        cards = "".join(card(a) for a in articles[:size])
     heading = {"movies": "Кино, которое ждём", "series": "Ещё одна серия", "guides": "Гид КиноЖдуна"}.get(category, "Всё самое интересное")
     path = "/movies" if category == "movies" else "/series" if category == "series" else "/news"
     form = f'''<form class="search" action="{path}" method="get"><label for="search">Поиск по материалам</label><div><input id="search" name="q" placeholder="Фильм, сериал или новость…" value="{esc(query)}" maxlength="100">{f'<input type="hidden" name="category" value="{esc(category)}">' if category == 'guides' else ''}<button type="submit" aria-label="Найти">⌕ Найти</button></div></form>'''
     empty = '<div class="empty"><span>⌕</span><h2>Пока ничего не нашлось</h2><p>Попробуйте другое название или вернитесь ко всем материалам.</p><a class="button outline" href="/news">Все материалы ↗</a></div>'
     def page_url(number):
         return path + "?" + urlencode({k: v for k, v in {"page": number, "q": query, "category": category if category == "guides" else ""}.items() if v})
-    pager = '<div class="pagination">' + (f'<a href="{esc(page_url(page-1))}">← Назад</a>' if page > 1 else '') + f'<span>Страница {page}</span>' + (f'<a href="{esc(page_url(page+1))}">Дальше →</a>' if len(articles) > size else '') + '</div>'
+    pager = '<div class="pagination">' + (f'<a href="{esc(page_url(page-1))}">← Назад</a>' if page > 1 else '') + f'<span>Страница {page}</span>' + (f'<a href="{esc(page_url(page+1))}">Дальше →</a>' if len(entries) > size else '') + '</div>'
     tabs = ''.join(f'<a class="{"selected" if category == k else ""}" href="{u}">{label}</a>' for k,u,label in ((None,"/news","Все материалы"),("movies","/movies","Фильмы"),("series","/series","Сериалы"),("guides","/news?category=guides","Гид")))
-    content = f'<div class="page-shell"><section class="page-intro"><span class="eyebrow muted">ЛЕНТА КИНОЖДУНА</span><h1>{heading}<span class="lime">.</span></h1><p>Даты выхода, изменения в проектах и полезные материалы для тех, кто любит кино.</p>{form}</section><div class="tabs">{tabs}</div><div class="news-grid">{"".join(card(a) for a in articles[:size])}</div>{empty if not articles else pager}{bot_banner(config)}</div>'
+    content = f'<div class="page-shell"><section class="page-intro"><span class="eyebrow muted">ЛЕНТА КИНОЖДУНА</span><h1>{heading}<span class="lime">.</span></h1><p>Даты выхода, изменения в проектах и полезные материалы для тех, кто любит кино.</p>{form}</section><div class="tabs">{tabs}</div><div class="news-grid">{cards}</div>{empty if not entries else pager}{bot_banner(config)}</div>'
     canonical = path + ("?category=guides" if category == "guides" else "")
     if page > 1:
         canonical += ("&" if "?" in canonical else "?") + "page=" + str(page)
@@ -147,9 +181,15 @@ def article_page(store, config, article):
     path = "/news/" + article["slug"]
     category = CATEGORIES.get(article["category"], "Новости")
     body = "".join(f'<p>{esc(p)}</p>' for p in json.loads(article["body"]))
+    trailer_key = article["fingerprint"].split(":trailer:")[-1] if ":trailer:" in article["fingerprint"] else None
+    item = store.catalog_item(f"{article.get('media_type')}:{article.get('tmdb_id')}")
+    if trailer_key:
+        body += trailer_player(trailer_key, (item or {}).get("trailer_languages", {}).get(trailer_key))
+    if item:
+        body += f'<p><a href="{title_path(item)}">Карточка «{esc(item["title"])}» ↗</a></p>'
     bot_url = (config["bot_url"] + f"?start=c_{article['media_type']}_{article['tmdb_id']}" if article.get("media_type") in ("tv", "movie") and article.get("tmdb_id") else config["bot_url"])
     related = [a for a in store.articles(limit=7) if a["slug"] != article["slug"]][:3]
-    
+
     cat_url = config["base_url"] + ("/movies" if article["category"] == "movies" else "/series" if article["category"] == "series" else "/news")
     article_obj = {
         "@type": "NewsArticle" if article["category"] != "guides" else "Article",
@@ -164,7 +204,7 @@ def article_page(store, config, article):
     }
     if article.get("image"):
         article_obj["image"] = [article["image"]]
-        
+
     breadcrumbs = {
         "@type": "BreadcrumbList",
         "itemListElement": [
@@ -192,7 +232,7 @@ def article_page(store, config, article):
 
 
 def calendar(store, config, media=None, period="all"):
-    items = [t for t in store.titles() if t.get("release_date") and t["release_date"] >= today().isoformat()]
+    items = [t for t in (store.catalog() if config.get("catalog_size") else store.titles()) if t.get("release_date") and t["release_date"] >= today().isoformat()]
     if media:
         items = [t for t in items if t.get("media_type") == media]
     if period == "week":
@@ -205,5 +245,5 @@ def calendar(store, config, media=None, period="all"):
 
 
 def about(config):
-    content = f'''<div class="page-shell"><section class="page-intro"><span class="eyebrow muted">ХОРОШЕЕ КИНО СТОИТ ЖДАТЬ</span><h1>Мы тоже ждём<span class="lime">.</span></h1></section><div class="about article-body"><h2>Что такое КиноЖдун</h2><p>КиноЖдун объединяет новости, календарь премьер, Telegram-канал и личный бот для отслеживания фильмов и сериалов.</p><h2>Откуда берутся материалы</h2><p>Редакция работает автоматически: проверяет каталог TMDB, сравнивает даты, статусы и трейлеры, а также переносит уже опубликованные подтверждённые сообщения из базы нашего Telegram-канала. Каждая публикация содержит ссылку на источник. Сайт не публикует слухи и не генерирует вымышленные факты.</p><p>TMDB — каталог, который наполняет сообщество. Его записи не равнозначны официальным заявлениям студии. Международная дата выхода может отличаться от российской или цифровой премьеры. Для сериалов календарь показывает дату ближайшего эпизода, если она известна.</p><h2>Что делает бот</h2><p>Сохраняет список ожидания и проверяет обновления о выбранных проектах. Вы можете поделиться списком с другом и задать дату вручную.</p><h2>Источники и изображения</h2><p>Данные и изображения предоставлены <a href="https://www.themoviedb.org" target="_blank" rel="noopener">The Movie Database</a>.</p><img class="tmdb-logo" src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg" alt="TMDB"><p lang="en">This product uses the TMDB API but is not endorsed or certified by TMDB.</p><p>При недоступности источника сайт сохраняет ранее опубликованные материалы и повторяет проверку автоматически.</p></div>{bot_banner(config)}</div>'''
+    content = f'''<div class="page-shell"><section class="page-intro"><span class="eyebrow muted">ХОРОШЕЕ КИНО СТОИТ ЖДАТЬ</span><h1>Мы тоже ждём<span class="lime">.</span></h1></section><div class="about article-body"><h2>Что такое КиноЖдун</h2><p>КиноЖдун объединяет новости, календарь премьер, Telegram-канал и личный бот для отслеживания фильмов и сериалов.</p><h2>Откуда берутся материалы</h2><p>Редакция работает автоматически: проверяет каталог TMDB, сравнивает даты, статусы и трейлеры, а также переносит уже опубликованные подтверждённые сообщения из базы нашего Telegram-канала. Каждая публикация содержит ссылку на источник. Сайт не публикует слухи и не генерирует вымышленные факты.</p><p>TMDB — каталог, который наполняет сообщество. Его записи не равнозначны официальным заявлениям студии. Международная дата выхода может отличаться от российской или цифровой премьеры. Для сериалов календарь показывает дату ближайшего эпизода, если она известна.</p><h2>Как отбираются карточки</h2><p>Подбираем популярные новинки и ожидаемые проекты. При 50 и более голосах нужен рейтинг TMDB не ниже 6 из 10; также требуется популярность от 5. Популярность — показатель интереса в каталоге, а не отдельный рейтинг ожидаемости. Первые 50 карточек публикуются по 3 в день. Для трейлеров предпочитаем русскую версию, а при её отсутствии показываем доступный официальный ролик.</p><h2>Что делает бот</h2><p>Сохраняет список ожидания и проверяет обновления о выбранных проектах. Вы можете поделиться списком с другом и задать дату вручную.</p><h2>Источники и изображения</h2><p>Данные и изображения предоставлены <a href="https://www.themoviedb.org" target="_blank" rel="noopener">The Movie Database</a>.</p><img class="tmdb-logo" src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg" alt="TMDB"><p lang="en">This product uses the TMDB API but is not endorsed or certified by TMDB.</p><p>При недоступности источника сайт сохраняет ранее опубликованные материалы и повторяет проверку автоматически.</p></div>{bot_banner(config)}</div>'''
     return layout(config, "О проекте и источниках", "Как работает КиноЖдун: источники новостей, автоматическая редакция и Telegram-бот.", content, "/about")

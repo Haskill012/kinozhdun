@@ -35,6 +35,11 @@ def configuration():
             "api_key": os.getenv("TMDB_API_KEY", ""),
             "api_base": os.getenv("TMDB_BASE_URL", "https://api.themoviedb.org/3").rstrip("/"),
             "sync_seconds": max(60, int(os.getenv("SITE_SYNC_INTERVAL_MINUTES", "60")) * 60),
+            "catalog_size": 50,
+            "daily_cards": max(1, min(10, int(os.getenv("SITE_DAILY_CARDS", "3")))),
+            "min_rating": float(os.getenv("SITE_MIN_RATING", "6.0")),
+            "min_votes": int(os.getenv("SITE_MIN_VOTES", "50")),
+            "min_popularity": float(os.getenv("SITE_MIN_POPULARITY", "5")),
             "batch_size": min(20, max(1, int(os.getenv("SITE_BATCH_SIZE", "12")))),
             "yandex_verification": os.getenv("SITE_YANDEX_VERIFICATION", ""),
             "google_verification": os.getenv("SITE_GOOGLE_VERIFICATION", ""),
@@ -76,6 +81,9 @@ def create_app(config=None):
     store = Store(config["database"])
     store.seed_guides(config["bot_url"])
     store.seed_catalog(config["bot_url"])
+    if config.get("catalog_size"):
+        store.seed_live_catalog()
+        store.release_catalog(config.get("daily_cards", 3))
     store.import_channel(config["bot_database"], config["channel_url"])
     app[STORE], app[CONFIG] = store, config
     app.cleanup_ctx.append(background)
@@ -99,6 +107,12 @@ def create_app(config=None):
             raise web.HTTPNotFound()
         return web.Response(text=views.article_page(store, config, row), content_type="text/html")
 
+    async def title_page(request):
+        item = store.catalog_item(request.match_info["media"] + ":" + request.match_info["id"])
+        if not item:
+            raise web.HTTPNotFound()
+        return web.Response(text=views.title_page(store, config, item), content_type="text/html")
+
     async def calendar(request):
         media = request.query.get("type")
         media = media if media in ("tv", "movie") else None
@@ -117,6 +131,7 @@ def create_app(config=None):
     async def sitemap(request):
         pages = [(p, None, "1.0" if p == "/" else "0.9" if p == "/calendar" else "0.8", "daily")
                  for p in ("/", "/news", "/movies", "/series", "/calendar", "/about")]
+        pages.extend((views.title_path(t), None, "0.8", "daily") for t in store.catalog())
         pages.extend(("/news/" + a["slug"], a["updated"], "0.7", "weekly") for a in store.articles(limit=50000))
         body = ''.join(
             '<url><loc>' + xml_escape(config["base_url"] + path) + '</loc>'
@@ -138,14 +153,17 @@ def create_app(config=None):
     async def health(request):
         return web.json_response({
             "status": "ok",
-            "version": "1.2.1",
+            "version": "1.3.0",
+            "cards_published": len(store.catalog()),
+            "cards_queued": len(store.catalog(False)) - len(store.catalog()),
+            "catalog_selected": store.state("catalog_selected"),
             "last_sync": store.state("last_sync"),
             "sync_error": store.state("sync_error"),
             "titles": len(store.titles()),
             "articles": store.db.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
         }, headers={"X-Robots-Tag": "noindex"})
 
-    for path, handler in (("/", home), ("/news", listing), ("/movies", listing), ("/series", listing), ("/news/{slug}", article), ("/calendar", calendar), ("/about", about), ("/robots.txt", robots), ("/sitemap.xml", sitemap), ("/feed.xml", feed), ("/health", health)):
+    for path, handler in (("/", home), ("/news", listing), ("/movies", listing), ("/series", listing), ("/news/{slug}", article), (r"/title/{media:movie|tv}/{id:\d+}", title_page), ("/calendar", calendar), ("/about", about), ("/robots.txt", robots), ("/sitemap.xml", sitemap), ("/feed.xml", feed), ("/health", health)):
         app.router.add_get(path, handler)
     app.router.add_static("/static/", ROOT / "website" / "static", show_index=False)
     return app

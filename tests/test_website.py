@@ -37,6 +37,51 @@ class EditorTests(unittest.TestCase):
         self.store.db.close()
         self.tmp.cleanup()
 
+    def test_daily_queue_persists_and_does_not_catch_up(self):
+        for n in range(50):
+            self.store.queue_title({"key": f"movie:{n}", "id": n, "media_type": "movie", "title": str(n)})
+        with patch("website.content.today", return_value=date(2026, 10, 5)):
+            self.assertEqual(self.store.release_catalog(3), 3)
+            self.assertEqual(self.store.release_catalog(3), 0)
+            self.store.db.close()
+            self.store = Store(Path(self.tmp.name) / "site.db")
+            self.assertEqual(self.store.release_catalog(3), 0)
+        with patch("website.content.today", return_value=date(2026, 10, 10)):
+            self.assertEqual(self.store.release_catalog(3), 3)
+        self.assertEqual(len(self.store.catalog()), 6)
+        self.assertEqual(len(self.store.catalog(False)), 50)
+
+    def test_verified_seed_has_50_and_restart_preserves_removed_card_and_quota(self):
+        self.store.seed_live_catalog()
+        self.assertEqual(len(self.store.catalog(False)), 50)
+        self.assertEqual(self.store.release_catalog(), 3)
+        removed = self.store.catalog()[0]["key"]
+        self.store.db.execute("DELETE FROM catalog WHERE key=?", (removed,))
+        self.store.db.commit()
+        self.store.seed_live_catalog()
+        self.assertIsNone(self.store.catalog_item(removed, False))
+        self.assertEqual(self.store.release_catalog(), 0)
+
+    def test_quality_filter_allows_popular_unrated_future_titles(self):
+        detail = {**self.movie, "poster_path": "/poster.jpg", "popularity": 10, "vote_count": 0, "vote_average": 0}
+        self.assertTrue(self.editor.eligible("movie", detail))
+        self.assertFalse(self.editor.eligible("movie", {**detail, "vote_count": 100, "vote_average": 4.5}))
+        self.assertFalse(self.editor.eligible("movie", {**detail, "popularity": 0.2}))
+        self.assertFalse(self.editor.eligible("movie", {**detail, "adult": True}))
+        self.assertFalse(self.editor.eligible("movie", {**detail, "release_date": "1990-01-01"}))
+
+    def test_russian_trailer_preferred_and_new_english_trailer_makes_news(self):
+        detail = copy.deepcopy(self.movie)
+        ru = {"official": True, "type": "Trailer", "site": "YouTube", "key": "russian1234", "iso_639_1": "ru", "published_at": "2026-09-01"}
+        en = {**ru, "key": "english1234", "iso_639_1": "en", "published_at": "2026-10-01"}
+        detail["videos"] = {"results": [ru]}
+        self.editor.process("movie", detail)
+        detail["videos"]["results"].append(en)
+        self.editor.process("movie", detail)
+        self.editor.process("movie", detail)
+        self.assertEqual(self.store.snapshot("movie:123")["trailer"], "russian1234")
+        self.assertEqual(sum(":trailer:" in a["fingerprint"] for a in self.store.articles()), 1)
+
     def test_slugify_transliteration(self):
         self.assertEqual(slugify("«Фоллаут»: дата выхода — 15.11.2026"), "follaut-data-vyhoda-15-11-2026")
         self.assertEqual(slugify("Очень странные дела 5"), "ochen-strannye-dela-5")
@@ -131,6 +176,38 @@ class EditorTests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT COUNT(*) FROM channel_posts").fetchone()[0], 5)
 
 
+class CatalogSyncTests(unittest.IsolatedAsyncioTestCase):
+    async def test_live_pipeline_selects_50_and_opens_three_without_duplicate_news(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(Path(directory) / "site.db")
+            cfg = {**config(Path(directory) / "site.db"), "api_key": "test", "catalog_size": 50}
+            editor = Editor(store, cfg)
+            video_key = None
+
+            async def fetch(endpoint, **params):
+                if endpoint.startswith("/discover/"):
+                    return {"results": [{"id": n, "popularity": 100-n, "vote_average": 8, "vote_count": 100} for n in range(1, 26)]}
+                if endpoint == "/tv/on_the_air":
+                    return {"results": []}
+                tmdb_id = int(endpoint.split("/")[-1])
+                media = endpoint.split("/")[1]
+                videos = [{"official": True, "type": "Trailer", "site": "YouTube", "key": video_key, "iso_639_1": "ru"}] if video_key else []
+                return {"id": tmdb_id, "title": f"Фильм {tmdb_id}", "name": f"Сериал {tmdb_id}", "overview": "Описание", "poster_path": "/poster.jpg", "popularity": 100-tmdb_id, "vote_average": 8, "vote_count": 100,
+                        "release_date": (today()+timedelta(days=7)).isoformat(), "first_air_date": (today()+timedelta(days=7)).isoformat(), "videos": {"results": videos}}
+
+            editor.fetch = fetch
+            await editor.sync()
+            self.assertEqual(len(store.catalog(False)), 50)
+            self.assertEqual(len(store.catalog()), 3)
+            self.assertTrue(store.state("catalog_selected"))
+            video_key = "russian1234"
+            await editor.sync()
+            await editor.sync()
+            self.assertEqual(len(store.catalog()), 3)
+            self.assertEqual(sum(":trailer:" in a["fingerprint"] for a in store.articles(limit=100)), 3)
+            store.db.close()
+
+
 class WebsiteHTTPTests(AioHTTPTestCase):
     async def get_application(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -140,6 +217,24 @@ class WebsiteHTTPTests(AioHTTPTestCase):
     async def asyncTearDown(self):
         await super().asyncTearDown()
         self.tmp.cleanup()
+
+    async def test_hidden_card_404_then_public_embed_and_sitemap(self):
+        from website.__main__ import STORE
+        store = self.app[STORE]
+        item = {"key": "movie:123", "id": 123, "media_type": "movie", "title": "Карточка", "overview": "Описание", "source_url": "https://www.themoviedb.org/movie/123", "trailer": "russian1234", "trailer_language": "ru"}
+        store.queue_title(item)
+        response = await self.client.get("/title/movie/123")
+        self.assertEqual(response.status, 404)
+        store.release_catalog()
+        response = await self.client.get("/title/movie/123")
+        self.assertEqual(response.status, 200)
+        text = await response.text()
+        self.assertIn("youtube-nocookie.com/embed/russian1234", text)
+        self.assertIn("На русском языке", text)
+        response = await self.client.get("/sitemap.xml")
+        self.assertIn("/title/movie/123", await response.text())
+        response = await self.client.get("/movies")
+        self.assertIn("/title/movie/123", await response.text())
 
     async def test_all_routes_and_feeds(self):
         for path in ("/", "/news", "/movies", "/series", "/calendar", "/about", "/static/site.css", "/static/mascot.jpg", "/health"):

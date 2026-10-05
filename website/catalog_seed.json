@@ -1,0 +1,1571 @@
+{
+  "selected_at": "2026-10-05",
+  "source": "TMDB",
+  "titles": [
+    {
+      "key": "movie:969681",
+      "id": 969681,
+      "media_type": "movie",
+      "title": "Человек-паук: Новый день",
+      "overview": "Одинокий и повзрослевший Питер Паркер полностью посвящает себя борьбе с преступностью в Нью-Йорке, поскольку 4 года назад после заклинания Доктора Стрэнджа мир и все близкие забыли его. Но с ростом угроз и нагрузки на Человека-паука, его способности претерпевают странные изменения, способные поставить под угрозу его существование. Тем временем в городе случается новая цепочка преступлений, которая приводит к появлению одного из самых опасных противников в жизни Питера.",
+      "release_date": "2026-07-29",
+      "image": "https://image.tmdb.org/t/p/w1280/qeQJx07rK2xm8SD2sJxFKhE7gs0.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/pK8CH9JxrgX2ZIq3WclTwnX0cCL.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "P3uI5sLosKU",
+      "trailer_keys": [
+        "8TZMtslA3UY",
+        "62bIsvRcPv0",
+        "P3uI5sLosKU"
+      ],
+      "trailer_languages": {
+        "8TZMtslA3UY": "en",
+        "62bIsvRcPv0": "en",
+        "P3uI5sLosKU": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.9,
+      "votes": 3025,
+      "popularity": 623.3942,
+      "first_release": "2026-07-29",
+      "genres": [
+        "фантастика",
+        "боевик",
+        "приключения"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/969681"
+    },
+    {
+      "key": "tv:2734",
+      "id": 2734,
+      "media_type": "tv",
+      "title": "Закон и порядок. Специальный корпус",
+      "overview": "В системе судопроизводства преступления на сексуальной почве считаются особенно тяжкими. В Нью-Йорке подобные преступления расследуют детективы элитного подразделения, известного как Особый отдел. Это рассказ о них.",
+      "release_date": "2026-10-08",
+      "image": "https://image.tmdb.org/t/p/w1280/obtdxPgmfykYwVnvuYXC5f2xKlQ.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/1GLIkXaLtgaRooXLSltTdp8oShL.jpg",
+      "season": 28,
+      "episode": 1,
+      "status": "Returning Series",
+      "trailer": null,
+      "trailer_keys": [],
+      "trailer_languages": {},
+      "trailer_language": null,
+      "rating": 7.956,
+      "votes": 4363,
+      "popularity": 502.4457,
+      "first_release": "1999-09-20",
+      "genres": [
+        "криминал",
+        "драма",
+        "детектив"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/2734"
+    },
+    {
+      "key": "movie:1423191",
+      "id": 1423191,
+      "media_type": "movie",
+      "title": "Обитель зла",
+      "overview": "Медицинский курьер Брайан отправляется выполнить обычную доставку, но внезапно оказывается в центре кошмарной вспышки, охватившей Раккун-Сити. Город погружается в хаос, а на улицах появляются заражённые люди и чудовищные существа. Оказавшись один на один с надвигающейся угрозой, Брайан вынужден искать путь через охваченный катастрофой город, используя всё, что может помочь ему выжить. С каждой минутой ситуация становится всё опаснее, превращая простую доставку в отчаянную борьбу за жизнь.",
+      "release_date": "2026-09-16",
+      "image": "https://image.tmdb.org/t/p/w1280/3icyRAqgakNcQn6aDVz9libFmBA.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/vLl5tcuabARqGBefccSsYAYXdgA.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "mNd1gb19A-c",
+      "trailer_keys": [
+        "SJPu1spHqfk",
+        "mNd1gb19A-c"
+      ],
+      "trailer_languages": {
+        "SJPu1spHqfk": "en",
+        "mNd1gb19A-c": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.299,
+      "votes": 750,
+      "popularity": 364.5221,
+      "first_release": "2026-09-16",
+      "genres": [
+        "ужасы",
+        "фантастика",
+        "приключения"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1423191"
+    },
+    {
+      "key": "tv:549",
+      "id": 549,
+      "media_type": "tv",
+      "title": "Закон и порядок",
+      "overview": "В системе уголовного судопроизводства обвинение представляют две независимые, равные по значению инстанции — полиция, расследующая преступления, и прокурор, представляющий дело в суде.",
+      "release_date": "2026-10-08",
+      "image": "https://image.tmdb.org/t/p/w1280/tc7canPSAn2X14hYi6Rl3gZm1o4.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/6IfLWdBXDuktBo8oVjiWxodSHCV.jpg",
+      "season": 26,
+      "episode": 1,
+      "status": "Returning Series",
+      "trailer": "RzN8cPlcMTU",
+      "trailer_keys": [
+        "RzN8cPlcMTU"
+      ],
+      "trailer_languages": {
+        "RzN8cPlcMTU": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.286,
+      "votes": 730,
+      "popularity": 349.6546,
+      "first_release": "1990-09-13",
+      "genres": [
+        "криминал",
+        "драма"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/549"
+    },
+    {
+      "key": "movie:1368337",
+      "id": 1368337,
+      "media_type": "movie",
+      "title": "Одиссея",
+      "overview": "После Троянской войны Одиссей, царь Итаки, во главе небольшого войска возвращается домой к своей жене Пенелопе. На своём пути Одиссей сталкивается со множеством испытаний, встречает циклопов, сирен и великанов-людоедов.",
+      "release_date": "2026-07-15",
+      "image": "https://image.tmdb.org/t/p/w1280/bulFtfy3oBQtCnAMSi7g6DSSds3.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/n7NR7SH7CyiiF70yN96r3d1jWr0.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "AyIZ9tiiN8I",
+      "trailer_keys": [
+        "Mzw2ttJD2qQ",
+        "f_bKjZeJBBI",
+        "AyIZ9tiiN8I"
+      ],
+      "trailer_languages": {
+        "Mzw2ttJD2qQ": "en",
+        "f_bKjZeJBBI": "en",
+        "AyIZ9tiiN8I": "en"
+      },
+      "trailer_language": "en",
+      "rating": 8.012,
+      "votes": 4012,
+      "popularity": 322.0423,
+      "first_release": "2026-07-15",
+      "genres": [
+        "приключения",
+        "боевик",
+        "фэнтези"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1368337"
+    },
+    {
+      "key": "tv:275102",
+      "id": 275102,
+      "media_type": "tv",
+      "title": "Скандал в Чосоне",
+      "overview": "В Чосоне тайное предложение разжигает скрытые желания в одаренной дворянке, знаменитой любовнице и ничего не подозревающей даме, попавшей в их опасную игру.",
+      "release_date": null,
+      "image": "https://image.tmdb.org/t/p/w1280/uc1p1PEbEMpdIHqnU9TESNC6Jhp.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/8ra17h8Z3NX14qdWaOKn0scURJR.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Ended",
+      "trailer": "FeISX5E1uJc",
+      "trailer_keys": [
+        "FeISX5E1uJc"
+      ],
+      "trailer_languages": {
+        "FeISX5E1uJc": "en"
+      },
+      "trailer_language": "en",
+      "rating": 6.696,
+      "votes": 23,
+      "popularity": 310.2239,
+      "first_release": "2026-09-18",
+      "genres": [
+        "драма"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/275102"
+    },
+    {
+      "key": "movie:1228834",
+      "id": 1228834,
+      "media_type": "movie",
+      "title": "Операция «Возмездие»",
+      "overview": "Разочарованные окончанием войны в Афганистане, группа опальных, потрёпанных войной бывших оперативников ЦРУ направляется в Тегеран, чтобы сорвать большой куш, который навсегда изменит их жизнь.",
+      "release_date": "2026-09-10",
+      "image": "https://image.tmdb.org/t/p/w1280/yT8EkAvEkJDFeAxK7s7HlIPELRT.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/1LPzBhF0J0ObYxvMRxyo223UMXO.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "l5Luvr9TRRc",
+      "trailer_keys": [
+        "NYC0v8xqQdM",
+        "l5Luvr9TRRc"
+      ],
+      "trailer_languages": {
+        "NYC0v8xqQdM": "en",
+        "l5Luvr9TRRc": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.1,
+      "votes": 46,
+      "popularity": 319.3784,
+      "first_release": "2026-09-10",
+      "genres": [
+        "боевик",
+        "триллер"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1228834"
+    },
+    {
+      "key": "tv:247718",
+      "id": 247718,
+      "media_type": "tv",
+      "title": "Гангстерленд",
+      "overview": "Харриганы и Стивенсоны, две враждующие лондонские криминальные семьи, вступают в схватку \"убей или будь убитым\", которая грозит обрушением империй и разрушением жизней. Под перекрёстный огонь попадает Гарри Да Соуза, уличный \"мастер на все руки\", столь же опасный, сколь и красивый, который слишком хорошо знает, кому можно доверять, когда сталкиваются противоположные силы. Когда королевство восстанет против королевства, границы будут пересекаться, и единственное спасение — это гарантия того, что ваша жизнь будет на кону: семья превыше всего.",
+      "release_date": "2026-10-09",
+      "image": "https://image.tmdb.org/t/p/w1280/h0OC7ouop8YLwbAVfS3UUE2Lw4T.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/vuKwmIVw6lClfzOtGzakhl47mjA.jpg",
+      "season": 2,
+      "episode": 4,
+      "status": "Returning Series",
+      "trailer": "qKGgw7Ob5f4",
+      "trailer_keys": [
+        "qKGgw7Ob5f4"
+      ],
+      "trailer_languages": {
+        "qKGgw7Ob5f4": "en"
+      },
+      "trailer_language": "en",
+      "rating": 8.472,
+      "votes": 966,
+      "popularity": 295.1538,
+      "first_release": "2025-03-30",
+      "genres": [
+        "криминал",
+        "драма"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/247718"
+    },
+    {
+      "key": "movie:1377237",
+      "id": 1377237,
+      "media_type": "movie",
+      "title": "Курьер",
+      "overview": "У Хэнка Мэлоуна, элитного курьера, есть 3 часа, чтобы доставить печень и спасти 7-летнюю девочку, которой требуется срочная пересадка. Простая задача превращается в смертельное испытание, когда глава известной преступной группировки решает любой ценой завладеть органом.",
+      "release_date": "2026-09-07",
+      "image": "https://image.tmdb.org/t/p/w1280/2c9zNZJL0ZdagD6JbmU3hH4hovs.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/vnrrZCe2sDMdEY7xyGSZMpSsZyG.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "B6Z9MM1LhEA",
+      "trailer_keys": [
+        "m8JUmBgHejI",
+        "B6Z9MM1LhEA"
+      ],
+      "trailer_languages": {
+        "m8JUmBgHejI": "en",
+        "B6Z9MM1LhEA": "en"
+      },
+      "trailer_language": "en",
+      "rating": 8.328,
+      "votes": 378,
+      "popularity": 312.3985,
+      "first_release": "2026-09-07",
+      "genres": [
+        "боевик",
+        "комедия"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1377237"
+    },
+    {
+      "key": "tv:4614",
+      "id": 4614,
+      "media_type": "tv",
+      "title": "Морская полиция: Спецотдел",
+      "overview": "Сериал о приключениях команды профессиональных спецагентов. Их миссия — расследовать преступления, которые каким-то образом связаны со служащими морской пехоты. Группу следователей возглавляет специальный агент Гиббс. Его команда — это экс-детектив Энтони ДиНоззо, выхоженка из Моссад — Зива Давид, специалисты в области судмедэкспертизы — Эбби Шуто и Дональд Маллард, а также профессионал в области IT — Тимоти МакГи.",
+      "release_date": "2026-10-06",
+      "image": "https://image.tmdb.org/t/p/w1280/c1aBrG5s5xFa6Tbnihu2Hhj4t2q.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/4ltafNQAjz9jhZ4xPN3eLGPD5P8.jpg",
+      "season": 24,
+      "episode": 1,
+      "status": "Returning Series",
+      "trailer": null,
+      "trailer_keys": [],
+      "trailer_languages": {},
+      "trailer_language": null,
+      "rating": 7.613,
+      "votes": 2580,
+      "popularity": 294.2884,
+      "first_release": "2003-09-23",
+      "genres": [
+        "криминал",
+        "драма",
+        "Боевик и Приключения"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/4614"
+    },
+    {
+      "key": "movie:1204680",
+      "id": 1204680,
+      "media_type": "movie",
+      "title": "Хитрый койот",
+      "overview": "Легендарный Хитрый Койот оказывается среди людей. Устав быть вечной жертвой неудачных изобретений корпорации «АКМЕ», он нанимает адвоката и подает на компанию в суд. Теперь вместо погони за Дорожным Бегуном его ждет судебная битва с безжалостным корпоративным юристом Бадди Крейном, для которого прибыль важнее справедливости.",
+      "release_date": "2026-08-17",
+      "image": "https://image.tmdb.org/t/p/w1280/viZqGq9TNvQ5uXSD4ahg2RpRONT.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/gwCwmTk2EfDccd4RtIPsWEwzd1r.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "kMsiD1Nky5I",
+      "trailer_keys": [
+        "H-43VeYGiPM",
+        "kMsiD1Nky5I"
+      ],
+      "trailer_languages": {
+        "H-43VeYGiPM": "en",
+        "kMsiD1Nky5I": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.53,
+      "votes": 669,
+      "popularity": 295.1815,
+      "first_release": "2026-08-17",
+      "genres": [
+        "комедия",
+        "приключения",
+        "семейный"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1204680"
+    },
+    {
+      "key": "tv:95350",
+      "id": 95350,
+      "media_type": "tv",
+      "title": "Фонари",
+      "overview": "Начинающий Джон Стюарт и опытный страж Хэл Джордан, межгалактические полицейские из Корпуса Зелёных Фонарей, оказываются втянуты в расследование убийства в американской глубинке.",
+      "release_date": null,
+      "image": "https://image.tmdb.org/t/p/w1280/wJjnJbVUwPz0GADAgpFt9nWtzUu.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/15AkiRpjuBLyS385ycDM5vvB7oI.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Returning Series",
+      "trailer": "7UIBOsuUwc4",
+      "trailer_keys": [
+        "7UIBOsuUwc4"
+      ],
+      "trailer_languages": {
+        "7UIBOsuUwc4": "en"
+      },
+      "trailer_language": "en",
+      "rating": 8.4,
+      "votes": 533,
+      "popularity": 266.6805,
+      "first_release": "2026-08-16",
+      "genres": [
+        "драма",
+        "детектив",
+        "НФ и Фэнтези"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/95350"
+    },
+    {
+      "key": "movie:1101383",
+      "id": 1101383,
+      "media_type": "movie",
+      "title": "На краю Оук-стрит",
+      "overview": "Июль 1982-го года. Семейство Платт живёт в пригороде. Однажды в их тихом районе начинают происходить странные явления: по ночам что-то гремит и вспыхивает, во дворе у соседки вырастает причудливое растение, во дворе у соседа — огромная куча экскрементов. Потом случается блэкаут, и, проснувшись поутру, Платты обнаруживают, что их квартал каким-то образом перенёсся на сотни миллионов лет назад, и по улицам теперь бродят голодные динозавры.",
+      "release_date": "2026-08-12",
+      "image": "https://image.tmdb.org/t/p/w1280/b9q9VmbXDvJmTziRqkwdEmFdwhr.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/5jhArZFrQIqEuh4ZNuBaQsnEy7s.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "u4tgctWuHc0",
+      "trailer_keys": [
+        "s9GKXTbChjE",
+        "3oB9AxspVow",
+        "u4tgctWuHc0"
+      ],
+      "trailer_languages": {
+        "s9GKXTbChjE": "en",
+        "3oB9AxspVow": "en",
+        "u4tgctWuHc0": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.061,
+      "votes": 1857,
+      "popularity": 240.3831,
+      "first_release": "2026-08-12",
+      "genres": [
+        "фантастика",
+        "детектив",
+        "триллер"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1101383"
+    },
+    {
+      "key": "tv:1413",
+      "id": 1413,
+      "media_type": "tv",
+      "title": "Американская история ужасов",
+      "overview": "В разных уголках Америки разворачиваются мрачные и пугающие истории, где обычная жизнь сталкивается с необъяснимыми явлениями, тайнами прошлого и сверхъестественными силами. Каждый сезон переносит зрителей в новое место и новую эпоху — от проклятого дома и закрытой психиатрической лечебницы до таинственного отеля, шабаша ведьм и изолированной общины. Героям предстоит столкнуться со своими страхами, чужими секретами и ужасами, которые постепенно выходят за пределы человеческого понимания.",
+      "release_date": "2026-10-08",
+      "image": "https://image.tmdb.org/t/p/w1280/5G4Bnc4Q0YUK1bwLEUYmIsmm2Ib.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/gj2dFFgEHdhxqSBpD2oPyo4YmPD.jpg",
+      "season": 13,
+      "episode": 7,
+      "status": "Returning Series",
+      "trailer": null,
+      "trailer_keys": [],
+      "trailer_languages": {},
+      "trailer_language": null,
+      "rating": 8.1,
+      "votes": 6212,
+      "popularity": 254.8598,
+      "first_release": "2011-10-05",
+      "genres": [
+        "драма",
+        "детектив",
+        "НФ и Фэнтези"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/1413"
+    },
+    {
+      "key": "movie:1248832",
+      "id": 1248832,
+      "media_type": "movie",
+      "title": "Диггер",
+      "overview": "Самый могущественный человек в мире отправляется на миссию, чтобы спасти человечество от катастрофы, которую он сам и устроил.",
+      "release_date": "2026-09-28",
+      "image": "https://image.tmdb.org/t/p/w1280/b7t3r39Oll5qPxBKzLZ8eHMBD7l.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/biovC0fjDUUSGJiR4joGaGERUS3.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "job8V254NAE",
+      "trailer_keys": [
+        "Pd4Olzi0HEc",
+        "qORTe1wW3Wg",
+        "job8V254NAE"
+      ],
+      "trailer_languages": {
+        "Pd4Olzi0HEc": "en",
+        "qORTe1wW3Wg": "en",
+        "job8V254NAE": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.5,
+      "votes": 149,
+      "popularity": 231.8582,
+      "first_release": "2026-09-28",
+      "genres": [
+        "комедия",
+        "драма"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1248832"
+    },
+    {
+      "key": "tv:65733",
+      "id": 65733,
+      "media_type": "tv",
+      "title": "Дораэмон",
+      "overview": "Сериал повествует о коте-роботе по имени Дораэмон, который переместился во времени из XXII века, чтобы помочь школьнику по имени Нобита Ноби.",
+      "release_date": "2026-10-10",
+      "image": "https://image.tmdb.org/t/p/w1280/c2oiRa7V3bQzof4wVGzLXtWJ5QU.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/9YqdMXlPTQGLIG67vqZdsPdPC4T.jpg",
+      "season": 1,
+      "episode": 937,
+      "status": "Returning Series",
+      "trailer": null,
+      "trailer_keys": [],
+      "trailer_languages": {},
+      "trailer_language": null,
+      "rating": 8.098,
+      "votes": 249,
+      "popularity": 251.1426,
+      "first_release": "2005-04-22",
+      "genres": [
+        "Боевик и Приключения",
+        "мультфильм",
+        "комедия",
+        "НФ и Фэнтези",
+        "Детский",
+        "семейный"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/65733"
+    },
+    {
+      "key": "movie:1294189",
+      "id": 1294189,
+      "media_type": "movie",
+      "title": "Мангуст",
+      "overview": "Обвинённый в преступлении, которого он не совершал, герой войны Райан «Клык» Флэнаган пускается в бега через полстраны. Полиция идёт по его следу, бывшие сослуживцы помогают скрыться, а миллионы зрителей следят за погоней в прямом эфире и болеют за его спасение.",
+      "release_date": "2026-10-29",
+      "image": "https://image.tmdb.org/t/p/w1280/iRIhPqqoUHiFBxn8oYf3gCQnaKk.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/awpG3pnvPuOcfce76mSpS69NQ3E.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "aHrMFtt40_Q",
+      "trailer_keys": [
+        "aHrMFtt40_Q"
+      ],
+      "trailer_languages": {
+        "aHrMFtt40_Q": "en"
+      },
+      "trailer_language": "en",
+      "rating": 0.0,
+      "votes": 0,
+      "popularity": 212.0434,
+      "first_release": "2026-10-29",
+      "genres": [
+        "боевик",
+        "триллер"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1294189"
+    },
+    {
+      "key": "tv:97546",
+      "id": 97546,
+      "media_type": "tv",
+      "title": "Тед Лассо",
+      "overview": "Тренер по американскому футболу Тед Лассо неожиданно переезжает в Англию, чтобы возглавить профессиональный футбольный клуб, хотя почти ничего не знает о европейском футболе. Несмотря на скептицизм игроков, болельщиков и руководства, он покоряет окружающих своим оптимизмом, добротой и необычным подходом к работе. Постепенно Тед помогает команде стать сильнее не только на поле, но и за его пределами, пока каждый из её участников проходит собственный путь, сталкиваясь с трудностями, победами и важными жизненными переменами.",
+      "release_date": "2026-10-06",
+      "image": "https://image.tmdb.org/t/p/w1280/nE94ejEbzNCU48bW1oju0dqBONz.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/gO2kQUDfZWsvdDetUljaTI6t87i.jpg",
+      "season": 4,
+      "episode": 10,
+      "status": "Returning Series",
+      "trailer": "m5keZCmBdtI",
+      "trailer_keys": [
+        "3u7EIiohs6U",
+        "BwPcMIDFVKw",
+        "m5keZCmBdtI"
+      ],
+      "trailer_languages": {
+        "3u7EIiohs6U": "en",
+        "BwPcMIDFVKw": "en",
+        "m5keZCmBdtI": "ru"
+      },
+      "trailer_language": "ru",
+      "rating": 8.365,
+      "votes": 2711,
+      "popularity": 243.5617,
+      "first_release": "2020-08-14",
+      "genres": [
+        "драма",
+        "комедия"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/97546"
+    },
+    {
+      "key": "movie:1032863",
+      "id": 1032863,
+      "media_type": "movie",
+      "title": "Гипотеза любви",
+      "overview": "Аспирантка Олив Смит полностью поглощена учёбой и карьерой в академической среде. Чтобы доказать лучшей подруге, что она давно отреклась от воспоминаний о бывшем парне, Олив спонтанно целует 1-го встречного в коридоре. Им оказывается доктор Адам Карлсен - суровый профессор. Адам решает подыграть и предлагает Олив вступить в фиктивные отношения якобы ради научного эксперимента.",
+      "release_date": "2026-09-23",
+      "image": "https://image.tmdb.org/t/p/w1280/o7Oy9Gbx1CCyaweL8xUhtMW4Puq.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/kz4Rtf6eSc3dEl29Vk1G3QKoND6.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "xwdamnfS6IM",
+      "trailer_keys": [
+        "xwdamnfS6IM"
+      ],
+      "trailer_languages": {
+        "xwdamnfS6IM": "en"
+      },
+      "trailer_language": "en",
+      "rating": 8.065,
+      "votes": 480,
+      "popularity": 197.0906,
+      "first_release": "2026-09-23",
+      "genres": [
+        "мелодрама",
+        "комедия"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1032863"
+    },
+    {
+      "key": "tv:2661",
+      "id": 2661,
+      "media_type": "tv",
+      "title": "Камен Райдер",
+      "overview": "Зловещая организация «Шокер», которая кроме Японии, расположила свои подразделения по всему миру, стремится завоевать мир, действуя террористическими методами. Для этого она создаёт ужасных монстров и киборгов. Однако один из киборгов — бывший студент Хонго Такеши, сбегает прежде чем ему были промыты мозги, и приняв имя Камен Райдер (Наездник в маске), начинает сражаться с «Шокером». Когда позже Хонго Такеши вынужден уехать из Японии, он оставляет вместо себя Хайято Ичимонджи, который становится Камен Райдером 2. «Шокер» и Райдеры ведут войну не на жизнь, а на смерть.",
+      "release_date": "2026-10-11",
+      "image": "https://image.tmdb.org/t/p/w1280/usLRh1bcbL0Q9X8zf6rL4OV1qrA.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/fIJNVBa6MJStPiOvhLV69nAdu0e.jpg",
+      "season": 37,
+      "episode": 6,
+      "status": "Returning Series",
+      "trailer": "FY4TBfTLPEM",
+      "trailer_keys": [
+        "FY4TBfTLPEM"
+      ],
+      "trailer_languages": {
+        "FY4TBfTLPEM": "en"
+      },
+      "trailer_language": "en",
+      "rating": 6.4,
+      "votes": 108,
+      "popularity": 218.0744,
+      "first_release": "1971-04-03",
+      "genres": [
+        "Боевик и Приключения",
+        "НФ и Фэнтези",
+        "драма"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/2661"
+    },
+    {
+      "key": "movie:977942",
+      "id": 977942,
+      "media_type": "movie",
+      "title": "Восставший",
+      "overview": "1381 год, Англия охвачена беспорядками. Во главе восставших оказывается обычный крестьянин Уот Тайлер, чья семья погибла во время эпидемии чумы. Он никогда не мечтал стать лидером, но именно ему предстоит изменить ход истории.",
+      "release_date": "2026-09-10",
+      "image": "https://image.tmdb.org/t/p/w1280/y0reRTsewsPh0ePtgvDeLIsb5Wk.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/uSDqNYQXOGTbWdMMmzMJkXROJDh.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "lyhCxZN4Ro8",
+      "trailer_keys": [
+        "ZVkrhHebz1Q",
+        "lyhCxZN4Ro8"
+      ],
+      "trailer_languages": {
+        "ZVkrhHebz1Q": "en",
+        "lyhCxZN4Ro8": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.9,
+      "votes": 203,
+      "popularity": 177.7465,
+      "first_release": "2026-09-10",
+      "genres": [
+        "история",
+        "драма",
+        "боевик"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/977942"
+    },
+    {
+      "key": "tv:95480",
+      "id": 95480,
+      "media_type": "tv",
+      "title": "Медленные лошади",
+      "overview": "Ироничный шпионский сериал о команде незадачливых агентов британской контрразведки и их несносном шефе Джексоне Лэме. Распутывая обычные для мира шпионажа козни и подтасовки, изгои МИ5 защищают Англию от врагов.",
+      "release_date": "2026-10-07",
+      "image": "https://image.tmdb.org/t/p/w1280/gPQppUnLx9vqPDLz3WwZ2HJsNbt.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/fcXBCozEg3rCc9h8RPypLvnPSzU.jpg",
+      "season": 6,
+      "episode": 4,
+      "status": "Returning Series",
+      "trailer": "O9ZJChzPn0U",
+      "trailer_keys": [
+        "O9ZJChzPn0U"
+      ],
+      "trailer_languages": {
+        "O9ZJChzPn0U": "en"
+      },
+      "trailer_language": "en",
+      "rating": 8.038,
+      "votes": 1018,
+      "popularity": 215.621,
+      "first_release": "2022-04-01",
+      "genres": [
+        "криминал",
+        "драма",
+        "детектив"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/95480"
+    },
+    {
+      "key": "movie:1375646",
+      "id": 1375646,
+      "media_type": "movie",
+      "title": "Колония",
+      "overview": "Во время конференции по биотехнологиям опасный вирус вырывается на свободу, и люди оказываются заблокированы в небоскрёбе — огромном выставочном центре, где начинается настоящий кошмар.",
+      "release_date": "2026-05-21",
+      "image": "https://image.tmdb.org/t/p/w1280/hpBGCnzOvdtQoMyE48gvwp2y5yx.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/uQIlX1zpvM7FAKRbeyLDJN3zxrX.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "LW6dpj1uCK8",
+      "trailer_keys": [
+        "LW6dpj1uCK8"
+      ],
+      "trailer_languages": {
+        "LW6dpj1uCK8": "en"
+      },
+      "trailer_language": "en",
+      "rating": 8.113,
+      "votes": 1052,
+      "popularity": 175.5326,
+      "first_release": "2026-05-21",
+      "genres": [
+        "ужасы",
+        "боевик",
+        "фантастика"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1375646"
+    },
+    {
+      "key": "tv:3034",
+      "id": 3034,
+      "media_type": "tv",
+      "title": "Место преступления",
+      "overview": "Самый известный полицейский сериал Германии, первая серия вышла в 1970 году. В 1981 году в сериале появляется комиссар криминальной полиции по имени Хорст Шимански, эта роль по настоящему прославила актёра Гётца Георге, а серии с его участием считаются самыми лучшими из всего сериала их условно именуют Schimanski-Tatort. Он расследует разного рода преступления и порой даже весьма запутаные, однако ему все равно удается докопаться до истины и вывести преступников \"на чистую воду\".",
+      "release_date": "2026-10-11",
+      "image": "https://image.tmdb.org/t/p/w1280/A4iwF1mpDq8HScQ3MZMhMJuT93k.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/j73WOp6ArCy8vK4vreIdSunoXAr.jpg",
+      "season": 57,
+      "episode": 20,
+      "status": "Returning Series",
+      "trailer": null,
+      "trailer_keys": [],
+      "trailer_languages": {},
+      "trailer_language": null,
+      "rating": 6.2,
+      "votes": 127,
+      "popularity": 187.106,
+      "first_release": "1970-11-29",
+      "genres": [
+        "драма",
+        "криминал"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/3034"
+    },
+    {
+      "key": "movie:1084244",
+      "id": 1084244,
+      "media_type": "movie",
+      "title": "История игрушек 5",
+      "overview": "Вуди, Джесси и Базз Лайтер сталкиваются с новой угрозой — планшетом «ЛилиПад», который стал любимой игрушкой 8-летней Бонни и занимает всё больше её времени.",
+      "release_date": "2026-06-17",
+      "image": "https://image.tmdb.org/t/p/w1280/qjTqY5coNiz6sVtPng40IzltsoN.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/84igQj0DU3TgPrtQ7bHXHCio1sV.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "QftAW9TTmuQ",
+      "trailer_keys": [
+        "c51ND9Hdbw0",
+        "QftAW9TTmuQ"
+      ],
+      "trailer_languages": {
+        "c51ND9Hdbw0": "en",
+        "QftAW9TTmuQ": "en"
+      },
+      "trailer_language": "en",
+      "rating": 8.31,
+      "votes": 2486,
+      "popularity": 175.3861,
+      "first_release": "2026-06-17",
+      "genres": [
+        "мультфильм",
+        "семейный",
+        "комедия",
+        "приключения"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1084244"
+    },
+    {
+      "key": "tv:298505",
+      "id": 298505,
+      "media_type": "tv",
+      "title": "Академия ведьм",
+      "overview": "В самом сердце мистического Нового Орлеана следите за историей 3-ёх юных ведьм и их сверстников-колдунов, обучающихся в элитной магической школе-интернате. Здесь сила — это валюта, тайны смертельно опасны, а влечение друг к другу становится уязвимостью. Оказавшись между жерновами древних сверхъестественных войн и запретной любовью, ведьмы должны решить, как далеко они готовы зайти ради защиты своего города — и самих себя.",
+      "release_date": "2026-10-08",
+      "image": "https://image.tmdb.org/t/p/w1280/mGFtH5pUXDd4hSXUfl8HnHlRWJV.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/f4R4YGeMQrXEu6jm3oAbSPeGC3M.jpg",
+      "season": 1,
+      "episode": 5,
+      "status": "Returning Series",
+      "trailer": "zz9nAM9qa3c",
+      "trailer_keys": [
+        "zz9nAM9qa3c"
+      ],
+      "trailer_languages": {
+        "zz9nAM9qa3c": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.1,
+      "votes": 19,
+      "popularity": 140.1023,
+      "first_release": "2026-10-01",
+      "genres": [
+        "детектив",
+        "драма",
+        "НФ и Фэнтези"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/298505"
+    },
+    {
+      "key": "movie:1288445",
+      "id": 1288445,
+      "media_type": "movie",
+      "title": "Мятеж",
+      "overview": "Коул Рид, некогда служивший в спецназе и полиции, ныне трудится в частной охране. Внезапно на его глазах убивают его босса-миллиардера. Рида подставляют, поэтому он становится главным подозреваемым. Ему приходится бежать от закона. Он решает самостоятельно выйти на след убийцы и в ходе расследования раскрывает грандиозный заговор.",
+      "release_date": "2026-08-19",
+      "image": "https://image.tmdb.org/t/p/w1280/e2QAGrEmbpmZpMymDRkDisJkvg9.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/opOHbNmV0VPOugSBxrRQKmPgfZL.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "2Iqvbe98Gb4",
+      "trailer_keys": [
+        "FKSdXH89jbo",
+        "MPyXlWTZ32E",
+        "2Iqvbe98Gb4"
+      ],
+      "trailer_languages": {
+        "FKSdXH89jbo": "en",
+        "MPyXlWTZ32E": "en",
+        "2Iqvbe98Gb4": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.443,
+      "votes": 796,
+      "popularity": 173.5353,
+      "first_release": "2026-08-19",
+      "genres": [
+        "боевик",
+        "триллер"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1288445"
+    },
+    {
+      "key": "tv:258165",
+      "id": 258165,
+      "media_type": "tv",
+      "title": "К востоку от Эдема",
+      "overview": "В начале XX века независимая и непримиримая женщина вбивает клин между двумя братьями, запуская эпопею, которая разворачивается на протяжении двух поколений.",
+      "release_date": null,
+      "image": "https://image.tmdb.org/t/p/w1280/70RZX7kNjA0Qjn6HigB1oMvFJ8R.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/ap7d2nqdkcls8Kjw7TNL5BTfXkJ.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Ended",
+      "trailer": "M9NWvGZViCg",
+      "trailer_keys": [
+        "M9NWvGZViCg"
+      ],
+      "trailer_languages": {
+        "M9NWvGZViCg": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.9,
+      "votes": 30,
+      "popularity": 121.2545,
+      "first_release": "2026-10-01",
+      "genres": [
+        "драма"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/258165"
+    },
+    {
+      "key": "movie:1339713",
+      "id": 1339713,
+      "media_type": "movie",
+      "title": "Обсессия",
+      "overview": "Безнадёжный романтик Беар давно и безответно влюблён в красавицу Ники. Однажды в магазине эзотерики он находит странную безделушку — волшебную палочку. Если её сломать, исполнится твоё заветное желание. Беар загадывает, чтобы Ники любила его больше всех на свете. И девушка правда в него влюбляется. Однако его счастью быстро приходит конец. Парень замечает, что Ники буквально им одержима, а её знаки внимания становятся всё более пугающими. Оказывается, желание парня исполнилось, но совсем не так, как он мечтал.",
+      "release_date": "2026-05-13",
+      "image": "https://image.tmdb.org/t/p/w1280/5lTZyuBTNOfawsfPT8Q0cIg6qAF.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/cdRHtfzxbpjxD5yOyFrRummb0yO.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "gMC8kkwbIQQ",
+      "trailer_keys": [
+        "gMC8kkwbIQQ"
+      ],
+      "trailer_languages": {
+        "gMC8kkwbIQQ": "en"
+      },
+      "trailer_language": "en",
+      "rating": 8.185,
+      "votes": 5935,
+      "popularity": 167.7462,
+      "first_release": "2026-05-13",
+      "genres": [
+        "ужасы",
+        "триллер"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1339713"
+    },
+    {
+      "key": "tv:284558",
+      "id": 284558,
+      "media_type": "tv",
+      "title": "Убить Джеки",
+      "overview": "Бывшая торговка кокаином Джеки Прайс живёт роскошно, зарабатывая на продаже произведений искусства и пользуясь налоговыми лазейками. Спустя 20 лет в тени её спокойной жизни приходит конец: на её убийство нанимают «7 Демонов» — элитных наёмных убийц.",
+      "release_date": null,
+      "image": "https://image.tmdb.org/t/p/w1280/twc2YYBXTjdv52TShVumB1voT3Q.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/bEWwDKX2djgGALwAprJwb2ElqqL.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Returning Series",
+      "trailer": "dKgTyq2-4w0",
+      "trailer_keys": [
+        "dKgTyq2-4w0"
+      ],
+      "trailer_languages": {
+        "dKgTyq2-4w0": "en"
+      },
+      "trailer_language": "en",
+      "rating": 6.933,
+      "votes": 15,
+      "popularity": 98.4515,
+      "first_release": "2026-10-02",
+      "genres": [
+        "драма",
+        "криминал"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/284558"
+    },
+    {
+      "key": "movie:1232569",
+      "id": 1232569,
+      "media_type": "movie",
+      "title": "Пиноккио: Раскрепощённый",
+      "overview": "Пытаясь вывести внука Джеймса из тяжёлого состояния, Джеппетто дарит ему своё новое творение — деревянную куклу по имени Пиноккио, которая оказывается живой. Сначала необычный подарок становится для мальчика настоящим другом, но вскоре за его привязанностью начинает проступать нечто всё более тревожное.",
+      "release_date": "2026-07-22",
+      "image": "https://image.tmdb.org/t/p/w1280/vgZDb7kmaxP24cFbt1KJdMLlHFZ.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/Ai7VesRDerUCvER1tnsPnfR3iHg.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "Y4lZewE6JMI",
+      "trailer_keys": [
+        "Xt3zQ8v2pzk",
+        "Y4lZewE6JMI"
+      ],
+      "trailer_languages": {
+        "Xt3zQ8v2pzk": "en",
+        "Y4lZewE6JMI": "en"
+      },
+      "trailer_language": "en",
+      "rating": 6.508,
+      "votes": 125,
+      "popularity": 163.6827,
+      "first_release": "2026-07-22",
+      "genres": [
+        "ужасы",
+        "фэнтези",
+        "детектив"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1232569"
+    },
+    {
+      "key": "tv:299939",
+      "id": 299939,
+      "media_type": "tv",
+      "title": "Монстр: История Лиззи Борден",
+      "overview": "Лиззи Борден — заложница своей жестокой викторианской семьи — убивает родителей топором. Это кровавое преступление потрясает всю страну.",
+      "release_date": null,
+      "image": "https://image.tmdb.org/t/p/w1280/gaew60NXUxok3Vmls7gkAT7lYW0.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/tjXy11MbpaK2QypweaBnSn6ir04.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Ended",
+      "trailer": "gYTzF1vna40",
+      "trailer_keys": [
+        "gYTzF1vna40"
+      ],
+      "trailer_languages": {
+        "gYTzF1vna40": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.089,
+      "votes": 157,
+      "popularity": 91.064,
+      "first_release": "2026-09-17",
+      "genres": [
+        "драма",
+        "криминал"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/299939"
+    },
+    {
+      "key": "movie:1283515",
+      "id": 1283515,
+      "media_type": "movie",
+      "title": "Тайный дневник Верити",
+      "overview": "Нуждающаяся в работе писательница Лоуэн Эшли получает предложение от Джереми Кроуфорда — ей нужно дописать романы его жены. Жена Джереми — автор популярной серии романов Верити Кроуфорд, а из-за загадочного несчастного случая она не может закончить произведения. Работа принимает неожиданный оборот, когда Лоуэн находит тревожные личные записки Верити. Сталкиваясь с семейными тайнами, Лоуэн пытается отделить вымысел от реальности, в то время как границы в её отношениях с Джереми размываются.",
+      "release_date": "2026-09-30",
+      "image": "https://image.tmdb.org/t/p/w1280/3BoHXmGAfC2qO4wnCpMYV0BzpHD.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/tnpEkM7NmsHStbBJxTd6gqPjkv8.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "xdPMKhjMSFs",
+      "trailer_keys": [
+        "xdPMKhjMSFs"
+      ],
+      "trailer_languages": {
+        "xdPMKhjMSFs": "en"
+      },
+      "trailer_language": "en",
+      "rating": 6.676,
+      "votes": 88,
+      "popularity": 148.3582,
+      "first_release": "2026-09-30",
+      "genres": [
+        "детектив",
+        "триллер"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1283515"
+    },
+    {
+      "key": "tv:273240",
+      "id": 273240,
+      "media_type": "tv",
+      "title": "Вне кампуса",
+      "overview": "Отличница и поп-певица Ханна влюблена в местную знаменитость - звезду футбола Джастина Кола, но тот не замечает девушку. Чтобы обратить на себя внимание Джастина и заставить ревновать, она заключает договор с капитаном университетской хоккейной команды. Он должен сыграть роль её жениха, а Ханна поможет ему улучшить успеваемость. Однако надёжный план даёт сбой.",
+      "release_date": null,
+      "image": "https://image.tmdb.org/t/p/w1280/3ANXZWhhcqPAh0q6nRZ979TIwxC.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/etw1XngIUqHeTeIPloS9B8w9xPi.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Returning Series",
+      "trailer": "wAozjf2frxw",
+      "trailer_keys": [
+        "wAozjf2frxw"
+      ],
+      "trailer_languages": {
+        "wAozjf2frxw": "en"
+      },
+      "trailer_language": "en",
+      "rating": 8.9,
+      "votes": 876,
+      "popularity": 79.3543,
+      "first_release": "2026-05-13",
+      "genres": [
+        "драма"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/273240"
+    },
+    {
+      "key": "movie:1263337",
+      "id": 1263337,
+      "media_type": "movie",
+      "title": "Сердце зверя",
+      "overview": "После авиакатастрофы офицер спецназа Джеймс Белмонт и его боевая собака Один оказываются в глухой и суровой местности Аляски. Оставшись без связи и помощи, они вынуждены преодолевать заснеженные просторы, голод, холод и опасность диких животных. Пытаясь найти путь к цивилизации, Джеймс и Один проходят через тяжёлые испытания, полагаясь друг на друга и на свою подготовку. Их путешествие постепенно превращается в борьбу не только за выживание, но и за возвращение домой.",
+      "release_date": "2026-09-19",
+      "image": "https://image.tmdb.org/t/p/w1280/bicMU6xVD5deVyKP2azpyx7xkmH.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/fOTKUSfg9C5DngN151Sfre9j6v7.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "UkMuGKqAux4",
+      "trailer_keys": [
+        "JFQcDFhNh4o",
+        "bfCgu83suHs",
+        "UkMuGKqAux4"
+      ],
+      "trailer_languages": {
+        "JFQcDFhNh4o": "en",
+        "bfCgu83suHs": "en",
+        "UkMuGKqAux4": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.532,
+      "votes": 221,
+      "popularity": 138.8081,
+      "first_release": "2026-09-19",
+      "genres": [
+        "приключения",
+        "триллер"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1263337"
+    },
+    {
+      "key": "tv:273207",
+      "id": 273207,
+      "media_type": "tv",
+      "title": "Нили",
+      "overview": "Фрэнсис Нили — бывший сержант специального подразделения военной полиции, верная напарница и, пожалуй, единственный человек, которого Джек Ричер по-настоящему уважает. Она узнает о загадочной смерти близкого друга Томми, чью гибель полиция поспешила объяснить несчастным случаем или самоубийством. Не доверяя официальной версии, Нили начинает собственное расследование. Выясняется, что незадолго до смерти Томми посещал собрания таинственной коммуны, возглавляемой одиозным лидером. Постепенно поиск правды превращается в опасное погружение в мир, где религиозная оболочка скрывает нечто гораздо более мрачное. Нили вынуждена работать с нерадивым детективом чикагской полиции, чтобы распутать это дело. В ходе расследования ей приходится применять навыки, которым её когда-то научил Джек Ричер. Распутывая клубок, ведущий в тёмные уголки человеческой природы, героиня одновременно сталкивается с собственным прошлым, которое так долго пыталась скрыть от себя.",
+      "release_date": null,
+      "image": "https://image.tmdb.org/t/p/w1280/uYOYLFQ4q7asuhdiKXCqGaeAQUH.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/xliq5WeRKoNC2LxSYKNe0Dc0eDY.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Returning Series",
+      "trailer": "BOzNaa_o9_g",
+      "trailer_keys": [
+        "e4R4guZS0WU",
+        "BOzNaa_o9_g"
+      ],
+      "trailer_languages": {
+        "e4R4guZS0WU": "en",
+        "BOzNaa_o9_g": "en"
+      },
+      "trailer_language": "en",
+      "rating": 8.15,
+      "votes": 173,
+      "popularity": 73.3574,
+      "first_release": "2026-09-16",
+      "genres": [
+        "драма",
+        "детектив",
+        "криминал"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/273207"
+    },
+    {
+      "key": "movie:1108427",
+      "id": 1108427,
+      "media_type": "movie",
+      "title": "Моана",
+      "overview": "Моана откликается на зов океана. Впервые в жизни она отправляется за риф своего острова Мотунуи вместе с прославленным полубогом Мауи. Их ждёт незабываемое путешествие, которое должно вернуть процветание её народу.",
+      "release_date": "2026-07-08",
+      "image": "https://image.tmdb.org/t/p/w1280/c6BPbkO5Npt1OdwttAxCFo06wtH.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/s7o0gbvgpjwb8S0Uc5QaEdwJntb.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "EEz5xbzYPKI",
+      "trailer_keys": [
+        "n7f6hlKsxxo",
+        "EEz5xbzYPKI"
+      ],
+      "trailer_languages": {
+        "n7f6hlKsxxo": "en",
+        "EEz5xbzYPKI": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.4,
+      "votes": 848,
+      "popularity": 122.2912,
+      "first_release": "2026-07-08",
+      "genres": [
+        "семейный",
+        "фэнтези",
+        "комедия",
+        "приключения"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1108427"
+    },
+    {
+      "key": "tv:298852",
+      "id": 298852,
+      "media_type": "tv",
+      "title": "Война",
+      "overview": "Элитный мир лондонской юриспруденции. Две конкурирующие фирмы - \"Cathcarts\" и \"Taylor&Byrne\" участвуют в громких судебных разбирательствах.",
+      "release_date": "2026-10-09",
+      "image": "https://image.tmdb.org/t/p/w1280/nLCHzeiUEupR8LDarMgCcPUuF77.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/9KWRRrN92s44zX5GBfWYeaXzxgV.jpg",
+      "season": 1,
+      "episode": 2,
+      "status": "Returning Series",
+      "trailer": "3pJGKhUxuNM",
+      "trailer_keys": [
+        "ZybkHGaoPvQ",
+        "3pJGKhUxuNM"
+      ],
+      "trailer_languages": {
+        "ZybkHGaoPvQ": "en",
+        "3pJGKhUxuNM": "en"
+      },
+      "trailer_language": "en",
+      "rating": 8.8,
+      "votes": 10,
+      "popularity": 65.2935,
+      "first_release": "2026-10-02",
+      "genres": [
+        "драма"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/298852"
+    },
+    {
+      "key": "movie:1607127",
+      "id": 1607127,
+      "media_type": "movie",
+      "title": "Один последний выстрел",
+      "overview": "Боец Navy SEALs Джейк Харрис должен помешать команде наёмников, возглавляемой его утратившим веру в страну бывшим товарищем, вывести из строя систему противоракетной обороны США.",
+      "release_date": "2026-09-22",
+      "image": "https://image.tmdb.org/t/p/w1280/8giIQcHpxgsPVP6c7aQtHl3txuh.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/pvZ1RcajNBWFlCj0pWHrRqyMJU8.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "8PAy3i9uU0A",
+      "trailer_keys": [
+        "8PAy3i9uU0A"
+      ],
+      "trailer_languages": {
+        "8PAy3i9uU0A": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.495,
+      "votes": 93,
+      "popularity": 121.1507,
+      "first_release": "2026-09-22",
+      "genres": [
+        "боевик",
+        "триллер"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1607127"
+    },
+    {
+      "key": "tv:278573",
+      "id": 278573,
+      "media_type": "tv",
+      "title": "Жена принца XXI века",
+      "overview": "В условиях конституционной монархии XXI века, женщина, имеющая всё, но остающаяся простолюдинкой, встречает принца, который, несмотря на своё королевское происхождение, чувствует себя бессильным, — и это приводит к любви, которая бросает вызов социальному статусу.",
+      "release_date": null,
+      "image": "https://image.tmdb.org/t/p/w1280/6ekykPwvAywJRjFEnUoCFWTO9O3.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/4EDKW5nyVYmTvqU3AV6aRMrIkFU.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Ended",
+      "trailer": "MOXFNE9x1G4",
+      "trailer_keys": [
+        "LBEdHxsimPY",
+        "voTpoZr553c",
+        "Be6DVWM8vR0",
+        "MOXFNE9x1G4"
+      ],
+      "trailer_languages": {
+        "LBEdHxsimPY": "en",
+        "voTpoZr553c": "en",
+        "Be6DVWM8vR0": "en",
+        "MOXFNE9x1G4": "en"
+      },
+      "trailer_language": "en",
+      "rating": 9.023,
+      "votes": 221,
+      "popularity": 55.953,
+      "first_release": "2026-04-10",
+      "genres": [
+        "комедия",
+        "драма"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/278573"
+    },
+    {
+      "key": "movie:1492640",
+      "id": 1492640,
+      "media_type": "movie",
+      "title": "Унабомбер",
+      "overview": "Драма на основе реальных событий о том, как Тед Качинский превращается из гарвадского вундеркинда и предмета исследований в Унабомбера, разыскиваемого ФБР.",
+      "release_date": "2026-09-25",
+      "image": "https://image.tmdb.org/t/p/w1280/58D9nalUYW5L5K0guw7hcpsEJBH.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/2cG4kY2k5AWC7y2i3IMb6LsBpat.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "B3tR6qQjbgI",
+      "trailer_keys": [
+        "B3tR6qQjbgI"
+      ],
+      "trailer_languages": {
+        "B3tR6qQjbgI": "en"
+      },
+      "trailer_language": "en",
+      "rating": 6.6,
+      "votes": 345,
+      "popularity": 114.024,
+      "first_release": "2026-09-25",
+      "genres": [
+        "триллер",
+        "драма",
+        "криминал"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1492640"
+    },
+    {
+      "key": "tv:299167",
+      "id": 299167,
+      "media_type": "tv",
+      "title": "Ранчо Даттонов",
+      "overview": "Ранчо Даттонов - дом Бет и Рипа, стало символом той жизни, о которой они мечтали, за которую отчаянно боролись и ради которой едва не пожертвовали всем. Они всей душой привязались к своей земле площадью 7000 акров, превратив её в место, которое готовы защищать любой ценой. Даже в самые тяжёлые времена Бет и Рип делают всё возможное, чтобы выстоять, сохранить своё ранчо и обеспечить достойное будущее себе и своему приёмному сыну Картеру.",
+      "release_date": null,
+      "image": "https://image.tmdb.org/t/p/w1280/ewlmL0nxo2lLqBj69upgp2gjHpV.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/mmxsx98NnY56CvataUqM1ktt14O.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Returning Series",
+      "trailer": "k6cjKNZBQ1M",
+      "trailer_keys": [
+        "19I5a1tRt98",
+        "k6cjKNZBQ1M"
+      ],
+      "trailer_languages": {
+        "19I5a1tRt98": "en",
+        "k6cjKNZBQ1M": "en"
+      },
+      "trailer_language": "en",
+      "rating": 9.136,
+      "votes": 610,
+      "popularity": 53.1243,
+      "first_release": "2026-05-15",
+      "genres": [
+        "вестерн",
+        "драма"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/299167"
+    },
+    {
+      "key": "movie:1339274",
+      "id": 1339274,
+      "media_type": "movie",
+      "title": "Не оставляйте детей одних",
+      "overview": "Ката уходит на вечеринку, оставив двух сыновей одних. Сначала мальчишки радуются свободе, но постепенно детские ссоры и странные звуки в доме превращают ночь в настоящий кошмар. Семья Каты пережила страшную трагедию: в автокатастрофе погиб отец, а младший сын Эмильяно так и не оправился от потери. Оставшись в новом доме вдвоём, братья веселятся и делают всё, что обычно запрещено. Однако вскоре всё меняется, и становится невозможно понять, что из происходящего кошмара – плод травмированного воображения, а что происходит на самом деле.",
+      "release_date": "2026-05-14",
+      "image": "https://image.tmdb.org/t/p/w1280/flo7Xmyxz2wDUjr5Ff0VrxaVwlY.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/jxg1sLzG0TJRDPSNU6AmR4wR4Ce.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": null,
+      "trailer_keys": [],
+      "trailer_languages": {},
+      "trailer_language": null,
+      "rating": 7.051,
+      "votes": 78,
+      "popularity": 107.099,
+      "first_release": "2026-05-14",
+      "genres": [
+        "ужасы",
+        "драма",
+        "триллер"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1339274"
+    },
+    {
+      "key": "tv:276161",
+      "id": 276161,
+      "media_type": "tv",
+      "title": "Истинное образование",
+      "overview": "Когда в школах рушится уважение, на место выезжают необычные инспекторы, чтобы навести порядок — с помощью жестких и прагматичных уроков, которых не найдешь в учебниках.",
+      "release_date": null,
+      "image": "https://image.tmdb.org/t/p/w1280/vyG93jhmPL7tBIhRtCLa5mdBKob.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/k5XFkspikw2fGcXZ1GwbTRhzJHy.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Ended",
+      "trailer": "LdezlX84py0",
+      "trailer_keys": [
+        "LdezlX84py0"
+      ],
+      "trailer_languages": {
+        "LdezlX84py0": "en"
+      },
+      "trailer_language": "en",
+      "rating": 9.4,
+      "votes": 954,
+      "popularity": 52.8141,
+      "first_release": "2026-06-05",
+      "genres": [
+        "Боевик и Приключения",
+        "драма",
+        "комедия"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/276161"
+    },
+    {
+      "key": "movie:1003596",
+      "id": 1003596,
+      "media_type": "movie",
+      "title": "Мстители: Доктор Дум",
+      "overview": "Мстители, Люди Икс, Фантастическая четвёрка, вакандцы и Новые Мстители объединяются, чтобы противостоять Доктору Думу.",
+      "release_date": "2026-12-16",
+      "image": "https://image.tmdb.org/t/p/w1280/s4v0UX1anfXm0UvloLsTTJ4v222.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/itU2A8Yco43cAuDfVcYBXlpJzH.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Post Production",
+      "trailer": "X1aFkAkFASk",
+      "trailer_keys": [
+        "irVNGjRFZGk",
+        "X1aFkAkFASk"
+      ],
+      "trailer_languages": {
+        "irVNGjRFZGk": "en",
+        "X1aFkAkFASk": "en"
+      },
+      "trailer_language": "en",
+      "rating": 0.0,
+      "votes": 0,
+      "popularity": 100.5348,
+      "first_release": "2026-12-16",
+      "genres": [
+        "фантастика",
+        "боевик",
+        "приключения"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1003596"
+    },
+    {
+      "key": "tv:270476",
+      "id": 270476,
+      "media_type": "tv",
+      "title": "Уидоус-Бэй",
+      "overview": "Мэр города в Новой Англии решает превратить его в новый центр притяжения туристов, несмотря на предупреждения местных о том, что он проклят.",
+      "release_date": null,
+      "image": "https://image.tmdb.org/t/p/w1280/yx0sfeYOoXol2fjT22SXo9YyviI.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/xRgpzCvRGnjN36JbTGS6ysrym3M.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Returning Series",
+      "trailer": "VcpYPxKeGAc",
+      "trailer_keys": [
+        "VcpYPxKeGAc"
+      ],
+      "trailer_languages": {
+        "VcpYPxKeGAc": "en"
+      },
+      "trailer_language": "en",
+      "rating": 8.022,
+      "votes": 520,
+      "popularity": 51.6983,
+      "first_release": "2026-04-28",
+      "genres": [
+        "драма",
+        "комедия",
+        "детектив"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/270476"
+    },
+    {
+      "key": "movie:1315772",
+      "id": 1315772,
+      "media_type": "movie",
+      "title": "Миньоны и монстры",
+      "overview": "1920-ые годы. Миньоны снимаются в кино и покоряют Голливуд. Чтобы снять свой собственный фильм о монстрах, они отправляются на поиски самых пугающих существ.",
+      "release_date": "2026-06-24",
+      "image": "https://image.tmdb.org/t/p/w1280/kkcwhgSFd81QDlXo8ytrpHPQjhy.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/kuVqoYoUnlL9OLhGfobqMRYxVIT.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "V-O-uBaHk3c",
+      "trailer_keys": [
+        "ZSdOwt-G49w",
+        "V-O-uBaHk3c"
+      ],
+      "trailer_languages": {
+        "ZSdOwt-G49w": "en",
+        "V-O-uBaHk3c": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.552,
+      "votes": 1232,
+      "popularity": 100.5038,
+      "first_release": "2026-06-24",
+      "genres": [
+        "приключения",
+        "мультфильм",
+        "комедия",
+        "семейный",
+        "фэнтези"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1315772"
+    },
+    {
+      "key": "tv:291496",
+      "id": 291496,
+      "media_type": "tv",
+      "title": "Липкая любовь",
+      "overview": "Амбициозный прокурор теряет память и переезжает к тренеру по боксу, который утверждает, что он ее парень. Может ли эта непростая ситуация перерасти в настоящую любовь?",
+      "release_date": null,
+      "image": "https://image.tmdb.org/t/p/w1280/mp2AFsWsuyxCzenJh3DTKw7z4jG.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/ny8zYj40mWGTgKJi1a8hjNFUj9n.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Ended",
+      "trailer": "Wndx_3B0lgc",
+      "trailer_keys": [
+        "Wndx_3B0lgc"
+      ],
+      "trailer_languages": {
+        "Wndx_3B0lgc": "en"
+      },
+      "trailer_language": "en",
+      "rating": 8.838,
+      "votes": 114,
+      "popularity": 46.9295,
+      "first_release": "2026-08-07",
+      "genres": [
+        "драма",
+        "комедия"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/291496"
+    },
+    {
+      "key": "movie:1083381",
+      "id": 1083381,
+      "media_type": "movie",
+      "title": "Закулисье реальности",
+      "overview": "Когда неудачливый продавец мебели Кларк обнаруживает скрытый портал в другое измерение в подвале своего магазина, он оказывается в бесконечном лабиринте извилистых жёлтых коридоров. В этом мире время и пространство не подчиняются логике, а нечто жуткое может скрываться за каждым углом.",
+      "release_date": "2026-05-27",
+      "image": "https://image.tmdb.org/t/p/w1280/dqmMWNWfLnExDRpMtIMqI97GQFR.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/oBY8IQb9NpzbkCo0xzpz7Q1DCu.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Released",
+      "trailer": "0HjdiohVOik",
+      "trailer_keys": [
+        "0HjdiohVOik"
+      ],
+      "trailer_languages": {
+        "0HjdiohVOik": "en"
+      },
+      "trailer_language": "en",
+      "rating": 7.014,
+      "votes": 3590,
+      "popularity": 98.8756,
+      "first_release": "2026-05-27",
+      "genres": [
+        "ужасы",
+        "детектив",
+        "фантастика"
+      ],
+      "source_url": "https://www.themoviedb.org/movie/1083381"
+    },
+    {
+      "key": "tv:287620",
+      "id": 287620,
+      "media_type": "tv",
+      "title": "Стюарт Блум не смог спасти вселенную",
+      "overview": "Владелец магазина комиксов Стюарт Блум случайно ломает квантовое устройство, созданное Шелдоном Купером и Леонардом Хофстедтером, из-за чего нарушается привычный ход реальности и возникает угроза мультивселенской катастрофы. Чтобы исправить свою ошибку и вернуть мир в исходное состояние, Стюарту приходится отправиться в путешествие по альтернативным вселенным. Вместе с ним оказываются его девушка Дениз, друг-геолог Берт Кибблер и квантовый физик Барри Крипке. По пути команда сталкивается с альтернативными версиями знакомых героев, совершенно разными мирами и всё более странными последствиями своего путешествия по мультивселенной.",
+      "release_date": null,
+      "image": "https://image.tmdb.org/t/p/w1280/nW7oUFiJrIWwll4mZ8tYays7XRm.jpg",
+      "poster": "https://image.tmdb.org/t/p/w500/q85riCL9XVJgL0bNigtVnY75G3n.jpg",
+      "season": null,
+      "episode": null,
+      "status": "Returning Series",
+      "trailer": "_blrWb1yZiY",
+      "trailer_keys": [
+        "_blrWb1yZiY"
+      ],
+      "trailer_languages": {
+        "_blrWb1yZiY": "en"
+      },
+      "trailer_language": "en",
+      "rating": 8.407,
+      "votes": 221,
+      "popularity": 44.1977,
+      "first_release": "2026-07-23",
+      "genres": [
+        "комедия",
+        "НФ и Фэнтези"
+      ],
+      "source_url": "https://www.themoviedb.org/tv/287620"
+    }
+  ]
+}

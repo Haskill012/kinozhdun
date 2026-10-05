@@ -66,6 +66,9 @@ class Store:
           published TEXT NOT NULL, updated TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS titles (
           key TEXT PRIMARY KEY, data TEXT NOT NULL, updated TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS catalog (
+          key TEXT PRIMARY KEY, data TEXT NOT NULL, position INTEGER NOT NULL,
+          published TEXT, added TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         """)
         self.db.commit()
@@ -126,6 +129,52 @@ class Store:
         row = self.db.execute("SELECT value FROM state WHERE key = ?", (key,)).fetchone()
         return row[0] if row else None
 
+    def catalog(self, published_only=True):
+        where = " WHERE published IS NOT NULL" if published_only else ""
+        return [{**json.loads(r["data"]), "published": r["published"]}
+                for r in self.db.execute("SELECT * FROM catalog" + where + " ORDER BY position")]
+
+    def catalog_item(self, key, published_only=True):
+        row = self.db.execute("SELECT * FROM catalog WHERE key=?", (key,)).fetchone()
+        if not row or (published_only and not row["published"]):
+            return None
+        return {**json.loads(row["data"]), "published": row["published"]}
+
+    def queue_title(self, item):
+        position = self.db.execute("SELECT COALESCE(MAX(position),0)+1 FROM catalog").fetchone()[0]
+        self.db.execute("INSERT OR IGNORE INTO catalog VALUES (?,?,?,?,?)",
+                        (item["key"], json.dumps(item, ensure_ascii=False), position, None, now()))
+        self.db.commit()
+
+    def update_catalog(self, item):
+        self.db.execute("UPDATE catalog SET data=? WHERE key=?",
+                        (json.dumps(item, ensure_ascii=False), item["key"]))
+        self.db.commit()
+
+    def release_catalog(self, daily=3):
+        # A Moscow calendar day quota survives restarts. No catch-up burst.
+        day = today().isoformat()
+        with self.db:
+            used = max(int(self.state("cards_published:" + day) or 0),
+                       self.db.execute("SELECT COUNT(*) FROM catalog WHERE published=?", (day,)).fetchone()[0])
+            rows = self.db.execute("SELECT key FROM catalog WHERE published IS NULL ORDER BY position LIMIT ?",
+                                   (max(0, daily-used),)).fetchall()
+            self.db.executemany("UPDATE catalog SET published=? WHERE key=?", [(day, r[0]) for r in rows])
+            self.db.execute("INSERT OR REPLACE INTO state VALUES (?,?)", ("cards_published:" + day, str(used + len(rows))))
+        return len(rows)
+
+    def seed_live_catalog(self):
+        if self.state("catalog_selected") or self.catalog(False):
+            return
+        path = Path(__file__).with_name("catalog_seed.json")
+        if not path.exists():
+            return
+        seed = json.loads(path.read_text(encoding="utf-8"))
+        for item in seed["titles"]:
+            self.queue_title(item)
+            self.save_title(item["key"], item)
+        self.state("catalog_selected", seed["selected_at"])
+
     def seed_guides(self, bot_url):
         guides = [
             ("tracking", "Как не пропустить новый сезон любимого сериала", "Сохраните сериал в КиноЖдуне — бот будет следить за датой следующего сезона.",
@@ -161,7 +210,7 @@ class Store:
         for row in self.db.execute("SELECT key, data FROM titles").fetchall():
             try:
                 t = json.loads(row[1])
-                if t.get("release_date") and t["release_date"] < today_iso:
+                if t.get("release_date") and t["release_date"] < today_iso and not self.catalog_item(row[0], False):
                     self.db.execute("DELETE FROM titles WHERE key = ?", (row[0],))
             except Exception:
                 pass
