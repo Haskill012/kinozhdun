@@ -163,6 +163,16 @@ class Store:
             self.db.execute("INSERT OR REPLACE INTO state VALUES (?,?)", ("cards_published:" + day, str(used + len(rows))))
         return len(rows)
 
+    def open_initial_catalog(self):
+        """One-time migration: make the initial reviewed collection available."""
+        if self.state("initial_catalog_visible"):
+            return
+        seed = json.loads(Path(__file__).with_name("catalog_seed.json").read_text(encoding="utf-8"))
+        with self.db:
+            self.db.executemany("UPDATE catalog SET published=COALESCE(published,?) WHERE key=?",
+                                [(today().isoformat(), item["key"]) for item in seed["titles"]])
+            self.db.execute("INSERT INTO state VALUES (?,?)", ("initial_catalog_visible", now()))
+
     def seed_live_catalog(self):
         if self.state("catalog_selected") or self.catalog(False):
             return

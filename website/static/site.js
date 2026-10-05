@@ -7,3 +7,12 @@ document.querySelectorAll('img').forEach(img => {
     img.replaceWith(fallback);
   }, { once: true });
 });
+
+// Keep search immediate; optional filters use a native accordion on phones.
+const filterPanel = document.querySelector('.catalog-filter-more');
+if (filterPanel) {
+  const desktopFilters = window.matchMedia('(min-width: 521px)');
+  const syncFilterPanel = () => { filterPanel.open = desktopFilters.matches; };
+  syncFilterPanel();
+  desktopFilters.addEventListener('change', syncFilterPanel);
+}

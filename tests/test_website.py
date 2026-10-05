@@ -312,3 +312,49 @@ class WebsiteHTTPTests(AioHTTPTestCase):
         self.assertIn("Дюна: Часть третья", html)
         self.assertIn("Кэрри", html)
         self.assertIn("Бегущий по лезвию 2099", html)
+
+
+class CatalogHTTPTests(AioHTTPTestCase):
+    async def get_application(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.cfg = {**config(Path(self.tmp.name) / "site.db"), "catalog_size": 50, "daily_cards": 3}
+        return create_app(self.cfg)
+
+    async def asyncTearDown(self):
+        await super().asyncTearDown()
+        self.tmp.cleanup()
+
+    async def test_initial_collection_is_visible_and_filters_match_data(self):
+        from website.__main__ import STORE
+        items = self.app[STORE].catalog()
+        self.assertEqual(len(items), 50)
+        for route, count in (("/catalog", 50), ("/movies", 25), ("/series", 25)):
+            response = await self.client.get(route)
+            self.assertEqual(response.status, 200)
+            self.assertEqual((await response.text()).count('class="poster-card"'), count)
+        expected = [t for t in items if t['media_type'] == 'movie' and t.get('votes',0) >= 50 and (t.get('rating') or 0) >= 8 and 'фантастика' in t.get('genres', [])]
+        response = await self.client.get('/catalog', params={'type':'movie','rating':'8','genre':'фантастика','sort':'rating'})
+        text = await response.text()
+        self.assertEqual(text.count('class="poster-card"'), len(expected))
+        self.assertIn('noindex, follow', text)
+        response = await self.client.get('/catalog', params={'q':'Обитель зла'})
+        self.assertEqual((await response.text()).count('class="poster-card"'), 1)
+        response = await self.client.get('/catalog', params={'q':'nonexistent-title'})
+        self.assertIn('Ничего не нашлось', await response.text())
+
+    async def test_project_layout_and_asset_versioning(self):
+        from website.__main__ import STORE
+        from website.views import ASSET_VERSION
+        item = next(t for t in self.app[STORE].catalog() if t.get('trailer'))
+        response = await self.client.get(f"/title/{item['media_type']}/{item['id']}")
+        text = await response.text()
+        self.assertIn('project-grid', text)
+        self.assertIn('id="trailer"', text)
+        self.assertIn('youtube-nocookie.com/embed/', text)
+        self.assertIn('/static/site.css?v=' + ASSET_VERSION, text)
+        self.assertIn('В список ожидания', text)
+        self.assertNotIn('Новости проекта', text)
+        response = await self.client.get('/health')
+        data = await response.json()
+        self.assertEqual(data['cards_published'], 50)
+        self.assertEqual(data['cards_queued'], 0)

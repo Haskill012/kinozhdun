@@ -83,6 +83,7 @@ def create_app(config=None):
     store.seed_catalog(config["bot_url"])
     if config.get("catalog_size"):
         store.seed_live_catalog()
+        store.open_initial_catalog()
         store.release_catalog(config.get("daily_cards", 3))
     store.import_channel(config["bot_database"], config["channel_url"])
     app[STORE], app[CONFIG] = store, config
@@ -99,6 +100,9 @@ def create_app(config=None):
             page = max(1, min(10000, int(request.query.get("page", "1"))))
         except ValueError:
             page = 1
+        if request.path == "/catalog" or (config.get("catalog_size") and category in ("movies", "series")):
+            from website.catalog_views import catalog_page
+            return web.Response(text=catalog_page(store, config, request.path, request.query), content_type="text/html")
         return web.Response(text=views.listing(store, config, category, request.query.get("q", "")[:100], page), content_type="text/html")
 
     async def article(request):
@@ -130,7 +134,7 @@ def create_app(config=None):
 
     async def sitemap(request):
         pages = [(p, None, "1.0" if p == "/" else "0.9" if p == "/calendar" else "0.8", "daily")
-                 for p in ("/", "/news", "/movies", "/series", "/calendar", "/about")]
+                 for p in ("/", "/catalog", "/news", "/movies", "/series", "/calendar", "/about")]
         pages.extend((views.title_path(t), None, "0.8", "daily") for t in store.catalog())
         pages.extend(("/news/" + a["slug"], a["updated"], "0.7", "weekly") for a in store.articles(limit=50000))
         body = ''.join(
@@ -153,7 +157,7 @@ def create_app(config=None):
     async def health(request):
         return web.json_response({
             "status": "ok",
-            "version": "1.3.0",
+            "version": "1.4.0",
             "cards_published": len(store.catalog()),
             "cards_queued": len(store.catalog(False)) - len(store.catalog()),
             "catalog_selected": store.state("catalog_selected"),
@@ -163,7 +167,7 @@ def create_app(config=None):
             "articles": store.db.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
         }, headers={"X-Robots-Tag": "noindex"})
 
-    for path, handler in (("/", home), ("/news", listing), ("/movies", listing), ("/series", listing), ("/news/{slug}", article), (r"/title/{media:movie|tv}/{id:\d+}", title_page), ("/calendar", calendar), ("/about", about), ("/robots.txt", robots), ("/sitemap.xml", sitemap), ("/feed.xml", feed), ("/health", health)):
+    for path, handler in (("/", home), ("/news", listing), ("/catalog", listing), ("/movies", listing), ("/series", listing), ("/news/{slug}", article), (r"/title/{media:movie|tv}/{id:\d+}", title_page), ("/calendar", calendar), ("/about", about), ("/robots.txt", robots), ("/sitemap.xml", sitemap), ("/feed.xml", feed), ("/health", health)):
         app.router.add_get(path, handler)
     app.router.add_static("/static/", ROOT / "website" / "static", show_index=False)
     return app

@@ -177,8 +177,10 @@ class Editor:
                 async with aiohttp.ClientSession(connector=connector, trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
                     self.session = session
                     details = {}
+                    replenish = bool(self.store.state("initial_catalog_visible"))
+                    discovery_due = not self.store.state("catalog_selected") or (replenish and self.store.state("catalog_discovery_day") != today().isoformat())
                     # Date-bounded discovery prevents old evergreen hits dominating the queue.
-                    for media in (() if self.store.state("catalog_selected") else ("movie", "tv")):
+                    for media in (("movie", "tv") if discovery_due else ()):
                         date_field = "primary_release_date" if media == "movie" else "first_air_date"
                         for page in range(1, 5):
                             try:
@@ -193,7 +195,7 @@ class Editor:
                                 errors.append(error_text(exc))
                     # Continuing series are selected by their next episode, not first season.
                     try:
-                        data = await self.fetch("/tv/on_the_air") if not self.store.state("catalog_selected") else {}
+                        data = await self.fetch("/tv/on_the_air") if discovery_due else {}
                         for row in data.get("results", []):
                             details.setdefault(("tv", row["id"]), None)
                     except Exception as exc:
@@ -220,6 +222,14 @@ class Editor:
                             self.store.queue_title({"key": f"{media}:{detail['id']}", "id": detail["id"], "media_type": media, "title": detail.get("title") or detail.get("name")})
                         if len(ordered) >= size:
                             self.store.state("catalog_selected", datetime.now(timezone.utc).isoformat())
+                    if replenish and discovery_due:
+                        pending = len(self.store.catalog(False)) - len(self.store.catalog())
+                        pool = [(m, d) for (m, ident), d in details.items() if d and self.eligible(m, d) and not self.store.catalog_item(f"{m}:{ident}", False)]
+                        pool.sort(key=lambda entry: float(entry[1].get("popularity") or 0), reverse=True)
+                        for media, detail in pool[:min(6, max(0, 12-pending))]:
+                            self.store.queue_title({"key": f"{media}:{detail['id']}", "id": detail["id"], "media_type": media, "title": detail.get("title") or detail.get("name")})
+                        if not errors:
+                            self.store.state("catalog_discovery_day", today().isoformat())
                     # Refresh hidden cards too; they must stay current until publication.
                     for (media, tmdb_id), detail in details.items():
                         if detail and self.store.catalog_item(f"{media}:{tmdb_id}", False) and not self.store.catalog_item(f"{media}:{tmdb_id}"):

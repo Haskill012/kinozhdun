@@ -1,11 +1,15 @@
 """HTML rendering: all indexable content is served without JavaScript."""
 import html
+import hashlib
+from pathlib import Path
 import json
 import re
 from datetime import date, datetime
 from urllib.parse import urlencode
 
 from website.editor import date_ru, today
+
+ASSET_VERSION = hashlib.sha256((Path(__file__).parent / "static/site.css").read_bytes() + (Path(__file__).parent / "static/site.js").read_bytes()).hexdigest()[:12]
 
 CATEGORIES = {"news": "Новости", "movies": "Фильмы", "series": "Сериалы", "guides": "Гид КиноЖдуна"}
 
@@ -29,7 +33,7 @@ def layout(config, title, description, content, path="/", active="", schema=None
     structured = schema or {"@context": "https://schema.org", "@type": "WebSite", "name": "КиноЖдун", "url": base, "inLanguage": "ru"}
     jsonld = json.dumps(structured, ensure_ascii=False).replace("<", "\\u003c")
     nav = "".join(f'<a class="{"active" if active == key else ""}" href="{url}">{label}</a>' for key, url, label in (
-        ("home", "/", "Главная"), ("news", "/news", "Новости"), ("movies", "/movies", "Фильмы"), ("series", "/series", "Сериалы"), ("calendar", "/calendar", "Календарь премьер")))
+        ("home", "/", "Главная"), ("catalog", "/catalog", "Каталог"), ("news", "/news", "Новости"), ("movies", "/movies", "Фильмы"), ("series", "/series", "Сериалы"), ("calendar", "/calendar", "Премьеры")))
     robots = "noindex, follow" if noindex or not config["public"] else "index, follow, max-image-preview:large"
     verification = ""
     if config.get("yandex_verification"):
@@ -54,7 +58,7 @@ def layout(config, title, description, content, path="/", active="", schema=None
     <meta property="og:image" content="{og_img}">
     <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{esc(title)}"><meta name="twitter:description" content="{esc(description)}"><meta name="twitter:image" content="{og_img}">
     <meta name="theme-color" content="#111312"><link rel="alternate" type="application/rss+xml" title="КиноЖдун — новости" href="/feed.xml">
-    <link rel="stylesheet" href="/static/site.css"><script type="application/ld+json">{jsonld}</script><script src="/static/site.js" defer></script>{metrika}</head>
+    <link rel="stylesheet" href="/static/site.css?v={ASSET_VERSION}"><script type="application/ld+json">{jsonld}</script><script src="/static/site.js?v={ASSET_VERSION}" defer></script>{metrika}</head>
     <body><a class="skip" href="#content">Перейти к содержимому</a><header><div class="header-inner"><a class="brand" href="/" aria-label="КиноЖдун — главная"><img class="brand-logo" src="/static/logo_mascot.jpg" alt="КиноЖдун" width="48" height="48"><span>кино<span class="brand-light">ждун</span><small>ХОРОШЕЕ КИНО СТОИТ ЖДАТЬ</small></span></a>
     <nav aria-label="Основная навигация">{nav}</nav><a class="button small" href="{esc(config['bot_url'])}" target="_blank" rel="noopener">↗ Открыть бота</a></div></header>
     <main id="content">{content}</main>
@@ -75,24 +79,20 @@ def title_path(item):
 
 
 def title_card(item):
-    rating = f"★ {float(item['rating']):.1f}" if item.get("votes", 0) >= 50 else "Рейтинг формируется"
-    label = "Фильм" if item["media_type"] == "movie" else "Сериал"
-    return f'''<a class="news-card title-card" href="{title_path(item)}"><div class="card-image">{image(item.get('poster') or item.get('image'), item['title'])}<span class="card-tag">{label}</span></div><div class="card-copy"><span class="meta">{rating} · {esc((item.get('first_release') or '')[:4])}</span><h3>{esc(item['title'])}</h3><p>{esc(item.get('overview', '')[:180])}</p></div></a>'''
+    from website.catalog_views import poster_card
+    return poster_card(item)
 
 
 def trailer_player(key, language=None):
     if not key or not re.fullmatch(r"[\w-]{6,32}", key, flags=re.ASCII):
         return ""
-    label = "На русском языке" if language == "ru" else "На языке источника"
+    label = "На русском языке" if language == "ru" else "На английском языке" if language == "en" else "Оригинальный трейлер"
     return f'''<section class="trailer-section"><h2>Смотреть трейлер</h2><p>{label}</p><div class="trailer-frame"><iframe src="https://www.youtube-nocookie.com/embed/{esc(key)}" title="Трейлер" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div><p><a href="https://www.youtube.com/watch?v={esc(key)}" target="_blank" rel="noopener">Открыть трейлер на YouTube ↗</a></p></section>'''
 
 
 def title_page(store, config, item):
-    rating = f"{float(item.get('rating') or 0):.1f} / 10 · {item.get('votes', 0)} голосов" if item.get("votes", 0) >= 50 else "Рейтинг ещё формируется"
-    related = [a for a in store.articles(limit=500) if a.get("media_type") == item["media_type"] and a.get("tmdb_id") == item["id"]][:6]
-    content = f'''<div class="page-shell"><article class="article"><span class="eyebrow lime">{'Фильм' if item['media_type'] == 'movie' else 'Сериал'}</span><h1>{esc(item['title'])}</h1><div class="title-detail"><div>{image(item.get('poster'), item['title'], 'title-poster', eager=True)}</div><div class="article-body"><p class="article-lead">{esc(item.get('overview'))}</p><p><strong>Рейтинг TMDB:</strong> {rating}</p><p>{esc(', '.join(item.get('genres', [])))}</p><p><strong>Первая премьера:</strong> {date_ru(item.get('first_release'))}</p><p><strong>{"Следующий эпизод" if item["media_type"] == "tv" else "Дата выхода"}:</strong> {date_ru(item.get('release_date'))}</p><a class="button" href="{esc(title_link(item, config))}" target="_blank" rel="noopener">Отслеживать в Telegram ↗</a><p class="source"><a href="{esc(item['source_url'])}" target="_blank" rel="noopener">Источник: TMDB ↗</a></p></div></div>{trailer_player(item.get('trailer'), item.get('trailer_language'))}</article><section class="news-section"><h2>Новости проекта</h2><div class="news-grid">{''.join(card(a) for a in related)}</div></section></div>'''
-    schema = {"@context": "https://schema.org", "@type": "Movie" if item["media_type"] == "movie" else "TVSeries", "name": item["title"], "description": item.get("overview"), "url": config["base_url"] + title_path(item)}
-    return layout(config, item["title"], item.get("overview", "")[:180], content, title_path(item), "movies" if item["media_type"] == "movie" else "series", schema=schema, og_image=item.get("image"))
+    from website.catalog_views import project_page
+    return project_page(store, config, item)
 
 
 def bot_banner(config):
@@ -126,6 +126,9 @@ def premiere_rows(items, config, limit=5):
 
 
 def home(store, config):
+    if store.catalog():
+        from website.catalog_views import streaming_home
+        return streaming_home(store, config)
     articles, seen = [], set()
     for article in store.articles(limit=40):
         if article.get("release_date") and article["release_date"] < today().isoformat() and ":trailer:" not in article.get("fingerprint", ""):
@@ -245,5 +248,5 @@ def calendar(store, config, media=None, period="all"):
 
 
 def about(config):
-    content = f'''<div class="page-shell"><section class="page-intro"><span class="eyebrow muted">ХОРОШЕЕ КИНО СТОИТ ЖДАТЬ</span><h1>Мы тоже ждём<span class="lime">.</span></h1></section><div class="about article-body"><h2>Что такое КиноЖдун</h2><p>КиноЖдун объединяет новости, календарь премьер, Telegram-канал и личный бот для отслеживания фильмов и сериалов.</p><h2>Откуда берутся материалы</h2><p>Редакция работает автоматически: проверяет каталог TMDB, сравнивает даты, статусы и трейлеры, а также переносит уже опубликованные подтверждённые сообщения из базы нашего Telegram-канала. Каждая публикация содержит ссылку на источник. Сайт не публикует слухи и не генерирует вымышленные факты.</p><p>TMDB — каталог, который наполняет сообщество. Его записи не равнозначны официальным заявлениям студии. Международная дата выхода может отличаться от российской или цифровой премьеры. Для сериалов календарь показывает дату ближайшего эпизода, если она известна.</p><h2>Как отбираются карточки</h2><p>Подбираем популярные новинки и ожидаемые проекты. При 50 и более голосах нужен рейтинг TMDB не ниже 6 из 10; также требуется популярность от 5. Популярность — показатель интереса в каталоге, а не отдельный рейтинг ожидаемости. Первые 50 карточек публикуются по 3 в день. Для трейлеров предпочитаем русскую версию, а при её отсутствии показываем доступный официальный ролик.</p><h2>Что делает бот</h2><p>Сохраняет список ожидания и проверяет обновления о выбранных проектах. Вы можете поделиться списком с другом и задать дату вручную.</p><h2>Источники и изображения</h2><p>Данные и изображения предоставлены <a href="https://www.themoviedb.org" target="_blank" rel="noopener">The Movie Database</a>.</p><img class="tmdb-logo" src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg" alt="TMDB"><p lang="en">This product uses the TMDB API but is not endorsed or certified by TMDB.</p><p>При недоступности источника сайт сохраняет ранее опубликованные материалы и повторяет проверку автоматически.</p></div>{bot_banner(config)}</div>'''
+    content = f'''<div class="page-shell"><section class="page-intro"><span class="eyebrow muted">ХОРОШЕЕ КИНО СТОИТ ЖДАТЬ</span><h1>Мы тоже ждём<span class="lime">.</span></h1></section><div class="about article-body"><h2>Что такое КиноЖдун</h2><p>КиноЖдун объединяет новости, календарь премьер, Telegram-канал и личный бот для отслеживания фильмов и сериалов.</p><h2>Откуда берутся материалы</h2><p>Редакция работает автоматически: проверяет каталог TMDB, сравнивает даты, статусы и трейлеры, а также переносит уже опубликованные подтверждённые сообщения из базы нашего Telegram-канала. Каждая публикация содержит ссылку на источник. Сайт не публикует слухи и не генерирует вымышленные факты.</p><p>TMDB — каталог, который наполняет сообщество. Его записи не равнозначны официальным заявлениям студии. Международная дата выхода может отличаться от российской или цифровой премьеры. Для сериалов календарь показывает дату ближайшего эпизода, если она известна.</p><h2>Как отбираются карточки</h2><p>Подбираем популярные новинки и ожидаемые проекты. При 50 и более голосах нужен рейтинг TMDB не ниже 6 из 10; также требуется популярность от 5. Популярность — показатель интереса в каталоге, а не отдельный рейтинг ожидаемости. В каталоге доступны 50 выбранных проектов; новые карточки добавляются постепенно, по 3 в день. Для трейлеров предпочитаем русскую версию, а при её отсутствии показываем доступный официальный ролик.</p><h2>Что делает бот</h2><p>Сохраняет список ожидания и проверяет обновления о выбранных проектах. Вы можете поделиться списком с другом и задать дату вручную.</p><h2>Источники и изображения</h2><p>Данные и изображения предоставлены <a href="https://www.themoviedb.org" target="_blank" rel="noopener">The Movie Database</a>.</p><img class="tmdb-logo" src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg" alt="TMDB"><p lang="en">This product uses the TMDB API but is not endorsed or certified by TMDB.</p><p>При недоступности источника сайт сохраняет ранее опубликованные материалы и повторяет проверку автоматически.</p></div>{bot_banner(config)}</div>'''
     return layout(config, "О проекте и источниках", "Как работает КиноЖдун: источники новостей, автоматическая редакция и Telegram-бот.", content, "/about")
