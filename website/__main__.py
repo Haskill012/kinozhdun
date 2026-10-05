@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from xml.sax.saxutils import escape as xml_escape
 
+import aiohttp
 from aiohttp import web
 from dotenv import load_dotenv
 
@@ -120,9 +121,22 @@ def create_app(config=None):
 
     async def title_page(request):
         item = store.catalog_item(request.match_info["media"] + ":" + request.match_info["id"])
+        if not item and config["api_key"]:
+            try:
+                item = await Editor(store, config).open_title(request.match_info["media"], int(request.match_info["id"]))
+            except RuntimeError as exc:
+                if str(exc) == "TMDB вернул HTTP 404":
+                    raise web.HTTPNotFound()
+                raise web.HTTPServiceUnavailable(text="Не удалось загрузить карточку. Попробуйте открыть её немного позже.")
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                raise web.HTTPServiceUnavailable(text="Не удалось загрузить карточку. Попробуйте открыть её немного позже.")
         if not item:
             raise web.HTTPNotFound()
-        return web.Response(text=views.title_page(store, config, item), content_type="text/html")
+        try:
+            news_page = int(request.query.get("news_page", "1"))
+        except ValueError:
+            news_page = 1
+        return web.Response(text=views.title_page(store, config, item, news_page), content_type="text/html")
 
     async def calendar(request):
         media = request.query.get("type")

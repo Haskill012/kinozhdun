@@ -64,6 +64,7 @@ class Store:
           body TEXT NOT NULL, source_url TEXT NOT NULL, image TEXT,
           media_type TEXT, tmdb_id INTEGER, release_date TEXT,
           published TEXT NOT NULL, updated TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS articles_title ON articles (media_type, tmdb_id);
         CREATE TABLE IF NOT EXISTS titles (
           key TEXT PRIMARY KEY, data TEXT NOT NULL, updated TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS catalog (
@@ -141,6 +142,16 @@ class Store:
         return [dict(r) for r in self.db.execute(
             "SELECT * FROM articles" + where + " ORDER BY julianday(published) DESC, slug LIMIT ? OFFSET ?",
             (*params, limit, offset))]
+
+    def title_articles(self, media, tmdb_id, limit=20, offset=0):
+        return [dict(r) for r in self.db.execute(
+            "SELECT * FROM articles WHERE media_type=? AND tmdb_id=? "
+            "ORDER BY julianday(published) DESC, slug LIMIT ? OFFSET ?",
+            (media, tmdb_id, limit, offset))]
+
+    def title_articles_count(self, media, tmdb_id):
+        return self.db.execute("SELECT COUNT(*) FROM articles WHERE media_type=? AND tmdb_id=?",
+                               (media, tmdb_id)).fetchone()[0]
 
     def article(self, slug):
         row = self.db.execute("SELECT * FROM articles WHERE slug = ?", (slug,)).fetchone()

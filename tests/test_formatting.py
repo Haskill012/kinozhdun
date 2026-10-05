@@ -2,10 +2,18 @@
 
 import datetime
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
 
 from bot.keyboards.inline import notification_item_keyboard
 from bot.utils.formatting import (
+    linked_title,
+    site_title_url,
+    format_item_list,
+    format_search_results_message,
+    format_shared_item_prompt,
+    format_shared_watchlist_message,
+    format_channel_referral_prompt,
     format_announced_notification,
     format_date_ru,
     format_item_details,
@@ -19,6 +27,32 @@ from bot.utils.formatting import (
 
 class TestFormattingTemplates(unittest.TestCase):
     """Тестирование эстетики, безопасности HTML и локализации всех шаблонов."""
+
+    def test_all_title_message_templates_link_to_the_correct_site_card(self):
+        for media in ("movie", "tv"):
+            with self.subTest(media=media), patch.dict("os.environ", {"SITE_BASE_URL": "https://kinojdun.ru/"}):
+                item = SimpleNamespace(id=3, tmdb_id=777, media_type=media, title="Tom & Jerry",
+                                       network=None, status="Planned", next_air_date=datetime.date(2027, 1, 1),
+                                       custom_date=None, next_season_number=2, last_known_season=1,
+                                       post_type="news", season_number=2, air_date=None)
+                detail = {"id": 777, "media_type": media, "title": item.title}
+                messages = [format_item_details(item), format_item_details(detail, media),
+                            format_search_results_message("Tom", [detail]), format_item_list([item]),
+                            format_announced_notification(item, {"next_air_date": item.next_air_date}),
+                            format_released_notification(item), format_reminder_notification(item),
+                            format_status_change_notification(item, {"status": "Ended"}),
+                            format_shared_item_prompt(item.title, detail, media),
+                            format_shared_watchlist_message([detail]), format_channel_referral_prompt(item)]
+                for message in messages:
+                    self.assertIn(f'<a href="https://kinojdun.ru/title/{media}/777">Tom &amp; Jerry</a>', message)
+
+    def test_title_link_handles_html_and_missing_identity(self):
+        self.assertEqual(linked_title('<script> & "quote"', {"media_type": "tv", "tmdb_id": 12}),
+                         '<a href="https://kinojdun.ru/title/tv/12">&lt;script&gt; &amp; "quote"</a>')
+        self.assertEqual(linked_title("Unknown & title", {}), "Unknown &amp; title")
+        self.assertIsNone(site_title_url("person", 12))
+        self.assertIsNone(site_title_url("movie", -1))
+        self.assertIsNone(site_title_url("tv", '12/../../other'))
 
     def test_safe_html_escaping(self):
         """Проверка безопасного экранирования амперсандов, скобок и спецсимволов."""
@@ -92,6 +126,14 @@ class TestFormattingTemplates(unittest.TestCase):
         self.assertIn("(сезон 5)", text)
         self.assertIn("20.11.2026", text)
         self.assertNotIn("────────────────────────", text)
+
+    def test_notification_keyboard_links_to_site_and_keeps_bot_actions(self):
+        kb = notification_item_keyboard(item_id=42, media_type="tv", tmdb_id=136315,
+                                        tmdb_url="https://www.themoviedb.org/tv/136315")
+        buttons = [b for row in kb.inline_keyboard for b in row]
+        self.assertTrue(any(b.callback_data == "info:42" for b in buttons))
+        self.assertTrue(any(b.url == "https://kinojdun.ru/title/tv/136315" for b in buttons))
+        self.assertTrue(any(b.url == "https://www.themoviedb.org/tv/136315" for b in buttons))
 
     def test_notification_item_keyboard(self):
         """Проверка генерации инлайн-клавиатуры для уведомлений."""

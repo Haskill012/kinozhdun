@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from bot.config import Settings
 from bot.db.models import ChannelPost
 from bot.db.repositories import Repository
-from bot.utils.formatting import format_date_ru, safe_html
+from bot.utils.formatting import format_date_ru, safe_html, linked_title
 
 logger = logging.getLogger(__name__)
 
@@ -457,7 +457,7 @@ class ChannelPublisher:
 
         msg_text = (
             f"🔔 <b>Новая публикация ожидает модерации (#{post.id})</b>\n\n"
-            f"🎬 <b>{post.title}</b>\n"
+            f"🎬 <b>{linked_title(post.title, post)}</b>\n"
             f"🏷 <b>Событие:</b> <code>{post.event_type}</code>\n"
             f"🌐 <b>Источник:</b> {post.source} (статус: <i>{post.credibility}</i>)\n"
             "────────────────────────\n"

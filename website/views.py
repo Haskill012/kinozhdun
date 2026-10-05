@@ -90,9 +90,9 @@ def trailer_player(key, language=None):
     return f'''<section class="trailer-section"><h2>Смотреть трейлер</h2><p>{label}</p><div class="trailer-frame"><iframe src="https://www.youtube-nocookie.com/embed/{esc(key)}" title="Трейлер" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div><p><a href="https://www.youtube.com/watch?v={esc(key)}" target="_blank" rel="noopener">Открыть трейлер на YouTube ↗</a></p></section>'''
 
 
-def title_page(store, config, item):
+def title_page(store, config, item, news_page=1):
     from website.catalog_views import project_page
-    return project_page(store, config, item)
+    return project_page(store, config, item, news_page)
 
 
 def bot_banner(config):

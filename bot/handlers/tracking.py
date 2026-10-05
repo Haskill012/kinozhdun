@@ -21,6 +21,7 @@ from bot.keyboards.inline import (
 from bot.keyboards.reply import main_menu_keyboard
 from bot.services.analytics import AnalyticsService
 from bot.utils.formatting import (
+    linked_title,
     format_item_details,
     format_search_results_message,
     format_date_ru,
@@ -310,7 +311,7 @@ async def process_confirm_track(callback: CallbackQuery) -> None:
     date_str = f"\n📅 Ближайшая известная дата: <code>{format_date_ru(next_air_date)}</code>" if next_air_date else "\n📅 Дата нового сезона: <i>пока не объявлена</i>"
 
     text = (
-        f"🍿 <b>«{title}»</b>{network_str} добавлен в Кинождун!\n"
+        f"🍿 <b>«{linked_title(title, {'media_type': media_type, 'tmdb_id': tmdb_id})}»</b>{network_str} добавлен в Кинождун!\n"
         f"{date_str}\n\n"
         "Кинождун сообщит, когда появятся важные новости:\n"
         "• начало съёмок;\n"
@@ -387,7 +388,7 @@ async def process_track_from_share(callback: CallbackQuery) -> None:
     date_str = f"\n📅 Ближайшая известная дата: <code>{format_date_ru(next_air_date)}</code>" if next_air_date else "\n📅 Дата нового сезона: <i>пока не объявлена</i>"
 
     text = (
-        f"✅ <b>«{title}»</b>{network_str} успешно добавлен в ваш список отслеживания! 🎉\n"
+        f"✅ <b>«{linked_title(title, {'media_type': media_type, 'tmdb_id': tmdb_id})}»</b>{network_str} успешно добавлен в ваш список отслеживания! 🎉\n"
         f"{date_str}\n\n"
         "Теперь вы будете первыми узнавать о выходе новых сезонов и датах премьер 🍿"
     )
@@ -459,7 +460,7 @@ async def process_track_from_channel(callback: CallbackQuery) -> None:
     date_str = f"\n📅 Дата премьеры: <code>{format_date_ru(next_air_date)}</code>" if next_air_date else "\n📅 Дата премьеры: <i>пока не объявлена</i>"
 
     text = (
-        f"✅ <b>«{title}»</b>{network_str} добавлен в ваш список отслеживания! 🎉\n"
+        f"✅ <b>«{linked_title(title, {'media_type': media_type, 'tmdb_id': tmdb_id})}»</b>{network_str} добавлен в ваш список отслеживания! 🎉\n"
         f"{date_str}\n\n"
         "Мы напомним вам о премьере за 3 дня до релиза и пришлём уведомление в день выхода 🍿"
     )

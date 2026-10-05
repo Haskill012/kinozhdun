@@ -25,6 +25,7 @@ class TestInlineKeyboards(unittest.TestCase):
 
         self.assertIsNotNone(share_btn)
         self.assertEqual(share_btn.switch_inline_query, "share_movie_1170608_u330413281")
+        self.assertTrue(any(b.url == "https://kinojdun.ru/title/movie/1170608" for b in buttons))
         self.assertIsNone(share_btn.url)
 
     def test_preview_item_keyboard_uses_inline_switch(self):
@@ -41,6 +42,7 @@ class TestInlineKeyboards(unittest.TestCase):
 
         self.assertIsNotNone(share_btn)
         self.assertEqual(share_btn.switch_inline_query, "share_tv_82856_u12345")
+        self.assertTrue(any(b.url == "https://kinojdun.ru/title/tv/82856" for b in buttons))
 
     def test_item_details_keyboard_uses_inline_switch(self):
         """Кнопка шеринга из карточки отслеживаемого тайтла должна использовать switch_inline_query."""
@@ -51,6 +53,7 @@ class TestInlineKeyboards(unittest.TestCase):
 
         self.assertIsNotNone(share_btn)
         self.assertEqual(share_btn.switch_inline_query, "share_movie_1170608_u98765")
+        self.assertTrue(any(b.url == "https://kinojdun.ru/title/movie/1170608" for b in buttons))
 
     def test_shared_watchlist_keyboard_uses_inline_switch(self):
         """Кнопка шеринга списка ожидания должна использовать switch_inline_query=list_token."""
@@ -108,7 +111,7 @@ class TestInlineQueryHandler(unittest.IsolatedAsyncioTestCase):
         photo_res = results[0]
         self.assertEqual(photo_res.id, "p_movie_1170608")
         self.assertIn("https://image.tmdb.org/t/p/w780/dune3.jpg", photo_res.photo_url)
-        self.assertIn("Дюна: Часть третья", photo_res.caption)
+        self.assertIn('<a href="https://kinojdun.ru/title/movie/1170608">Дюна: Часть третья</a>', photo_res.caption)
         self.assertIn("18.12.2026", photo_res.caption)
 
         # Кнопка под карточкой

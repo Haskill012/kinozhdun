@@ -19,6 +19,7 @@ from bot.keyboards.inline import (
 from bot.keyboards.reply import main_menu_keyboard
 from bot.services.analytics import AnalyticsService
 from bot.utils.formatting import (
+    linked_title,
     format_item_list,
     format_item_details,
     format_shared_watchlist_message,
@@ -271,7 +272,7 @@ async def process_track_shared_item(callback: CallbackQuery) -> None:
 
     if added_count > 0:
         await analytics.log_watchlist_item_followed(callback.from_user.id, token, m_type, t_id)
-        await callback.answer(f"✅ «{target_item.get('title')}» добавлен в ваш список!", show_alert=False)
+        await callback.answer("✅ Проект добавлен в ваш список!", show_alert=False)
     else:
         await callback.answer("⚠️ Не удалось добавить (возможно, превышен лимит тайтлов).", show_alert=True)
 
@@ -320,7 +321,7 @@ async def process_prompt_batch_track(callback: CallbackQuery) -> None:
         )
         return
 
-    titles_list = "\n".join(f"• <b>{it.get('title')}</b>" for it in untracked_items[:10])
+    titles_list = "\n".join(f"• <b>{linked_title(it.get('title'), it)}</b>" for it in untracked_items[:10])
     if len(untracked_items) > 10:
         titles_list += f"\n• <i>... и ещё {len(untracked_items) - 10} тайтлов</i>"
 

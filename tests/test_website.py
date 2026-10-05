@@ -7,7 +7,7 @@ from contextlib import closing
 from datetime import timedelta
 from pathlib import Path
 from xml.etree import ElementTree
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 from datetime import date
 
 from aiohttp.test_utils import AioHTTPTestCase
@@ -325,6 +325,70 @@ class WebsiteHTTPTests(AioHTTPTestCase):
         self.assertIn("/title/movie/99999", xml)
         self.assertIn("/title/tv/99999", xml)
 
+    async def test_project_history_pages_all_news_and_filters_by_identity(self):
+        from website.__main__ import STORE
+        store = self.app[STORE]
+        for n in range(25):
+            store.publish(f"history:{n}", f"Project news {n:02d}", "movies", "Summary", [],
+                          "https://www.themoviedb.org/movie/99999", media_type="movie", tmdb_id=99999,
+                          published=f"2026-09-{n+1:02d}T12:00:00+00:00")
+        store.publish("other-type", "UNRELATED SERIES", "series", "Summary", [],
+                      "https://www.themoviedb.org/tv/99999", media_type="tv", tmdb_id=99999)
+        # These newer unrelated articles previously pushed the title's history out of the global limit.
+        template = store.article(store.articles(limit=1)[0]["slug"])
+        columns = list(template)
+        sql = "INSERT INTO articles (" + ",".join(columns) + ") VALUES (" + ",".join("?" for _ in columns) + ")"
+        store.db.executemany(sql, [tuple({**template, "slug": f"unrelated-{n}", "fingerprint": f"unrelated-{n}",
+                                         "tmdb_id": 123456, "title": "UNRELATED ARTICLE"}[c] for c in columns) for n in range(510)])
+        store.db.commit()
+        response = await self.client.get("/title/movie/99999")
+        html = await response.text()
+        self.assertEqual(response.status, 200)
+        self.assertIn("История новостей", html)
+        self.assertEqual(html.count('class="news-card '), 20)
+        self.assertLess(html.index("Project news 24"), html.index("Project news 23"))
+        self.assertNotIn("UNRELATED SERIES", html)
+        self.assertNotIn("UNRELATED ARTICLE", html)
+        self.assertIn("?news_page=2#news-history", html)
+        response = await self.client.get("/title/movie/99999?news_page=2")
+        html = await response.text()
+        self.assertEqual(html.count('class="news-card '), 5)
+        self.assertIn("Project news 00", html)
+        self.assertIn("?news_page=1#news-history", html)
+        self.assertNotIn("Project news 24", html)
+
+    async def test_bot_title_link_creates_card_without_fake_news_and_survives_refresh(self):
+        from website.__main__ import STORE
+        self.cfg["api_key"] = "test"
+        detail = {"id": 99999, "name": "Series from bot", "overview": "Plot",
+                  "poster_path": "/poster.jpg", "popularity": 0.1, "vote_count": 100,
+                  "vote_average": 4, "first_air_date": "2000-01-01", "status": "Ended"}
+        with patch.object(Editor, "fetch", new=AsyncMock(return_value=detail)) as fetch:
+            response = await self.client.get("/title/tv/99999")
+            self.assertEqual(response.status, 200)
+            self.assertIn("Series from bot", await response.text())
+            response = await self.client.get("/title/tv/99999")
+            self.assertEqual(response.status, 200)
+            fetch.assert_awaited_once()
+        store = self.app[STORE]
+        self.assertTrue(store.catalog_item("tv:99999")["bot_linked"])
+        self.assertEqual(store.title_articles_count("tv", 99999), 0)
+        Editor(store, self.cfg).process("tv", detail)
+        self.assertIsNotNone(store.catalog_item("tv:99999"))
+        self.assertEqual(store.title_articles_count("tv", 99999), 0)
+
+    async def test_bot_title_link_retries_failure_and_does_not_publish_invalid_titles(self):
+        self.cfg["api_key"] = "test"
+        with patch.object(Editor, "fetch", new=AsyncMock(side_effect=RuntimeError("TMDB вернул HTTP 404"))):
+            response = await self.client.get("/title/movie/99999")
+            self.assertEqual(response.status, 404)
+        with patch.object(Editor, "fetch", new=AsyncMock(side_effect=RuntimeError("TMDB вернул HTTP 503"))):
+            response = await self.client.get("/title/movie/99999")
+            self.assertEqual(response.status, 503)
+        with patch.object(Editor, "fetch", new=AsyncMock(return_value={"id": 99999, "title": "Valid", "overview": "Plot"})):
+            response = await self.client.get("/title/movie/99999")
+            self.assertEqual(response.status, 200)
+
     async def test_all_routes_and_feeds(self):
         for path in ("/", "/news", "/movies", "/series", "/calendar", "/about", "/static/site.css", "/static/mascot.jpg", "/health"):
             response = await self.client.get(path)
@@ -446,7 +510,8 @@ class CatalogHTTPTests(AioHTTPTestCase):
         self.assertIn('youtube-nocookie.com/embed/', text)
         self.assertIn('/static/site.css?v=' + ASSET_VERSION, text)
         self.assertIn('В список ожидания', text)
-        self.assertEqual('Новости проекта' in text, any(a.get('media_type') == item['media_type'] and a.get('tmdb_id') == item['id'] for a in self.app[STORE].articles(limit=500)))
+        self.assertIn('История новостей', text)
+        self.assertIn('id="news-history"', text)
         response = await self.client.get('/health')
         data = await response.json()
         self.assertEqual(data['cards_published'], len(self.app[STORE].catalog()))

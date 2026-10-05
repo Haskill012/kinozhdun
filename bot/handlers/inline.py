@@ -16,7 +16,7 @@ from aiogram.enums import ParseMode
 
 from bot.config import Settings
 from bot.services.tmdb import TMDBClient
-from bot.utils.formatting import safe_html, format_date_ru, format_shared_watchlist_message
+from bot.utils.formatting import safe_html, linked_title, site_title_url, format_date_ru, format_shared_watchlist_message
 from bot.db.repositories import Repository
 from bot.handlers.start import parse_content_deep_link, parse_watchlist_deep_link
 
@@ -52,7 +52,7 @@ async def process_inline_query(inline_query: InlineQuery) -> None:
 
         if details and (details.get("title") or details.get("name")):
             title = details.get("title") or details.get("name") or "Без названия"
-            safe_title = safe_html(title)
+            safe_title = linked_title(title, {"media_type": media_type, "tmdb_id": tmdb_id})
             poster_path = details.get("poster_path")
             network = safe_html(details.get("network"))
             net_str = f" • {network}" if network else ""
@@ -105,6 +105,7 @@ async def process_inline_query(inline_query: InlineQuery) -> None:
                 ]
             ])
 
+            keyboard.inline_keyboard.append([InlineKeyboardButton(text="🌐 Карточка и новости на сайте", url=site_title_url(media_type, tmdb_id))])
             results = []
             if poster_path:
                 photo_url = f"https://image.tmdb.org/t/p/w780{poster_path}"
@@ -205,7 +206,7 @@ async def process_inline_query(inline_query: InlineQuery) -> None:
             m_type = item.get("media_type", "movie")
             t_id = item.get("tmdb_id") or item.get("id")
             t_title = item.get("title") or "Без названия"
-            safe_t = safe_html(t_title)
+            safe_t = linked_title(t_title, item)
             p_path = item.get("poster_path")
             network = safe_html(item.get("network"))
             net_str = f" • {network}" if network else ""
@@ -234,6 +235,7 @@ async def process_inline_query(inline_query: InlineQuery) -> None:
                 [InlineKeyboardButton(text="🍿 Открыть Кинождун", url=f"https://t.me/{bot_username}")],
             ])
 
+            kb.inline_keyboard.append([InlineKeyboardButton(text="🌐 Карточка и новости на сайте", url=site_title_url(m_type, t_id))])
             if p_path:
                 results.append(
                     InlineQueryResultPhoto(

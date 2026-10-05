@@ -10,7 +10,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from bot.config import Settings
 from bot.db.repositories import Repository
 from bot.services.channel import ChannelPublisher
-from bot.utils.formatting import format_date_ru
+from bot.utils.formatting import format_date_ru, linked_title
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ def format_pending_post_card(post, current_index: int, total_count: int) -> str:
     date_str = format_date_ru(post.air_date) if post.air_date else "не указана"
     return (
         f"📋 <b>Очередь публикаций ({current_index + 1} из {total_count})</b>\n\n"
-        f"🎬 <b>{post.title}</b>\n"
+        f"🎬 <b>{linked_title(post.title, post)}</b>\n"
         f"🏷 <b>Событие:</b> <code>{post.event_type}</code>\n"
         f"🌐 <b>Источник:</b> {post.source} (статус: <i>{post.credibility}</i>)\n"
         f"📅 <b>Дата:</b> {date_str}\n\n"

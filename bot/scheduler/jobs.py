@@ -60,6 +60,8 @@ async def check_updates_job(
 
                 kb = notification_item_keyboard(
                     item_id=item.id,
+                    media_type=item.media_type,
+                    tmdb_id=item.tmdb_id,
                     tmdb_url=getattr(item, "tmdb_url", None),
                     bot_username=settings.BOT_USERNAME,
                 )
@@ -97,6 +99,8 @@ async def check_reminders_job(bot: Bot, session_factory) -> None:
                     bot_username = getattr(bot, "settings", None).BOT_USERNAME if hasattr(bot, "settings") and bot.settings else "kinojdun_bot"
                     kb = notification_item_keyboard(
                         item_id=item.id,
+                        media_type=item.media_type,
+                        tmdb_id=item.tmdb_id,
                         tmdb_url=getattr(item, "tmdb_url", None),
                         bot_username=bot_username,
                     )

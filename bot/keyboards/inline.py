@@ -4,6 +4,13 @@ import urllib.parse
 from typing import Any, Optional
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from bot.utils.formatting import site_title_url
+
+
+def add_site_title_button(builder, media_type, tmdb_id):
+    url = site_title_url(media_type, tmdb_id)
+    if url:
+        builder.button(text="🌐 Карточка и новости на сайте", url=url)
 
 
 def search_results_keyboard(results: list[dict[str, Any]]) -> InlineKeyboardMarkup:
@@ -64,6 +71,7 @@ def preview_item_keyboard(
 
     builder.button(text="🔙 Назад к результатам поиска", callback_data="back_to_search")
     builder.button(text="❌ Закрыть", callback_data="cancel_search")
+    add_site_title_button(builder, media_type, tmdb_id)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -85,6 +93,7 @@ def track_success_keyboard(
     )
     builder.button(text="🍿 Мой Кинождун", callback_data="back_to_list")
     builder.button(text="🔍 Искать ещё", callback_data="cancel_search")
+    add_site_title_button(builder, media_type, tmdb_id)
     builder.adjust(1, 2)
     return builder.as_markup()
 
@@ -148,6 +157,7 @@ def shared_item_recipient_keyboard(
         builder.button(text="🔎 Посмотреть подробнее", callback_data=f"preview:{media_type}:{tmdb_id}")
 
     builder.button(text="🔍 Найти другой фильм/сериал", callback_data="cancel_search")
+    add_site_title_button(builder, media_type, tmdb_id)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -222,6 +232,7 @@ def channel_referral_keyboard(
         builder.button(text="🔎 Подробнее о проекте", callback_data=f"preview:{media_type}:{tmdb_id}")
 
     builder.button(text="🔍 Найти другой фильм/сериал", callback_data="cancel_search")
+    add_site_title_button(builder, media_type, tmdb_id)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -267,6 +278,7 @@ def item_details_keyboard(
 
     builder.button(text="🗑 Удалить из списка", callback_data=f"remove:{item_id}")
     builder.button(text="📋 К списку «Мой Кинождун»", callback_data="back_to_list")
+    add_site_title_button(builder, media_type, tmdb_id)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -281,11 +293,14 @@ def notification_item_keyboard(
     item_id: int,
     tmdb_url: Optional[str] = None,
     bot_username: str = "kinojdun_bot",
+    media_type: str | None = None,
+    tmdb_id: int | None = None,
 ) -> InlineKeyboardMarkup:
     """Клавиатура для уведомлений пользователю: кнопка перехода к карточке и ссылка на TMDB."""
     builder = InlineKeyboardBuilder()
     builder.button(text="🍿 Открыть в Кинождуне", callback_data=f"info:{item_id}")
     if tmdb_url and str(tmdb_url).startswith("http"):
         builder.button(text="🌐 Страница на TMDB", url=str(tmdb_url))
+    add_site_title_button(builder, media_type, tmdb_id)
     builder.adjust(1)
     return builder.as_markup()

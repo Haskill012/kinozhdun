@@ -88,7 +88,7 @@ class TestHandlersFlow(unittest.IsolatedAsyncioTestCase):
         reply_markup = msg.answer.call_args[1]["reply_markup"]
 
         # Проверяем текст карточки получателя
-        self.assertIn("Тоже ждёшь «Фоллаут»?", text)
+        self.assertIn('Тоже ждёшь «<a href="https://kinojdun.ru/title/tv/82856">Фоллаут</a>»?', text)
         self.assertIn("Prime Video", text)
 
         # Проверяем инлайн-кнопки

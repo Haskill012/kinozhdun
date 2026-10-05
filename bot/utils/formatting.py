@@ -2,6 +2,7 @@
 
 import datetime
 import html
+import os
 from typing import Any
 
 
@@ -10,6 +11,27 @@ def safe_html(text: Any) -> str:
     if text is None:
         return ""
     return html.escape(str(text).strip(), quote=False)
+
+
+def site_title_url(media_type: str, tmdb_id: Any, site_url: str | None = None) -> str | None:
+    if media_type not in ("movie", "tv") or not isinstance(tmdb_id, (int, str)):
+        return None
+    if not str(tmdb_id).isdigit() or int(tmdb_id) <= 0:
+        return None
+    base = (site_url or os.getenv("SITE_BASE_URL") or "https://kinojdun.ru").rstrip("/")
+    return f"{base}/title/{media_type}/{int(tmdb_id)}"
+
+
+def linked_title(title: Any, item: Any, media_type: str | None = None) -> str:
+    if isinstance(item, dict):
+        media = media_type or item.get("media_type", "movie")
+        ident = item.get("tmdb_id") or item.get("id")
+    else:
+        media = media_type or getattr(item, "media_type", "movie")
+        ident = getattr(item, "tmdb_id", None)
+    url = site_title_url(media, ident)
+    label = safe_html(title)
+    return f'<a href="{html.escape(url, quote=True)}">{label}</a>' if url else label
 
 
 def format_date_ru(value: Any) -> str:
@@ -73,7 +95,7 @@ def format_search_results_message(query: str, results: list[dict[str, Any]]) -> 
         media_type = res.get("media_type", "movie")
         icon = "📺" if media_type == "tv" else "🎬"
         type_str = "Сериал" if media_type == "tv" else "Фильм"
-        title = safe_html(res.get("title") or res.get("name") or "Без названия")
+        title = linked_title(res.get("title") or res.get("name") or "Без названия", res)
 
         raw_date = res.get("release_date")
         date_str = format_date_ru(raw_date)
@@ -111,7 +133,8 @@ def format_item_details(item: Any, media_type_hint: str | None = None) -> str:
     """Форматирует детальную карточку проекта в стильном дизайне."""
     if isinstance(item, dict):
         media_type = media_type_hint or item.get("media_type", "movie")
-        title = safe_html(item.get("title") or item.get("name") or "Без названия")
+        raw_title = item.get("title") or item.get("name") or "Без названия"
+        title = linked_title(raw_title, item, media_type)
         orig_title = safe_html(item.get("original_title") or item.get("original_name"))
         status_raw = item.get("status", "")
         network = safe_html(item.get("network"))
@@ -124,7 +147,8 @@ def format_item_details(item: Any, media_type_hint: str | None = None) -> str:
         rating = item.get("vote_average")
     else:
         media_type = getattr(item, "media_type", media_type_hint or "movie")
-        title = safe_html(getattr(item, "title", "Без названия"))
+        raw_title = getattr(item, "title", "Без названия")
+        title = linked_title(raw_title, item)
         orig_title = safe_html(getattr(item, "original_title", None))
         status_raw = getattr(item, "status", "")
         network = safe_html(getattr(item, "network", None))
@@ -141,8 +165,8 @@ def format_item_details(item: Any, media_type_hint: str | None = None) -> str:
     lines = [
         f"{icon} <b>{title}</b>",
     ]
-    if orig_title and orig_title != title:
-        lines.append(f"<i>({orig_title})</i>")
+    if orig_title and orig_title != safe_html(raw_title):
+        lines.append(f"<i>({linked_title(html.unescape(orig_title), item, media_type)})</i>")
 
     lines.append("")
     lines.append(f"🏷 <b>Категория:</b> {type_label}")
@@ -181,7 +205,7 @@ def format_item_details(item: Any, media_type_hint: str | None = None) -> str:
 
 def format_status_change_notification(item: Any, info: dict[str, Any]) -> str:
     """Форматирует красивое персональное уведомление об изменении статуса проекта."""
-    title = safe_html(getattr(item, "title", "Без названия"))
+    title = linked_title(getattr(item, "title", "Без названия"), item)
     media_type = getattr(item, "media_type", "movie")
     type_label = "сериала" if media_type == "tv" else "фильма"
     raw_status = info.get("status") or getattr(item, "status", "")
@@ -208,7 +232,7 @@ def format_status_change_notification(item: Any, info: dict[str, Any]) -> str:
 
 def format_announced_notification(item: Any, update: dict[str, Any]) -> str:
     """Форматирует персональное уведомление о появлении официальной даты выхода."""
-    title = safe_html(getattr(item, "title", "Без названия"))
+    title = linked_title(getattr(item, "title", "Без названия"), item)
     season = update.get("next_season")
     air_date = update.get("next_air_date")
     network = safe_html(getattr(item, "network", None))
@@ -232,7 +256,7 @@ def format_announced_notification(item: Any, update: dict[str, Any]) -> str:
 
 def format_released_notification(item: Any) -> str:
     """Форматирует персональное уведомление о премьере."""
-    title = safe_html(getattr(item, "title", "Без названия"))
+    title = linked_title(getattr(item, "title", "Без названия"), item)
     season = getattr(item, "next_season_number", None) or getattr(item, "last_known_season", None)
     media_type = getattr(item, "media_type", "movie")
     air_date = getattr(item, "next_air_date", None)
@@ -255,7 +279,7 @@ def format_released_notification(item: Any) -> str:
 
 def format_reminder_notification(item: Any, days_left: int = 3) -> str:
     """Форматирует персональное напоминание за несколько дней до даты."""
-    title = safe_html(getattr(item, "title", "Без названия"))
+    title = linked_title(getattr(item, "title", "Без названия"), item)
     air_date = getattr(item, "next_air_date", None) or getattr(item, "custom_date", None)
     network = safe_html(getattr(item, "network", None))
     season = getattr(item, "next_season_number", None)
@@ -306,7 +330,7 @@ def format_item_list(items: list[Any]) -> str:
         elif status == "ended":
             status_badge = "🏁"
 
-        title = safe_html(getattr(item, "title", "Без названия"))
+        title = linked_title(getattr(item, "title", "Без названия"), item)
         network = safe_html(getattr(item, "network", None))
         network_str = f" • {network}" if network else ""
 
@@ -355,7 +379,7 @@ def format_help_message() -> str:
 
 def format_shared_item_prompt(title: str, details: dict[str, Any], media_type: str) -> str:
     """Форматирует карточку проекта для получателя ссылки шеринга."""
-    safe_title = safe_html(title)
+    safe_title = linked_title(title, details, media_type)
     icon = "📺" if media_type == "tv" else "🎬"
     type_str = "сериал" if media_type == "tv" else "фильм"
     network = safe_html(details.get("network"))
@@ -402,7 +426,7 @@ def format_shared_watchlist_message(items: list[dict[str, Any]], title: str = "�
     for i, it in enumerate(items, 1):
         m_type = it.get("media_type", "movie")
         icon = "📺" if m_type == "tv" else "🎬"
-        item_title = safe_html(it.get("title", "Без названия"))
+        item_title = linked_title(it.get("title", "Без названия"), it)
         network = safe_html(it.get("network"))
         net_str = f" • {network}" if network else ""
 
@@ -428,7 +452,7 @@ def format_channel_referral_prompt(post: Any) -> str:
 
     media_type = getattr(post, "media_type", "")
     icon = "📺" if media_type == "tv" else "🎬"
-    title = safe_html(getattr(post, "title", "Без названия"))
+    title = linked_title(getattr(post, "title", "Без названия"), post)
     season_number = getattr(post, "season_number", None)
 
     season_suffix = f" — сезон {season_number}" if (media_type == "tv" and season_number) else ""

@@ -59,6 +59,11 @@ class PersonalNotificationTests(unittest.IsolatedAsyncioTestCase):
                 await check_updates_job(bot, factory, tmdb, settings)
 
             self.assertEqual([c.args[0] for c in bot.send_message.await_args_list], [100, 101, 102])
+            for call, update in zip(bot.send_message.await_args_list, updates):
+                expected = f"https://kinojdun.ru/title/{update['item'].media_type}/{update['item'].tmdb_id}"
+                self.assertIn(expected, call.args[1])
+                buttons = [b for row in call.kwargs["reply_markup"].inline_keyboard for b in row]
+                self.assertTrue(any(b.url == expected for b in buttons))
             tmdb.get_official_trailer.assert_not_awaited()
             async with factory() as session:
                 self.assertEqual(list((await session.scalars(select(ChannelPost))).all()), [])

@@ -73,15 +73,17 @@ class Editor:
         return bool((first and lower <= first <= upper) or
                     (media == "tv" and next_air and today().isoformat() <= next_air <= upper))
 
-    def process(self, media, detail, *, emit_news=True):
+    def process(self, media, detail, *, emit_news=True, publish_card=False):
         if detail.get("adult") or not detail.get("id"):
             return
         title = detail.get("title") or detail.get("name")
         if not title:
             return
         key = f"{media}:{detail['id']}"
+        existing = self.store.catalog_item(key, False) or {}
+        bot_linked = publish_card or existing.get("bot_linked", False)
         news_related = self.store.has_news_title(media, detail["id"])
-        if not news_related and "popularity" in detail and not self.eligible(media, detail, require_recent=False):
+        if not news_related and not bot_linked and "popularity" in detail and not self.eligible(media, detail, require_recent=False):
             self.store.db.execute("DELETE FROM catalog WHERE key=?", (key,))
             self.store.delete_title(key)
             return
@@ -113,7 +115,9 @@ class Editor:
                 "first_release": valid_date(detail.get("release_date") if media == "movie" else detail.get("first_air_date")),
                 "genres": [g["name"] for g in detail.get("genres", [])],
                 "source_url": f"https://www.themoviedb.org/{media}/{detail['id']}"}
-        if news_related:
+        if bot_linked:
+            item["bot_linked"] = True
+        if news_related or publish_card:
             self.store.ensure_news_card(media, detail["id"], title, item["source_url"], item=item)
         self.store.update_catalog(item)
         if not emit_news:
@@ -168,6 +172,30 @@ class Editor:
             post("trailer:" + new_key, f"«{title}»: новый трейлер в каталоге TMDB", "В записи проекта появился трейлер с отметкой official.",
                  ["В каталоге TMDB появился новый ролик типа Trailer с отметкой official.", f"Смотреть: https://www.youtube.com/watch?v={new_key}"])
         self.store.save_title(key, item)
+
+    async def open_title(self, media, tmdb_id):
+        """Resolve a bot link without requiring selection in the discovery catalogue."""
+        key = f"{media}:{tmdb_id}"
+        visible = self.store.catalog_item(key)
+        if visible:
+            return visible
+        saved = self.store.snapshot(key) or self.store.catalog_item(key, False)
+        if saved and saved.get("source_url"):
+            saved = {**saved, "bot_linked": True}
+            if "first_release" not in saved:
+                saved["needs_details"] = True
+            self.store.ensure_news_card(media, tmdb_id, saved["title"], saved.get("source_url") or
+                                       f"https://www.themoviedb.org/{media}/{tmdb_id}", item=saved)
+            self.store.db.commit()
+            return self.store.catalog_item(key)
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
+            self.session = session
+            try:
+                detail = await self.fetch(f"/{media}/{tmdb_id}", append_to_response="videos", include_video_language="ru,en,null")
+            finally:
+                self.session = None
+        self.process(media, detail, emit_news=False, publish_card=True)
+        return self.store.catalog_item(key)
 
     async def sync(self):
         if self.lock.locked():
