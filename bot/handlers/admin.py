@@ -35,8 +35,7 @@ def format_pending_post_card(post, current_index: int, total_count: int) -> str:
         f"🎬 <b>{post.title}</b>\n"
         f"🏷 <b>Событие:</b> <code>{post.event_type}</code>\n"
         f"🌐 <b>Источник:</b> {post.source} (статус: <i>{post.credibility}</i>)\n"
-        f"📅 <b>Дата:</b> {date_str}\n"
-        "────────────────────────\n"
+        f"📅 <b>Дата:</b> {date_str}\n\n"
         "<b>Текст публикации:</b>\n"
         f"{post.post_text or '—'}\n"
     )
@@ -321,18 +320,15 @@ async def cmd_channel_stats(message: Message) -> None:
     posting_label = "Включён ✅" if settings.CHANNEL_POSTING_ENABLED else "Отключён ❌"
 
     text = (
-        "📊 <b>Аналитика Telegram-канала «Кинождун 🍿»</b>\n"
-        "────────────────────────\n"
+        "📊 <b>Аналитика Telegram-канала «Кинождун 🍿»</b>\n\n"
         f"⚙️ <b>Режим канала:</b> {mode_label}\n"
-        f"📢 <b>Публикации в канал:</b> {posting_label}\n"
-        f"⏱ <b>Интервал антиспама:</b> {settings.CHANNEL_MIN_POST_INTERVAL_MINUTES} мин.\n"
-        "────────────────────────\n"
+        f"📢 <b>Публикации:</b> {posting_label}\n"
+        f"⏱ <b>Интервал антиспама:</b> {settings.CHANNEL_MIN_POST_INTERVAL_MINUTES} мин.\n\n"
         f"📝 <b>Опубликовано постов:</b> <b>{stats['posts_count']}</b>\n"
         f"🔗 <b>Переходов в бота:</b> <b>{stats['opens_count']}</b>\n"
         f"👤 <b>Уникальных пользователей:</b> <b>{stats['unique_users']}</b>\n"
         f"🔔 <b>Добавлено тайтлов в трекер:</b> <b>{stats['follows_count']}</b>\n"
-        f"📈 <b>Конверсия воронки:</b> <b>{stats['conversion_rate']}%</b>\n"
-        "────────────────────────\n"
+        f"📈 <b>Конверсия воронки:</b> <b>{stats['conversion_rate']}%</b>\n\n"
         "💡 <i>Воронка: канал -> переход в бота -> нажатие «Отслеживать»</i>"
     )
     await message.answer(text)

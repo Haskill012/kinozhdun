@@ -4,6 +4,11 @@
 
 ---
 
+## 🌐 Локальный сайт
+
+Сайт с автономной редакцией: `.venv/Scripts/python.exe -m website`.
+Откройте http://127.0.0.1:8099. Инструкция и настройки: [website/README.md](website/README.md).
+
 ## ✨ Возможности и механики органического роста
 
 ### Основной функционал
@@ -62,7 +67,7 @@ cp .env.example .env
 
 Заполните `.env`:
 ```env
-TELEGRAM_BOT_TOKEN=8859530073:AAGIWKxhkuLJTLUXnVFnNMRzLKhqAVd5M_U
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 TMDB_API_KEY=ваш_tmdb_api_key
 DATABASE_URL=sqlite+aiosqlite:///./data/kinozhdun.db
 BOT_USERNAME=kinojdun_bot

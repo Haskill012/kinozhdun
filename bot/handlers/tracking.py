@@ -56,8 +56,7 @@ class DateState(StatesGroup):
 async def btn_search_prompt(message: Message) -> None:
     """Подсказка при нажатии кнопки поиска в меню."""
     await message.answer(
-        "🔍 <b>Поиск фильма или сериала</b>\n"
-        "────────────────────────\n"
+        "🔍 <b>Поиск фильма или сериала</b>\n\n"
         "Напишите в ответ название проекта, который вы ждёте.\n"
         "<i>Например: Ведьмак, Мандалорец, Дюна, Пацаны...</i>",
         reply_markup=main_menu_keyboard(),
@@ -134,6 +133,7 @@ async def process_preview_item(callback: CallbackQuery) -> None:
         tracked_item_id=tracked_item_id,
         bot_username=settings.BOT_USERNAME,
         title=title,
+        referrer_id=callback.from_user.id,
     )
     await callback.message.edit_text(text, reply_markup=reply_markup)
 

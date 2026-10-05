@@ -6,13 +6,14 @@ import json
 import logging
 from typing import Any, Optional
 from aiogram import Bot
+from aiogram.enums import ParseMode
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from bot.config import Settings
 from bot.db.models import ChannelPost
 from bot.db.repositories import Repository
-from bot.utils.formatting import format_date_ru
+from bot.utils.formatting import format_date_ru, safe_html
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,34 @@ def generate_content_hash(
     )
 
 
+GENRES_RU: dict[int, str] = {
+    28: "боевик",
+    12: "приключения",
+    16: "мультфильм",
+    35: "комедия",
+    80: "криминал",
+    99: "документальный",
+    18: "драма",
+    10751: "семейный",
+    14: "фэнтези",
+    36: "история",
+    27: "ужасы",
+    10402: "музыка",
+    9648: "детектив",
+    10749: "мелодрама",
+    878: "фантастика",
+    10770: "телефильм",
+    53: "триллер",
+    10752: "военный",
+    37: "вестерн",
+    10759: "боевик, приключения",
+    10762: "детский",
+    10765: "фантастика, фэнтези",
+    10768: "политика",
+}
+EXCLUDED_GENRES = {10763, 10764, 10766, 10767}  # Новости, реалити-шоу, мыльные оперы, ток-шоу
+
+
 def format_channel_post_text(
     title: str,
     media_type: Optional[str] = "tv",
@@ -65,8 +94,12 @@ def format_channel_post_text(
     date_label: Optional[str] = None,
 ) -> str:
     """Форматирует красивый, лаконичный и вовлекающий пост для Telegram-канала в стиле Кинождуна."""
+    title = safe_html(title)
+    network = safe_html(network) if network else None
+    overview = safe_html(overview) if overview else None
     type_label = "сериала" if media_type == "tv" else "фильма"
     type_word = "сериал" if media_type == "tv" else "фильм"
+    type_word_ru = "Сериал" if media_type == "tv" else "Фильм"
     season_label = f" (сезон {season_number})" if (media_type == "tv" and season_number) else ""
     season_word = f"{season_number} сезон" if season_number else "новый сезон"
 
@@ -79,102 +112,171 @@ def format_channel_post_text(
             header = f"🔥 <b>Анонсировано продолжение фильма «{title}»</b>"
             studio_str = f"Студия {network} подтвердила разработку сиквела." if network else "Официально подтверждена разработка сиквела."
 
-        date_line = f"\n📅 Премьера ожидается: <b>{format_date_ru(air_date)}</b>" if air_date else "\nТочная дата выхода пока не объявлена."
-        cta_line = "\n🍿 Кинождун сообщит, когда появятся новости о съёмках и дате премьеры."
-        return "\n\n".join([header, studio_str + date_line, cta_line])
+        date_line = f"\n📅 <b>Премьера:</b> <code>{format_date_ru(air_date)}</code>" if air_date else "\nТочная дата выхода пока не объявлена."
+
+        body_parts = [studio_str + date_line]
+        if overview and len(overview.strip()) > 0:
+            ov = overview.strip()
+            if len(ov) > 280:
+                ov = ov[:277] + "..."
+            body_parts.append(f"\n📝 <i>«{ov}»</i>")
+
+        body_parts.append("\n🍿 <i>Кинождун сообщит, когда появятся новости о съёмках и дате премьеры.</i>")
+        return f"{header}\n\n" + "\n".join(body_parts)
 
     # --- 2. Объявление даты выхода ---
     elif event_type in ("date_announced", "announced"):
+        season_prefix = f" ({season_word})" if (media_type == "tv" and season_number) else ""
+        header = f"📅 <b>Объявлена дата выхода {season_label or type_label} «{title}»</b>"
+
+        body_parts = []
         if air_date:
-            date_formatted = format_date_ru(air_date)
-            header = f"📅 <b>Объявлена дата выхода {season_label or type_label} «{title}»</b>"
-            info_line = f"Премьера состоится <b>{date_formatted}</b>."
-            if network:
-                info_line += f"\n🏢 <b>Платформа:</b> {network}"
-            cta_line = f"🍿 Добавь {type_word} в Кинождун — напомним о премьере."
-            return "\n\n".join([header, info_line, cta_line])
-        else:
-            header = f"📢 <b>Новости о проекте «{title}»{season_label}</b>"
-            cta_line = "🍿 Следите за обновлениями в Кинождуне."
-            return f"{header}\n\n{cta_line}"
+            body_parts.append(f"🗓 <b>Релиз:</b> <b>{format_date_ru(air_date)}</b>")
+        if network:
+            body_parts.append(f"🏢 <b>Платформа:</b> {network}")
+
+        if overview and len(overview.strip()) > 0:
+            ov = overview.strip()
+            if len(ov) > 280:
+                ov = ov[:277] + "..."
+            body_parts.append(f"\n📝 <i>«{ov}»</i>")
+
+        body_parts.append(f"\n🍿 <i>Добавь {type_word} в Кинождун — напомним о премьере.</i>")
+        return f"{header}\n\n" + "\n".join(body_parts)
 
     # --- 3. Перенос даты выхода ---
     elif event_type == "date_postponed":
         new_date_str = format_date_ru(air_date) if air_date else "не объявлена"
         old_date_str = format_date_ru(old_air_date) if old_air_date else "ранее"
         header = f"📅 <b>Премьеру «{title}»{season_label} перенесли</b>"
-        body = f"Новая дата выхода — <b>{new_date_str}</b>.\nРанее премьера ожидалась <i>{old_date_str}</i>."
-        cta = "🍿 Добавь проект в Кинождун — сообщим обо всех дальнейших изменениях."
-        return f"{header}\n\n{body}\n\n{cta}"
+
+        body_parts = [
+            f"🗓 <b>Новая дата выхода:</b> <b>{new_date_str}</b>",
+            f"❌ <i>Ранее премьера ожидалась {old_date_str}</i>",
+        ]
+        if network:
+            body_parts.append(f"🏢 <b>Студия:</b> {network}")
+
+        body_parts.append("\n🍿 <i>Добавь проект в Кинождун — сообщим обо всех дальнейших изменениях.</i>")
+        return f"{header}\n\n" + "\n".join(body_parts)
 
     # --- 4. Начало съёмок ---
     elif event_type == "filming_started":
         target = f"{season_word}а сериала" if media_type == "tv" else "фильма"
         header = f"🎬 <b>Начались съёмки {target} «{title}»</b>"
-        body = "Производство официально стартовало."
-        date_line = f"\n📅 Релиз запланирован на: <b>{format_date_ru(air_date)}</b>" if air_date else "\nДата премьеры пока не объявлена."
-        cta = "🍿 Кинождун сообщит, когда объявят точную дату премьеры."
-        return f"{header}\n\n{body}{date_line}\n\n{cta}"
+
+        body_parts = ["Производство официально стартовало."]
+        if network:
+            body_parts.append(f"📺 <b>Платформа:</b> {network}")
+        if air_date:
+            body_parts.append(f"📅 <b>Релиз запланирован на:</b> <code>{format_date_ru(air_date)}</code>")
+
+        if overview and len(overview.strip()) > 0:
+            ov = overview.strip()
+            if len(ov) > 280:
+                ov = ov[:277] + "..."
+            body_parts.append(f"\n📝 <i>«{ov}»</i>")
+
+        body_parts.append("\n🍿 <i>Кинождун сообщит, когда объявят точную дату премьеры.</i>")
+        return f"{header}\n\n" + "\n".join(body_parts)
 
     # --- 5. Завершение съёмок ---
     elif event_type == "filming_finished":
         target = f"{season_word}а сериала" if media_type == "tv" else "фильма"
         header = f"🎬 <b>Завершились съёмки {target} «{title}»</b>"
-        body = "Съёмочный процесс завершён, проект переходит на стадию пост-продакшна."
-        date_line = f"\n📅 Премьера: <b>{format_date_ru(air_date)}</b>" if air_date else "\nДата премьеры пока не объявлена."
-        cta = "🍿 Кинождун сообщит о премьере и первом официальном трейлере."
-        return f"{header}\n\n{body}{date_line}\n\n{cta}"
+
+        body_parts = ["Съёмочный процесс завершён, проект переходит на стадию пост-продакшна."]
+        if network:
+            body_parts.append(f"📺 <b>Платформа:</b> {network}")
+        if air_date:
+            body_parts.append(f"📅 <b>Премьера:</b> <code>{format_date_ru(air_date)}</code>")
+
+        body_parts.append("\n🍿 <i>Кинождун сообщит о премьере и первом официальном трейлере.</i>")
+        return f"{header}\n\n" + "\n".join(body_parts)
 
     # --- 6. Официальный трейлер ---
     elif event_type == "trailer":
         target = f"нового сезона «{title}»" if (media_type == "tv" and season_number) else f"фильма «{title}»"
         header = f"🔥 <b>Вышел официальный трейлер {target}</b>"
-        date_info = f"Премьера состоится <b>{format_date_ru(air_date)}</b>." if air_date else "Дата премьеры пока не объявлена."
+
+        body_parts = []
+        if air_date:
+            body_parts.append(f"🗓 <b>Премьера состоится:</b> <b>{format_date_ru(air_date)}</b>")
         if network:
-            date_info += f"\n🏢 <b>Платформа:</b> {network}"
-        cta = "🍿 Кинождун напомнит о премьере за 3 дня и в день выхода."
-        return f"{header}\n\n{date_info}\n\n{cta}"
+            body_parts.append(f"🏢 <b>Платформа:</b> {network}")
+
+        if overview and len(overview.strip()) > 0:
+            ov = overview.strip()
+            if len(ov) > 240:
+                ov = ov[:237] + "..."
+            body_parts.append(f"\n📝 <i>«{ov}»</i>")
+
+        body_parts.append("\n🍿 <i>Кинождун напомнит о премьере за 3 дня и в день выхода.</i>")
+        return f"{header}\n\n" + "\n".join(body_parts)
 
     # --- 7. Премьера состоялась ---
     elif event_type == "released":
         header = f"🍿 <b>Сегодня состоялась премьера {type_label} «{title}»{season_label}!</b>"
-        body = "Релиз уже доступен для просмотра."
+        body_parts = ["Релиз уже доступен для просмотра."]
         if network:
-            body += f"\n🏢 <b>Платформа:</b> {network}"
-        cta = "🎬 Добавьте проект в личный список, чтобы не потерять."
-        return f"{header}\n\n{body}\n\n{cta}"
+            body_parts.append(f"🏢 <b>Платформа:</b> {network}")
+        body_parts.append("\n🎬 <i>Добавьте проект в личный список, чтобы не потерять.</i>")
+        return f"{header}\n\n" + "\n".join(body_parts)
 
     # --- 8. Закрытие / завершение ---
     elif event_type in ("canceled", "ended"):
         status_label = "официально закрыт" if event_type == "canceled" else "завершён"
         header = f"📢 <b>Сериал «{title}» {status_label}</b>"
-        body = f"{network} принял решение не продолжать проект." if network else "Производство сериала завершено, новых сезонов не планируется."
-        cta = "🍿 В Кинождуне всегда можно найти другие интересные премьеры."
-        return f"{header}\n\n{body}\n\n{cta}"
+        body_parts = []
+        if network:
+            body_parts.append(f"{network} принял решение не продолжать проект.")
+        else:
+            body_parts.append("Производство сериала завершено, новых сезонов не планируется.")
+        body_parts.append("\n🍿 <i>В Кинождуне всегда можно найти другие интересные премьеры.</i>")
+        return f"{header}\n\n" + "\n".join(body_parts)
 
     # --- 9. «Что выходит сегодня» (Daily Digest) ---
     elif event_type == "daily_digest":
         date_str = date_label or format_date_ru(datetime.date.today())
         lines = [
-            f"🍿 <b>Что выходит сегодня — {date_str}</b>",
-            "────────────────────────",
+            f"🍿 <b>Что выходит сегодня — {date_str}</b>\n",
+            "Собрали главные кино- и телепремьеры сегодняшнего дня:\n",
         ]
         if items:
             for item in items:
                 m_type = item.get("media_type", "movie")
                 t_name = item.get("title", "Без названия")
-                tag = item.get("tag", "премьера")
-                icon = "🎬" if m_type == "movie" else "🔥"
-                lines.append(f"{icon} <b>{t_name}</b> — {tag}")
-        lines.append("────────────────────────")
-        lines.append("🍿 <i>Не хотите пропускать важные даты? Добавьте проекты в Кинождун — бот вовремя пришлёт напоминание.</i>")
+                tag = item.get("tag", "")
+                genres = item.get("genres", "")
+                network_name = item.get("network", "")
+
+                icon = "🎬" if m_type == "movie" else "📺"
+
+                details = []
+                if tag and tag not in ("сериал", "премьера"):
+                    details.append(tag)
+                elif tag == "премьера":
+                    details.append("премьера фильма" if m_type == "movie" else "новый сериал")
+                if genres:
+                    details.append(genres)
+                if network_name:
+                    details.append(network_name)
+
+                details_str = " • ".join(details)
+                if details_str:
+                    lines.append(f"{icon} <b>{t_name}</b>\n   └ <i>{details_str}</i>")
+                else:
+                    lines.append(f"{icon} <b>{t_name}</b>")
+
+        lines.append("\n🍿 <i>Не хотите пропускать важные даты? Добавьте проекты в Кинождун — бот вовремя пришлёт напоминание.</i>")
         return "\n".join(lines)
 
     # --- 10. «Главные премьеры недели» (Weekly Digest) ---
     elif event_type == "weekly_digest":
+        range_str = f" ({date_label})" if date_label else ""
         lines = [
-            f"🔥 <b>Главные премьеры недели ({date_label or ''})</b>",
-            "────────────────────────",
+            f"🔥 <b>Главные премьеры недели{range_str}</b>\n",
+            "Самые ожидаемые новинки кино и сериалов этой недели:\n",
         ]
         if items:
             for item in items:
@@ -182,19 +284,29 @@ def format_channel_post_text(
                 t_name = item.get("title", "Без названия")
                 d_str = item.get("date_str", "")
                 tag = item.get("tag", "")
-                icon = "🎬" if m_type == "movie" else "🍿"
-                tag_part = f" ({tag})" if tag else ""
-                lines.append(f"{icon} {d_str} — <b>{t_name}</b>{tag_part}")
-        lines.append("────────────────────────")
-        lines.append("<b>Не хочешь следить за датами самостоятельно?</b>")
+                genres = item.get("genres", "")
+
+                icon = "🎬" if m_type == "movie" else "📺"
+                date_prefix = f"<b>{d_str}</b> — " if d_str else ""
+
+                details = []
+                if tag:
+                    details.append(tag)
+                if genres:
+                    details.append(genres)
+                details_str = f"\n   └ <i>{' • '.join(details)}</i>" if details else ""
+
+                lines.append(f"{icon} {date_prefix}<b>{t_name}</b>{details_str}")
+
+        lines.append("\n<b>Не хочешь следить за датами самостоятельно?</b>")
         lines.append("Добавь интересующие фильмы и сериалы в Кинождун — бот сообщит о важных изменениях.")
         return "\n".join(lines)
 
     # --- Дефолтный формат новостного поста ---
-    header = f"🎬 <b>Новости о проекте «{title}»{season_label}</b>"
-    lines = [header, "────────────────────────"]
+    header = f"🎬 <b>«{title}»{season_label}</b>"
+    lines = [header]
     if network:
-        lines.append(f"🏢 <b>Платформа / Студия:</b> {network}")
+        lines.append(f"🏢 <b>Студия / Платформа:</b> {network}")
     if air_date:
         lines.append(f"📅 <b>Дата премьеры:</b> <code>{format_date_ru(air_date)}</code>")
     if overview and len(overview.strip()) > 0:
@@ -202,8 +314,8 @@ def format_channel_post_text(
         if len(ov) > 240:
             ov = ov[:237] + "..."
         lines.append(f"\n📝 <i>«{ov}»</i>")
-    lines.append("\n👉 <i>Хотите получать личные уведомления о датах выхода и трейлерах? Добавьте проект в Кинождун:</i>")
-    return "\n".join(lines)
+    lines.append("\n👉 <i>Хотите получать личные уведомления о премьере? Добавьте проект в Кинождун:</i>")
+    return "\n\n".join(lines)
 
 
 def channel_post_keyboard(
@@ -363,20 +475,26 @@ class ChannelPublisher:
         """Отправляет пост в Telegram с фото (если есть постер) или текстом."""
         if poster_path:
             photo_url = poster_path if poster_path.startswith("http") else f"{self.settings.TMDB_IMAGE_BASE_URL}{poster_path}"
-            msg = await self.bot.send_photo(
-                chat_id=chat_id,
-                photo=photo_url,
-                caption=post_text,
-                reply_markup=reply_markup,
-            )
-            return msg.message_id
-        else:
-            msg = await self.bot.send_message(
-                chat_id=chat_id,
-                text=post_text,
-                reply_markup=reply_markup,
-            )
-            return msg.message_id
+            caption_text = post_text if len(post_text) <= 1024 else (post_text[:1020] + "...")
+            try:
+                msg = await self.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=photo_url,
+                    caption=caption_text,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML,
+                )
+                return msg.message_id
+            except Exception as e:
+                logger.warning(f"Не удалось отправить фото {photo_url}, fallback на текст: {e}")
+
+        msg = await self.bot.send_message(
+            chat_id=chat_id,
+            text=post_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML,
+        )
+        return msg.message_id
 
     async def process_update_for_channel(
         self,
@@ -665,22 +783,44 @@ class ChannelPublisher:
                     "media_type": it.media_type,
                     "tmdb_id": it.tmdb_id,
                     "tag": tag,
+                    "network": it.network,
+                    "poster_path": it.poster_path,
                 })
                 seen_ids.add((it.media_type, it.tmdb_id))
 
-            # Если релизов в локальной БД мало, дополняем из TMDB (airing_today)
+            # Если релизов в локальной БД мало, дополняем качественными сериалами из TMDB (airing_today)
             if len(items_payload) < 3 and self.tmdb_client:
                 try:
                     airing = await self.tmdb_client.get_airing_today_tv()
+                    valid_tv = []
                     for tv in airing:
+                        g_ids = tv.get("genre_ids", [])
+                        if any(g in EXCLUDED_GENRES for g in g_ids):
+                            continue
+                        # Отсекаем совсем неизвестные шоу
+                        if tv.get("vote_count", 0) < 5 and tv.get("popularity", 0) < 15:
+                            continue
+                        valid_tv.append(tv)
+
+                    # Сортируем по популярности и оценкам
+                    valid_tv.sort(key=lambda x: (x.get("vote_count", 0) * 2 + x.get("popularity", 0)), reverse=True)
+
+                    for tv in valid_tv:
                         tv_id = tv.get("id")
                         tv_name = tv.get("name")
                         if ("tv", tv_id) not in seen_ids and tv_name:
+                            g_ids = tv.get("genre_ids", [])
+                            g_names = [GENRES_RU[g] for g in g_ids if g in GENRES_RU]
+                            genres_str = ", ".join(g_names[:2])
+                            p_path = tv.get("poster_path") or tv.get("backdrop_path")
+
                             items_payload.append({
                                 "title": tv_name,
                                 "media_type": "tv",
                                 "tmdb_id": tv_id,
                                 "tag": "сериал",
+                                "genres": genres_str,
+                                "poster_path": p_path,
                             })
                             seen_ids.add(("tv", tv_id))
                             if len(items_payload) >= 5:
@@ -712,6 +852,8 @@ class ChannelPublisher:
                 date_label=date_label,
             )
 
+            lead_poster = next((it.get("poster_path") for it in items_payload if it.get("poster_path")), None)
+
             post = await repo.create_channel_post(
                 title=f"Что выходит сегодня — {date_label}",
                 content_hash=fingerprint,
@@ -722,6 +864,7 @@ class ChannelPublisher:
                 post_text=post_text,
                 payload=json.dumps(items_payload, ensure_ascii=False),
                 status="pending",
+                poster_path=lead_poster,
             )
             await session.commit()
 
@@ -754,13 +897,18 @@ class ChannelPublisher:
                     "tmdb_id": it.tmdb_id,
                     "date_str": format_date_ru(r_date),
                     "tag": tag,
+                    "network": it.network,
+                    "poster_path": it.poster_path,
                 })
                 seen_ids.add((it.media_type, it.tmdb_id))
 
-            # Если релизов в локальной БД мало, дополняем ожидаемыми фильмами из TMDB
+            # Если релизов в локальной БД мало, дополняем ожидаемыми популярными фильмами из TMDB
             if len(items_payload) < 2 and self.tmdb_client:
                 try:
                     upcoming = await self.tmdb_client.get_upcoming_movies()
+                    # Сортируем фильмы по популярности
+                    upcoming.sort(key=lambda x: x.get("popularity", 0), reverse=True)
+
                     for m in upcoming:
                         m_id = m.get("id")
                         r_date_str = m.get("release_date")
@@ -771,12 +919,20 @@ class ChannelPublisher:
                                 formatted_r_date = format_date_ru(r_date)
                             except Exception:
                                 formatted_r_date = r_date_str
+
+                            g_ids = m.get("genre_ids", [])
+                            g_names = [GENRES_RU[g] for g in g_ids if g in GENRES_RU]
+                            genres_str = ", ".join(g_names[:2])
+                            p_path = m.get("poster_path") or m.get("backdrop_path")
+
                             items_payload.append({
                                 "title": m_title,
                                 "media_type": "movie",
                                 "tmdb_id": m_id,
                                 "date_str": formatted_r_date,
                                 "tag": "премьера фильма",
+                                "genres": genres_str,
+                                "poster_path": p_path,
                             })
                             seen_ids.add(("movie", m_id))
                             if len(items_payload) >= 6:
@@ -809,6 +965,8 @@ class ChannelPublisher:
                 date_label=range_label,
             )
 
+            lead_poster = next((it.get("poster_path") for it in items_payload if it.get("poster_path")), None)
+
             post = await repo.create_channel_post(
                 title=f"Главные премьеры недели ({range_label})",
                 content_hash=fingerprint,
@@ -819,6 +977,7 @@ class ChannelPublisher:
                 post_text=post_text,
                 payload=json.dumps(items_payload, ensure_ascii=False),
                 status="pending",
+                poster_path=lead_poster,
             )
             await session.commit()
 

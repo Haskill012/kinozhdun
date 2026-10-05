@@ -44,17 +44,19 @@ def preview_item_keyboard(
     tracked_item_id: int | None = None,
     bot_username: str = "kinojdun_bot",
     title: str = "",
+    referrer_id: Optional[int] = None,
 ) -> InlineKeyboardMarkup:
     """Клавиатура для карточки предпросмотра проекта с кнопкой добавления в отслеживание."""
     builder = InlineKeyboardBuilder()
     if is_already_tracked:
         builder.button(text="✅ Уже в вашем списке", callback_data="already_tracked")
-        # Возможность поделиться проектом из списка
+        # Возможность поделиться проектом через красивый инлайн-режим
         if title:
-            deep_link = f"https://t.me/{bot_username}?start=c_{media_type}_{tmdb_id}"
-            share_text = f"🍿 Я жду «{title}». Кинождун сообщит, когда появятся новости и объявят дату выхода!"
-            share_url = f"https://t.me/share/url?url={urllib.parse.quote(deep_link)}&text={urllib.parse.quote(share_text)}"
-            builder.button(text="📤 Поделиться с другом", url=share_url)
+            ref_part = f"_u{referrer_id}" if referrer_id else ""
+            builder.button(
+                text="📤 Поделиться с другом",
+                switch_inline_query=f"share_{media_type}_{tmdb_id}{ref_part}"
+            )
         if tracked_item_id:
             builder.button(text="🗑 Удалить из списка", callback_data=f"remove:{tracked_item_id}")
     else:
@@ -73,16 +75,14 @@ def track_success_keyboard(
     bot_username: str = "kinojdun_bot",
     referrer_id: Optional[int] = None,
 ) -> InlineKeyboardMarkup:
-    """Клавиатура после успешного добавления проекта с виральной кнопкой шеринга."""
+    """Клавиатура после успешного добавления проекта с кнопкой инлайн-шеринга карточки с постером."""
     builder = InlineKeyboardBuilder()
 
     ref_part = f"_u{referrer_id}" if referrer_id else ""
-    deep_link = f"https://t.me/{bot_username}?start=c_{media_type}_{tmdb_id}{ref_part}"
-    type_str = "сериал" if media_type == "tv" else "фильм"
-    share_text = f"🍿 Я жду {type_str} «{title}»!\nКинождун сообщит, когда появятся новости и объявят дату выхода 🎬"
-    share_url = f"https://t.me/share/url?url={urllib.parse.quote(deep_link)}&text={urllib.parse.quote(share_text)}"
-
-    builder.button(text="📤 Поделиться", url=share_url)
+    builder.button(
+        text="📤 Поделиться с другом",
+        switch_inline_query=f"share_{media_type}_{tmdb_id}{ref_part}"
+    )
     builder.button(text="🍿 Мой Кинождун", callback_data="back_to_list")
     builder.button(text="🔍 Искать ещё", callback_data="cancel_search")
     builder.adjust(1, 2)
@@ -121,19 +121,11 @@ def user_items_keyboard(items: list[Any], action: str = "info") -> InlineKeyboar
 
 def shared_watchlist_created_keyboard(token: str, bot_username: str, titles: list[str]) -> InlineKeyboardMarkup:
     """Клавиатура для создателя списка со ссылкой для быстрой отправки в чаты Telegram."""
-    deep_link = f"https://t.me/{bot_username}?start=w_{token}"
-    preview_titles = "\n".join(f"• {t}" for t in titles[:5])
-    if len(titles) > 5:
-        preview_titles += f"\n• ... и ещё {len(titles) - 5}"
-
-    share_text = (
-        f"🍿 Вот что я сейчас жду в Кинождуне:\n\n{preview_titles}\n\n"
-        "Удобный бот сообщает, когда выходят новые сезоны и объявляют даты премьер!"
-    )
-    share_url = f"https://t.me/share/url?url={urllib.parse.quote(deep_link)}&text={urllib.parse.quote(share_text)}"
-
     builder = InlineKeyboardBuilder()
-    builder.button(text="📤 Отправить друзьям в Telegram", url=share_url)
+    builder.button(
+        text="📤 Отправить друзьям в Telegram",
+        switch_inline_query=f"list_{token}"
+    )
     builder.button(text="📋 К моему списку", callback_data="back_to_list")
     builder.adjust(1)
     return builder.as_markup()
@@ -255,7 +247,7 @@ def item_details_keyboard(
     bot_username: str = "kinojdun_bot",
     referrer_id: Optional[int] = None,
 ) -> InlineKeyboardMarkup:
-    """Клавиатура детальной карточки проекта из списка отслеживания с прямой кнопкой шеринга."""
+    """Клавиатура детальной карточки проекта из списка отслеживания с кнопкой инлайн-шеринга."""
     builder = InlineKeyboardBuilder()
     title = getattr(item, "title", "")
     media_type = getattr(item, "media_type", "movie")
@@ -264,13 +256,36 @@ def item_details_keyboard(
 
     if title and tmdb_id:
         ref_part = f"_u{referrer_id}" if referrer_id else ""
-        deep_link = f"https://t.me/{bot_username}?start=c_{media_type}_{tmdb_id}{ref_part}"
-        type_str = "сериал" if media_type == "tv" else "фильм"
-        share_text = f"🍿 Я жду {type_str} «{title}»!\nКинождун сообщит, когда появятся новости и объявят дату выхода 🎬"
-        share_url = f"https://t.me/share/url?url={urllib.parse.quote(deep_link)}&text={urllib.parse.quote(share_text)}"
-        builder.button(text="📤 Поделиться с другом", url=share_url)
+        builder.button(
+            text="📤 Поделиться с другом",
+            switch_inline_query=f"share_{media_type}_{tmdb_id}{ref_part}"
+        )
+
+    tmdb_url = getattr(item, "tmdb_url", None)
+    if tmdb_url and str(tmdb_url).startswith("http"):
+        builder.button(text="🌐 Страница на TMDB", url=str(tmdb_url))
 
     builder.button(text="🗑 Удалить из списка", callback_data=f"remove:{item_id}")
     builder.button(text="📋 К списку «Мой Кинождун»", callback_data="back_to_list")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def generate_share_url(deep_link: str, share_text: str) -> str:
+    """Генерирует ссылку t.me/share/url с текстом впереди ссылки, чтобы ссылка не отображалась голой сверху."""
+    full_message = f"{share_text}\n\n👉 {deep_link}"
+    return f"https://t.me/share/url?url={urllib.parse.quote(full_message)}"
+
+
+def notification_item_keyboard(
+    item_id: int,
+    tmdb_url: Optional[str] = None,
+    bot_username: str = "kinojdun_bot",
+) -> InlineKeyboardMarkup:
+    """Клавиатура для уведомлений пользователю: кнопка перехода к карточке и ссылка на TMDB."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🍿 Открыть в Кинождуне", callback_data=f"info:{item_id}")
+    if tmdb_url and str(tmdb_url).startswith("http"):
+        builder.button(text="🌐 Страница на TMDB", url=str(tmdb_url))
     builder.adjust(1)
     return builder.as_markup()

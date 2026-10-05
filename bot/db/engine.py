@@ -18,13 +18,15 @@ def create_db_engine(database_url: str) -> AsyncEngine:
 
     Если используется SQLite, автоматически создаёт директорию для файла БД.
     """
-    if database_url.startswith("sqlite+aiosqlite:///"):
+    connect_args = {}
+    if database_url.startswith("sqlite"):
         db_path = database_url.replace("sqlite+aiosqlite:///", "")
         if db_path.startswith("./"):
             db_path = db_path[2:]
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        connect_args = {"timeout": 30}
 
-    return create_async_engine(database_url, echo=False)
+    return create_async_engine(database_url, echo=False, connect_args=connect_args)
 
 
 def get_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
@@ -35,6 +37,12 @@ def get_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]
 async def init_db(engine: AsyncEngine) -> None:
     """Инициализация базы данных — создание всех таблиц и безопасная миграция колонок."""
     async with engine.begin() as conn:
+        try:
+            await conn.execute(text("PRAGMA journal_mode=WAL"))
+            await conn.execute(text("PRAGMA busy_timeout=30000"))
+        except Exception:
+            pass
+
         await conn.run_sync(Base.metadata.create_all)
 
         # Проверяем, требует ли channel_posts миграции (снятия NOT NULL с tmdb_id и media_type)

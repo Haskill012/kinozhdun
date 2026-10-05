@@ -7,3 +7,18 @@ services:
       - .env
     volumes:
       - ./data:/app/data
+
+  kinozhdun-site:
+    build: .
+    container_name: kinozhdun_site
+    restart: unless-stopped
+    command: ["python", "-m", "website"]
+    env_file:
+      - .env
+    environment:
+      SITE_HOST: 0.0.0.0
+      SITE_PORT: 8099
+    ports:
+      - "80:8099"
+    volumes:
+      - ./data:/app/data

@@ -1,8 +1,10 @@
 """Фоновые периодические задачи планировщика APScheduler."""
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from aiogram import Bot
+from aiogram.enums import ParseMode
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from bot.config import Settings
@@ -10,10 +12,12 @@ from bot.db.repositories import Repository
 from bot.services.channel import ChannelPublisher
 from bot.services.tmdb import TMDBClient
 from bot.services.tracker import TrackerService
+from bot.keyboards.inline import notification_item_keyboard
 from bot.utils.formatting import (
     format_announced_notification,
     format_released_notification,
     format_reminder_notification,
+    format_status_change_notification,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,7 +38,7 @@ async def check_updates_job(
 
         logger.info(f"Обнаружено {len(updates)} обновлений, отправляю уведомления...")
 
-        channel_publisher = ChannelPublisher(session_factory, settings, bot)
+        channel_publisher = ChannelPublisher(session_factory, settings, bot, tmdb_client=tmdb_client)
         processed_channel_keys: set[tuple[str, int, str]] = set()
 
         async with session_factory() as session:
@@ -53,16 +57,18 @@ async def check_updates_job(
                 elif update_type == "released":
                     text = format_released_notification(item)
                 elif update_type == "status_change":
-                    text = (
-                        f"ℹ️ <b>Статус проекта изменился!</b>\n\n"
-                        f"<b>{item.title}</b> — текущий статус: <i>{info.get('status')}</i>\n"
-                        f"🔗 <a href='{item.tmdb_url}'>TMDB</a>"
-                    )
+                    text = format_status_change_notification(item, info)
                 else:
                     continue
 
+                kb = notification_item_keyboard(
+                    item_id=item.id,
+                    tmdb_url=getattr(item, "tmdb_url", None),
+                    bot_username=settings.BOT_USERNAME,
+                )
+
                 try:
-                    await bot.send_message(telegram_id, text)
+                    await bot.send_message(telegram_id, text, reply_markup=kb, parse_mode=ParseMode.HTML)
                     await repo.mark_notified(item.id, update_type)
                     await repo.log_notification(item.id, update_type, text)
                 except Exception as send_err:
@@ -73,6 +79,15 @@ async def check_updates_job(
                 chan_key = (item.media_type, item.tmdb_id, chan_event)
                 if chan_key not in processed_channel_keys:
                     processed_channel_keys.add(chan_key)
+                    trailer_url = info.get("trailer_url")
+                    if not trailer_url and tmdb_client:
+                        try:
+                            t_info = await tmdb_client.get_official_trailer(item.media_type, item.tmdb_id)
+                            if t_info:
+                                trailer_url = t_info.get("url")
+                        except Exception:
+                            pass
+
                     try:
                         await channel_publisher.process_update_for_channel(
                             tmdb_id=item.tmdb_id,
@@ -84,7 +99,7 @@ async def check_updates_job(
                             old_air_date=info.get("old_air_date"),
                             network=item.network,
                             poster_path=item.poster_path,
-                            trailer_url=info.get("trailer_url"),
+                            trailer_url=trailer_url,
                         )
                     except Exception as chan_err:
                         logger.error(f"Ошибка при обработке для Telegram-канала ({item.title}): {chan_err}", exc_info=True)
@@ -112,8 +127,14 @@ async def check_reminders_job(bot: Bot, session_factory) -> None:
             for item in items_to_remind:
                 if item.user and item.user.telegram_id:
                     text = format_reminder_notification(item, days_left=3)
+                    bot_username = getattr(bot, "settings", None).BOT_USERNAME if hasattr(bot, "settings") and bot.settings else "kinojdun_bot"
+                    kb = notification_item_keyboard(
+                        item_id=item.id,
+                        tmdb_url=getattr(item, "tmdb_url", None),
+                        bot_username=bot_username,
+                    )
                     try:
-                        await bot.send_message(item.user.telegram_id, text)
+                        await bot.send_message(item.user.telegram_id, text, reply_markup=kb, parse_mode=ParseMode.HTML)
                         await repo.mark_notified(item.id, "reminder")
                         await repo.log_notification(item.id, "reminder", text)
                     except Exception as send_err:
@@ -180,12 +201,14 @@ def setup_scheduler(
 ) -> AsyncIOScheduler:
     """Настройка и конфигурирование планировщика задач."""
     scheduler = AsyncIOScheduler(timezone="UTC")
+    now_utc = datetime.now(timezone.utc)
 
-    # Основная проверка выхода новых сезонов / дат и публикация в канал
+    # Основная проверка выхода новых сезонов / дат и публикация в канал (первый запуск через 5 сек)
     scheduler.add_job(
         check_updates_job,
         "interval",
         hours=settings.CHECK_INTERVAL_HOURS,
+        next_run_time=now_utc + timedelta(seconds=5),
         kwargs={
             "bot": bot,
             "session_factory": session_factory,
@@ -206,12 +229,13 @@ def setup_scheduler(
         replace_existing=True,
     )
 
-    # Публикация отложенных постов в канал (каждые 15 минут)
+    # Публикация отложенных постов в канал (каждые 15 минут, первый запуск через 15 сек)
     queue_interval = max(5, settings.CHANNEL_MIN_POST_INTERVAL_MINUTES)
     scheduler.add_job(
         check_channel_queue_job,
         "interval",
         minutes=queue_interval,
+        next_run_time=now_utc + timedelta(seconds=15),
         kwargs={"bot": bot, "session_factory": session_factory, "settings": settings},
         id="check_channel_queue",
         replace_existing=True,

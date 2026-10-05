@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 64" width="320" height="64">
+  <defs>
+    <style>
+      .brand-title { font-family: 'Golos Text', system-ui, -apple-system, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -1.2px; }
+      .brand-tagline { font-family: 'Golos Text', system-ui, -apple-system, sans-serif; font-size: 7.5px; font-weight: 600; letter-spacing: 2px; fill: #a2a79e; }
+    </style>
+  </defs>
+
+  <!-- Left Icon Mark (52x52) -->
+  <g transform="translate(6, 6)">
+    <!-- Squircle Background -->
+    <rect width="52" height="52" rx="14" fill="#181c19" stroke="#30342f" stroke-width="1"/>
+    <rect x="2" y="2" width="48" height="48" rx="12" fill="none" stroke="#d4fa58" stroke-width="1.2" stroke-opacity="0.4"/>
+
+    <!-- Tiny Asterisk Star -->
+    <g transform="translate(41, 11)">
+      <path d="M0 -4 L0 4 M-4 0 L4 0 M-3 -3 L3 3 M-3 3 L3 -3" stroke="#d4fa58" stroke-width="1.2" stroke-linecap="round"/>
+    </g>
+
+    <!-- Zhdun Mascot Outline in 3D Glasses -->
+    <g fill="none" stroke="#d4fa58" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <!-- Head & Proboscis -->
+      <path d="M 18 18 C 18 9 34 9 34 18 C 34 23 32 25 31 27 C 31 31 29 34 26 34 C 23 34 21 31 21 27 C 20 25 18 23 18 18 Z" fill="#111312"/>
+      <!-- Folds -->
+      <path d="M 23 27 Q 26 30 29 27" stroke-width="1"/>
+      <path d="M 16 32 Q 26 36 36 32" stroke-width="1.2"/>
+      <!-- Body -->
+      <path d="M 16 32 C 12 37 9 44 9 49 L 43 49 C 43 44 40 37 36 32" fill="#141715"/>
+      <!-- Clasped hands -->
+      <path d="M 13 41 C 15 45 20 46 26 44 C 32 46 37 45 39 41" stroke-width="1.4"/>
+      <ellipse cx="26" cy="44" rx="4" ry="2.2" fill="#d4fa58"/>
+      <!-- 3D Glasses -->
+      <rect x="16" y="15" width="20" height="7.5" rx="2" fill="#111312" stroke="#d4fa58" stroke-width="1.4"/>
+      <rect x="18" y="16.5" width="6.5" height="4.5" rx="1" fill="#d4fa58" stroke="none"/>
+      <rect x="27.5" y="16.5" width="6.5" height="4.5" rx="1" fill="#f4f4ec" stroke="none"/>
+    </g>
+  </g>
+
+  <!-- Typography: Wordmark -->
+  <g transform="translate(72, 35)">
+    <text class="brand-title" fill="#f4f4ec" x="0" y="0">кино<tspan font-weight="400" fill="#f4f4ec">ждун</tspan><tspan fill="#d4fa58" font-size="24px" dx="4" dy="-2">✳</tspan></text>
+    <text class="brand-tagline" x="1" y="16">ХОРОШЕЕ КИНО СТОИТ ЖДАТЬ</text>
+  </g>
+</svg>

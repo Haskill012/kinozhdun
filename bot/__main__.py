@@ -12,6 +12,7 @@ from bot.handlers.start import router as start_router
 from bot.handlers.tracking import router as tracking_router
 from bot.handlers.list import router as list_router
 from bot.handlers.admin import router as admin_router
+from bot.handlers.inline import router as inline_router
 from bot.scheduler.jobs import setup_scheduler
 
 # Добавляем поддержку доступа через bot['attr'] и bot.get('attr')
@@ -48,6 +49,7 @@ async def main() -> None:
     dp["settings"] = settings
 
     dp.include_router(admin_router)
+    dp.include_router(inline_router)
     dp.include_router(start_router)
     dp.include_router(list_router)
     dp.include_router(tracking_router)
