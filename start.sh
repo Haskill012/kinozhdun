@@ -1,11 +1,16 @@
 #!/bin/bash
 set -e
 
-echo "=== Клонирование репозитория КиноЖдун ==="
-cd /root
-rm -rf kinozhdun
-git clone https://github.com/Haskill012/kinozhdun.git
-cd kinozhdun
+echo "=== Получение/обновление репозитория КиноЖдун ==="
+if [ -d "/root/kinozhdun/.git" ]; then
+    cd /root/kinozhdun
+    git fetch origin master
+    git reset --hard origin/master
+else
+    cd /root
+    git clone https://github.com/Haskill012/kinozhdun.git
+    cd kinozhdun
+fi
 
 echo "=== Создание боевого .env ==="
 cat << 'EOF' > .env
