@@ -1,6 +1,5 @@
 // Images stay optional: articles and navigation always work without JavaScript.
-const siteSearch = document.querySelector('.site-search');
-if (siteSearch) {
+document.querySelectorAll('.site-search').forEach(siteSearch => {
   const input = siteSearch.querySelector('input');
   const dropdown = siteSearch.querySelector('.site-search-dropdown');
   const results = siteSearch.querySelector('[role="listbox"]');
@@ -56,7 +55,7 @@ if (siteSearch) {
         data.results.forEach((item, index) => {
           const link = document.createElement('a');
           link.className = 'site-search-result';
-          link.id = 'site-search-option-' + index;
+          link.id = input.id + '-option-' + index;
           link.href = item.url;
           link.setAttribute('role', 'option');
           link.setAttribute('aria-selected', 'false');
@@ -122,7 +121,7 @@ if (siteSearch) {
   siteSearch.addEventListener('focusout', () => setTimeout(() => {
     if (!siteSearch.contains(document.activeElement)) close();
   }, 0));
-}
+});
 
 document.querySelectorAll('img').forEach(img => {
   img.addEventListener('error', () => {
