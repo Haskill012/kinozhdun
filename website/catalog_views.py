@@ -4,7 +4,7 @@ from datetime import date
 from urllib.parse import urlencode
 
 from website.editor import today, date_ru
-from website.views import esc, image, layout, title_path, title_link, trailer_player, card, search_form, premiere_rows
+from website.views import esc, image, layout, title_path, title_link, trailer_player, card, premiere_rows
 from website.title_names import seo_names, normalized
 
 
@@ -130,25 +130,24 @@ def tracking_events(store, limit=4):
             if re.match(r'^tmdb:(movie|tv):\d+:(date|date-removed|status|trailer):', article.get('fingerprint', ''))][:limit]
 
 
+def tracking_collection(items, heading, url, config):
+    content = collection(items, heading, url, 'ДОБАВЬТЕ В СВОЙ СПИСОК')
+    for item in items[:10]:
+        poster = poster_card(item)
+        content = content.replace(poster, '<div class="tracked-project">' + poster + f'<a class="track-project" href="{esc(title_link(item, config))}" target="_blank" rel="noopener" aria-label="Отслеживать {esc(item["title"])}">＋ Отслеживать</a></div>', 1)
+    return content
+
+
 def streaming_home(store, config):
     titles = store.catalog()
-    events = tracking_events(store)
-    labels = {'date': 'Дата выхода', 'date-removed': 'Дата уточняется', 'status': 'Статус проекта', 'trailer': 'Новый трейлер'}
-    updates = []
-    for article in events:
-        event = article['fingerprint'].split(':')[3]
-        label = labels[event]
-        published = article['published'][:10]
-        updates.append(f'<article class="change-card"><div class="change-meta"><span>{label}</span><time datetime="{esc(published)}">{date_ru(published)}</time></div><a href="/news/{esc(article["slug"])}"><h3>{esc(article["title"])}</h3><p>{esc(article["summary"])}</p><span class="text-link">Подробнее об изменении ↗</span></a><a class="change-source" href="{esc(article["source_url"])}" target="_blank" rel="noopener">Источник: TMDB ↗</a></article>')
-    changes = '<div class="change-grid">' + ''.join(updates) + '</div>' if updates else '<p class="tracking-empty">Подтверждённых изменений пока нет. Когда в источнике обновится дата, статус или трейлер, событие появится здесь.</p>'
+    films = [t for t in titles if t['media_type']=='movie']
+    series = [t for t in titles if t['media_type']=='tv']
+    featured = next((t for t in titles if t.get('image') and t.get('release_date') and t['release_date'] >= today().isoformat()), next((t for t in titles if t.get('image')), titles[0]))
+    rating = rating_label(featured)
     recent = store.articles(limit=3)
-    content = f'''<div class="page-shell tracking-home">
-      <section class="tracking-hero"><div class="tracking-intro"><span class="eyebrow lime">КИНОЖДУН · СЛЕДИМ ЗА ТЕМ, ЧТО ВЫ ЖДЁТЕ</span><h1>Любимые истории<br>продолжаются<span class="lime">.</span></h1><p class="tracking-lead">Узнайте об этом вовремя.</p><p>Даты премьер, новые сезоны и серии, трейлеры и изменения статуса. Вы выбираете любимые проекты — КиноЖдун сообщает об изменениях в Telegram.</p><div class="tracking-search"><label for="hero-search-input">Какой фильм или сериал вы ждёте?</label>{search_form('hero')}</div><div class="tracking-actions"><a class="button" href="{esc(config['bot_url'])}" target="_blank" rel="noopener">Начать отслеживать ↗</a><a class="text-link" href="#how-tracking-works">Как это работает ↓</a></div><small>Ваш личный список и уведомления — в Telegram-боте.</small></div>
-      <aside class="notification-preview" aria-label="Пример уведомления"><span class="preview-label">ПРИМЕР УВЕДОМЛЕНИЯ</span><div class="preview-app"><img src="/static/logo_mascot.jpg" alt="" width="40" height="40"><div>КиноЖдун<small>Уведомления о ваших проектах</small></div><span>завтра</span></div><div class="preview-message"><span class="eyebrow lime">НОВАЯ СЕРИЯ</span><h2>Завтра история<br>продолжится.</h2><p>Ваш любимый сериал<br><strong>2 сезон · 4 серия</strong></p><span class="preview-button">Открыть карточку ↗</span></div><p class="preview-note">Это пример оформления, а не анонс конкретного сериала.</p></aside></section>
-      <section class="tracking-steps" id="how-tracking-works" aria-label="Как работает КиноЖдун"><div><span>01</span><h2>Найдите проект</h2><p>Русское, оригинальное или другое известное название.</p></div><div><span>02</span><h2>Добавьте в Telegram</h2><p>Соберите личный список фильмов и сериалов в боте.</p></div><div><span>03</span><h2>Получите уведомление</h2><p>Об изменениях проекта и новой серии за день до выхода.</p></div></section>
-      <section class="collection"><div class="collection-heading"><div><span class="eyebrow muted">СОБЫТИЯ ИЗ ИСТОЧНИКА</span><h2>Что изменилось</h2></div><a class="text-link" href="/news">Все публикации ↗</a></div>{changes}<p class="tracking-note">Даты и статусы сверяем с TMDB. Источник может уточнять сведения.</p></section>
-      <section class="collection upcoming-tracking"><div class="collection-heading"><div><span class="eyebrow muted">ВАШ СЛЕДУЮЩИЙ ПОВОД ЖДАТЬ</span><h2>Ближайшие события</h2></div><a class="text-link" href="/calendar">Весь календарь ↗</a></div>{premiere_rows(titles, config, 5)}</section>
-      {collection(titles, 'Найдите то, что хочется ждать', '/catalog', 'ДОБАВЬТЕ В СВОЙ СПИСОК')}
-      <section class="collection"><div class="collection-heading"><div><span class="eyebrow muted">ПОКА ВЫ ЖДЁТЕ</span><h2>Новости и подробности</h2></div><a class="text-link" href="/news">Все новости ↗</a></div><div class="news-grid">{''.join(card(a) for a in recent)}</div></section>
-    </div>'''
-    return layout(config, 'Следите за любимыми фильмами и сериалами', 'КиноЖдун отслеживает даты премьер, новые серии, трейлеры и изменения статуса. Добавьте любимые фильмы и сериалы в Telegram и получайте уведомления.', content, '/', 'home')
+    release = 'Ближайший выход: ' + date_ru(featured['release_date']) if featured.get('release_date') else 'Дата следующего выхода пока не объявлена'
+    events = tracking_events(store, 3)
+    updates = ''.join(f'<a class="compact-change" href="/news/{esc(a["slug"])}"><span>{date_ru(a["published"][:10])}</span><strong>{esc(a["title"])}</strong><i>↗</i></a>' for a in events)
+    changes = f'<section class="collection"><div class="collection-heading"><h2>Что изменилось</h2><a class="text-link" href="/news">Все новости ↗</a></div><div class="compact-changes">{updates}</div></section>' if events else ''
+    content = f'''<div class="page-shell streaming-home"><div class="tracker-heading"><span>ТРЕКЕР ЛЮБИМЫХ ФИЛЬМОВ И СЕРИАЛОВ</span><a href="{esc(config['bot_url'])}" target="_blank" rel="noopener">Мой список в Telegram ↗</a></div><section class="spotlight"><picture class="spotlight-art"><source media="(max-width: 520px)" srcset="{esc(featured.get('poster') or featured.get('image'))}">{image(featured.get('image'), featured['title'], 'spotlight-image', eager=True)}</picture><div class="spotlight-shade"></div><div class="spotlight-copy"><span class="eyebrow lime">СТОИТ ДОЖДАТЬСЯ</span><h1>{esc(featured['title'])}</h1><div class="spotlight-meta">{'★ ' + rating + ' · ' if rating else ''}{esc((featured.get('first_release') or '')[:4])} · {esc(' · '.join(featured.get('genres', [])[:2]))}</div><p class="featured-event">{esc(release)}</p><div class="spotlight-actions"><a class="button" href="{esc(title_link(featured, config))}" target="_blank" rel="noopener">＋ Отслеживать</a><a class="button outline" href="{title_path(featured)}">Карточка проекта ↗</a></div></div><a class="spotlight-discover" href="/catalog">Найдите проект для отслеживания <span>↗</span></a></section><section class="collection"><div class="collection-heading"><h2>Ближайшие события</h2><a class="text-link" href="/calendar">Весь календарь ↗</a></div>{premiere_rows(titles, config, 3)}</section>{tracking_collection(films, 'Фильмы, которые хочется ждать', '/movies', config)}{tracking_collection(series, 'Следите за продолжением', '/series', config)}{changes}<section class="collection"><div class="collection-heading"><div><span class="eyebrow muted">БУДЬТЕ В КУРСЕ</span><h2>Пока вы ждёте</h2></div><a class="text-link" href="/news">Все новости ↗</a></div><div class="news-grid">{''.join(card(a) for a in recent)}</div></section></div>'''
+    return layout(config, 'Трекер любимых фильмов и сериалов', 'Отслеживайте даты премьер, новые серии и изменения любимых проектов. Фильмы и сериалы, календарь и уведомления в Telegram.', content, '/', 'home', og_image=featured.get('image'))

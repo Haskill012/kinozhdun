@@ -19,11 +19,13 @@ class TrackingHomeTests(unittest.TestCase):
                 store.publish(fingerprint,title,'series','Описание',[], 'https://www.themoviedb.org/tv/1')
             self.assertEqual([a['title'] for a in tracking_events(store)],['Настоящий новый трейлер'])
             html=streaming_home(store,cfg)
-            for text in ('Любимые истории','ПРИМЕР УВЕДОМЛЕНИЯ','Это пример оформления','Что изменилось','Ближайшие события','Какой фильм или сериал вы ждёте?'):
+            for text in ('ТРЕКЕР ЛЮБИМЫХ ФИЛЬМОВ И СЕРИАЛОВ','spotlight','Отслеживать','Что изменилось','Ближайшие события'):
                 self.assertIn(text,html)
             ids=re.findall(r'\bid="([^"]+)"',html)
             self.assertEqual(len(ids),len(set(ids)))
-            self.assertIn('hero-search-results',ids)
+            self.assertNotIn('hero-search-results',ids)
+            self.assertNotIn('ПРИМЕР УВЕДОМЛЕНИЯ',html)
+            self.assertNotIn('Как работает КиноЖдун',html)
             self.assertIn('site-search-results',ids)
-            self.assertIn('aria-controls="hero-search-results"',html)
+            self.assertIn('aria-controls="site-search-results"',html)
             store.db.close()
