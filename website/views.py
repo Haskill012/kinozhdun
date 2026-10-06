@@ -123,7 +123,7 @@ def premiere_rows(items, config, limit=5):
         label = "Фильм" if item["media_type"] == "movie" else "Сериал"
         if item.get("episode"):
             label += f" · {item.get('season') or '?'} сезон, {item['episode']} серия"
-        rows.append(f'''<div class="premiere-row"><div class="premiere-date"><b>{d.day:02}</b><span>{month} {d.year}</span>{badge}</div><div class="premiere-poster">{image(item.get('poster'), item['title'])}</div><div class="premiere-title"><strong>{esc(item['title'])}</strong><span>{esc(label)}</span></div><a class="reminder" href="{esc(title_link(item, config))}" target="_blank" rel="noopener" aria-label="Отслеживать {esc(item['title'])}">＋ <span>Ждать</span></a></div>''')
+        rows.append(f'''<div class="premiere-row"><div class="premiere-date"><b>{d.day:02}</b><span>{month} {d.year}</span>{badge}</div><a class="premiere-poster" href="{title_path(item)}" aria-label="Открыть карточку: {esc(item['title'])}">{image(item.get('poster'), item['title'])}</a><a class="premiere-title" href="{title_path(item)}"><strong>{esc(item['title'])}</strong><span>{esc(label)}</span></a><a class="reminder" href="{esc(title_link(item, config))}" target="_blank" rel="noopener" aria-label="Отслеживать {esc(item['title'])}">＋ <span>Ждать</span></a></div>''')
     return "".join(rows)
 
 
