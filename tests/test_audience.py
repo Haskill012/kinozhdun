@@ -37,9 +37,15 @@ class AudienceTests(unittest.TestCase):
         self.assertIsNone(exclusion_reason(dict(title='Нет данных')))
 
     def test_talk_shows_cannot_bypass_filter(self):
-        for field in [dict(series_type='Talk Show'), dict(genres=['ток-шоу']), dict(genre_ids=[10767]), dict(series_type='Soap')]:
+        for field in [dict(series_type='Talk Show'), dict(genres=['ток-шоу']), dict(genre_ids=[10767])]:
             item = dict(self.item, **field, ru_release=True)
             self.assertEqual(exclusion_reason(item, dict(audience_allow_keys=['tv:1'])), 'nonfiction-format')
+
+    def test_popular_anime_international_coproductions_and_soap_are_preserved(self):
+        self.assertIsNone(exclusion_reason(dict(self.item, genre_ids=[16], votes=656, rating=8.6, popularity=118)))
+        self.assertIsNotNone(exclusion_reason(dict(self.item, genre_ids=[16], votes=20, rating=8.6)))
+        self.assertIsNone(exclusion_reason(dict(self.item, origin_country=['US','JP'], original_language='en', votes=0)))
+        self.assertIsNone(exclusion_reason(dict(self.item, origin_country=['BR'], original_language='pt', series_type='Soap', genre_ids=[10766])))
 
     def test_regional_metadata_uses_actual_release_and_official_trailer(self):
         detail = dict(production_countries=[{'iso_3166_1':'JP'}], original_language='ja',

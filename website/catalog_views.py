@@ -44,7 +44,7 @@ def project_page(store, config, item, news_page=1):
     state = "Скоро премьера" if future else "Уже вышел" if movie and release else "Сериал"
     if not movie and future and item.get("season"):
         state = "Новый сезон скоро" if item.get("episode") == 1 else "Новая серия скоро"
-    meta = f'<span class="score"><span class="{rating_class(rating)}">★ {rating}</span> <small>TMDB</small></span>' if rating else '<span class="unrated">Рейтинг формируется</span>'
+    meta = f'<span class="score"><span class="{rating_class(rating)}">★ {rating}</span> <small>Оценка зрителей</small></span>' if rating else '<span class="unrated">Рейтинг формируется</span>'
     meta += f'<span>{esc(year)}</span><span>{kind}</span>'
     if not movie and item.get("season"):
         meta += f'<span>{item["season"]} сезон</span>'
@@ -73,7 +73,7 @@ def project_page(store, config, item, news_page=1):
     other = [t for t in audience_items(store.catalog(), config) if t["key"] != item["key"] and t["media_type"] == item["media_type"]]
     other.sort(key=lambda t: len(set(t.get('genres', [])) & set(item.get('genres', []))), reverse=True)
     trailer = f'<div id="trailer" class="theater">{trailer_player(item.get("trailer"), item.get("trailer_language"), item.get("trailer_season"))}</div>' if item.get("trailer") else '<div class="trailer-unavailable"><span>Трейлер пока не опубликован</span><p>Добавим официальный ролик, когда он появится.</p></div>'
-    content = f'''<div class="project-shell"><div class="page-shell"><div class="breadcrumbs"><a href="/catalog">Каталог</a><span> / </span><a href="{catalog_url}">{'Фильмы' if movie else 'Сериалы'}</a><span> / </span>{esc(item['title'])}</div></div><section class="project-hero">{image(item.get('image'), item['title'], 'project-backdrop', eager=True)}<div class="project-gradient"></div><div class="page-shell project-grid"><div class="project-poster">{image(item.get('poster'), item['title'], eager=True)}</div><div class="project-copy"><span class="eyebrow lime">{state}</span><h1>{esc(item['title'])}</h1>{other_names}<div class="project-meta">{meta}</div><p class="project-genres">{esc(genres)}</p><p class="project-overview">{esc(item.get('overview'))}</p><div class="project-actions"><a class="button" href="{esc(tracker)}" target="_blank" rel="noopener">{watch_label(item)}</a>{watch}<a class="button outline" href="#news-history">История новостей</a></div><p class="tracking-note">В список ожидания можно добавить проект в Telegram. Бот сообщит об изменениях и напомнит о выходе.</p></div></div></section><div class="page-shell"><dl class="project-facts">{dates}<div><dt>Источник</dt><dd><a href="{esc(item['source_url'])}" target="_blank" rel="noopener">TMDB ↗</a></dd></div></dl>{trailer}{news}{collection(other[:6], 'Вам может понравиться', catalog_url, 'ЕЩЁ НЕМНОГО КИНО')}</div></div>'''
+    content = f'''<div class="project-shell"><div class="page-shell"><div class="breadcrumbs"><a href="/catalog">Каталог</a><span> / </span><a href="{catalog_url}">{'Фильмы' if movie else 'Сериалы'}</a><span> / </span>{esc(item['title'])}</div></div><section class="project-hero">{image(item.get('image'), item['title'], 'project-backdrop', eager=True)}<div class="project-gradient"></div><div class="page-shell project-grid"><div class="project-poster">{image(item.get('poster'), item['title'], eager=True)}</div><div class="project-copy"><span class="eyebrow lime">{state}</span><h1>{esc(item['title'])}</h1>{other_names}<div class="project-meta">{meta}</div><p class="project-genres">{esc(genres)}</p><p class="project-overview">{esc(item.get('overview'))}</p><div class="project-actions"><a class="button" href="{esc(tracker)}" target="_blank" rel="noopener">{watch_label(item)}</a>{watch}<a class="button outline" href="#news-history">История новостей</a></div><p class="tracking-note">В список ожидания можно добавить проект в Telegram. Бот сообщит об изменениях и напомнит о выходе.</p></div></div></section><div class="page-shell"><dl class="project-facts">{dates}</dl>{trailer}{news}{collection(other[:6], 'Вам может понравиться', catalog_url, 'ЕЩЁ НЕМНОГО КИНО')}</div></div>'''
     schema = {"@context": "https://schema.org", "@type": "Movie" if movie else "TVSeries", "name": item["title"], "description": item.get("overview"), "url": config["base_url"] + title_path(item)}
     if alternatives:
         schema['alternateName'] = alternatives
@@ -85,7 +85,7 @@ def project_page(store, config, item, news_page=1):
         qualifier.append(year)
     seo_title = item['title'] + (' (' + ', '.join(qualifier) + ')' if qualifier else '')
     seo_title += ' — дата выхода' if movie else ' — дата выхода серий'
-    release_info = f"{date_label}: {date_ru(release)}." if release else f"{date_label}: дата пока не указана в источнике."
+    release_info = f"{date_label}: {date_ru(release)}." if release else f"{date_label}: дата пока не объявлена."
     display_names = item['title'] + (' (' + ', '.join(alternatives) + ')' if alternatives else '')
     description = f"{display_names}. {release_info} Описание, трейлер и новости {'фильма' if movie else 'сериала'} на КиноЖдуне."
     return layout(config, seo_title, description, content, title_path(item), "movies" if movie else "series", schema=schema, og_image=item.get("image"))
@@ -161,7 +161,7 @@ def spotlight_slide(item, config, index):
     heading = 'h1' if index == 0 else 'h2'
     title_class = 'spotlight-title long-title' if len(item['title']) > 32 else 'spotlight-title'
     hidden = ' hidden inert aria-hidden="true"' if index else ' aria-hidden="false"'
-    score = f'<span class="{rating_class(rating)}">★ {rating}</span> TMDB · ' if rating else ''
+    score = f'<span class="{rating_class(rating)}">★ {rating}</span> · ' if rating else ''
     return f'''<article class="spotlight-slide" data-slide="{index}" role="group" aria-label="{esc(item['title'])}"{hidden}>{art}<div class="spotlight-shade"></div><div class="spotlight-copy"><span class="eyebrow lime">{esc(state['label'])}</span><{heading} class="{title_class}">{esc(item['title'])}</{heading}><div class="spotlight-meta">{score}{esc(meta)}</div><div class="featured-event"><strong>{esc(state['headline'])}</strong><span>{esc(state['detail'])}</span></div><div class="spotlight-actions"><a class="button" href="{esc(title_link(item, config))}" target="_blank" rel="noopener">{watch_label(item)}</a><a class="button outline" href="{title_path(item)}">Подробнее ↗</a></div></div></article>'''
 
 
@@ -174,16 +174,16 @@ def streaming_home(store, config):
     if len(featured) > 1:
         dots = ''.join(f'<button type="button" data-go="{i}" aria-label="Показать: {esc(item["title"])}" aria-pressed="{str(i == 0).lower()}"><span></span></button>' for i, item in enumerate(featured))
         controls = f'''<div class="spotlight-controls" hidden><div class="spotlight-dots">{dots}</div><span class="spotlight-counter" aria-live="off">1 / {len(featured)}</span><button type="button" data-direction="-1" aria-label="Предыдущий проект">←</button><button type="button" data-direction="1" aria-label="Следующий проект">→</button><button type="button" class="spotlight-pause" aria-label="Остановить автопереключение" aria-pressed="false">Ⅱ</button></div><span class="sr-only spotlight-announcement" role="status" aria-live="polite"></span>'''
-    hero = f'<section class="spotlight dynamic-spotlight" aria-label="Стоит дождаться" aria-roledescription="карусель">{slides}{controls}</section>' if featured else '<section class="home-empty"><span class="eyebrow lime">СТОИТ ДОЖДАТЬСЯ</span><h1>Хорошее кино ещё впереди.</h1><p>Новые проекты появятся после обновления каталога. Выберите любимый фильм или сериал в Telegram — бот сообщит об изменениях.</p></section>'
+    hero = f'<section class="spotlight dynamic-spotlight" aria-label="Стоит дождаться" aria-roledescription="карусель">{slides}{controls}</section>' if featured else '<section class="home-empty"><span class="eyebrow lime">СТОИТ ДОЖДАТЬСЯ</span><h1>Хорошее кино ещё впереди.</h1><p>Скоро здесь появятся новые проекты. Выберите любимый фильм или сериал в Telegram — бот сообщит об изменениях.</p></section>'
     updates = []
     for article in events:
         icon, label = change_type(article)
-        updates.append(f'''<a class="compact-change event-change" href="/news/{esc(article['slug'])}"><span class="change-icon" aria-hidden="true">{icon}</span><div><span class="change-label">{label}</span><strong>{esc(article['title'])}</strong><small><time datetime="{esc(article['published'])}">{esc(relative_time(article['published']))}</time> · TMDB</small></div><i aria-hidden="true">↗</i></a>''')
+        updates.append(f'''<a class="compact-change event-change" href="/news/{esc(article['slug'])}"><span class="change-icon" aria-hidden="true">{icon}</span><div><span class="change-label">{label}</span><strong>{esc(article['title'])}</strong><small><time datetime="{esc(article['published'])}">{esc(relative_time(article['published']))}</time></small></div><i aria-hidden="true">↗</i></a>''')
     changes = '<section class="collection"><div class="collection-heading"><h2>Что изменилось</h2><a class="text-link" href="/news">Все события ↗</a></div><div class="compact-changes">' + ''.join(updates) + '</div></section>' if updates else ''
     popular = sorted([t for t in titles if waiting(t)], key=lambda t: (-float(t.get('popularity') or 0), t['media_type'], t['id']))
-    anticipated = tracking_collection(popular, 'Больше всего ждут', '/catalog', config)
+    anticipated = tracking_collection(popular, 'Стоит добавить в список', '/catalog', config)
     if anticipated:
-        anticipated = anticipated.replace('ДОБАВЬТЕ В СВОЙ СПИСОК', 'ПОПУЛЯРНЫЕ ОЖИДАЕМЫЕ ПРОЕКТЫ')
+        anticipated = anticipated.replace('ДОБАВЬТЕ В СВОЙ СПИСОК', 'ПОПУЛЯРНОЕ И ОЖИДАЕМОЕ')
     telegram = f'''<section class="discovery-banner"><div><span class="eyebrow lime">КИНОЖДУН В TELEGRAM</span><h2>Не проверяйте даты сами.</h2><p>Выберите фильм или сериал — КиноЖдун сообщит в Telegram, когда что-нибудь изменится.</p></div><a class="button" href="{esc(config['bot_url'])}" target="_blank" rel="noopener">Открыть бота ↗</a></section>'''
-    content = f'''<div class="page-shell streaming-home"><div class="tracker-heading"><span>ТРЕКЕР ЛЮБИМЫХ ФИЛЬМОВ И СЕРИАЛОВ</span><a href="{esc(config['bot_url'])}" target="_blank" rel="noopener">Мой список в Telegram ↗</a></div>{hero}<section class="collection"><div class="collection-heading"><h2>Ближайшие события</h2><a class="text-link" href="/calendar">Весь календарь ↗</a></div>{premiere_rows(titles, config, 5)}<p class="event-source-note">Даты по данным TMDB. Доступность зависит от региона и платформы.</p></section>{anticipated}{changes}{telegram}</div>'''
+    content = f'''<div class="page-shell streaming-home"><div class="tracker-heading"><span>ТРЕКЕР ЛЮБИМЫХ ФИЛЬМОВ И СЕРИАЛОВ</span><a href="{esc(config['bot_url'])}" target="_blank" rel="noopener">Мой список в Telegram ↗</a></div>{hero}<section class="collection"><div class="collection-heading"><h2>Ближайшие события</h2><a class="text-link" href="/calendar">Весь календарь ↗</a></div>{premiere_rows(titles, config, 5)}<p class="event-source-note">Доступность зависит от страны и платформы.</p></section>{anticipated}{changes}{telegram}</div>'''
     return layout(config, 'Трекер любимых фильмов и сериалов', 'Ждите любимые фильмы и сериалы: ближайшие премьеры, новые серии и изменения проектов с уведомлениями в Telegram.', content, '/', 'home', og_image=featured[0].get('image') if featured else None)

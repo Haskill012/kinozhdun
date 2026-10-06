@@ -29,6 +29,9 @@ class Settings:
     WEEKLY_DIGEST_DAY: int = 0  # 0 = Monday
     WEEKLY_DIGEST_HOUR: int = 10
     SITE_BASE_URL: str = "https://kinojdun.ru"
+    SITE_ASIAN_MIN_VOTES: int = 1000
+    SITE_ASIAN_MIN_POPULARITY: float = 20
+    SITE_AUDIENCE_ALLOW_KEYS: tuple[str, ...] = ()
 
     def __post_init__(self):
         if self.ADMIN_USER_IDS is None:
@@ -85,5 +88,8 @@ class Settings:
             WEEKLY_DIGEST_DAY=int(os.getenv("WEEKLY_DIGEST_DAY", "0")),
             WEEKLY_DIGEST_HOUR=int(os.getenv("WEEKLY_DIGEST_HOUR", "10")),
             SITE_BASE_URL=os.getenv("SITE_BASE_URL", "https://kinojdun.ru"),
+            SITE_ASIAN_MIN_VOTES=max(50, int(os.getenv("SITE_ASIAN_MIN_VOTES", "1000"))),
+            SITE_ASIAN_MIN_POPULARITY=max(0, float(os.getenv("SITE_ASIAN_MIN_POPULARITY", "20"))),
+            SITE_AUDIENCE_ALLOW_KEYS=tuple(k.strip() for k in os.getenv("SITE_AUDIENCE_ALLOW_KEYS", "").split(',') if k.strip()),
         )
 

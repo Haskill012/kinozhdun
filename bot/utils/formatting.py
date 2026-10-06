@@ -305,7 +305,7 @@ def format_episode_tomorrow_notification(item: Any, episode: dict) -> str:
 def format_reminder_notification(item: Any, days_left: int = 3) -> str:
     """Форматирует персональное напоминание за несколько дней до даты."""
     title = linked_title(getattr(item, "title", "Без названия"), item)
-    air_date = getattr(item, "next_air_date", None) or getattr(item, "custom_date", None)
+    air_date = getattr(item, "custom_date", None) or getattr(item, "next_air_date", None)
     network = safe_html(getattr(item, "network", None))
     season = getattr(item, "next_season_number", None)
     media_type = getattr(item, "media_type", "movie")
@@ -392,7 +392,7 @@ def format_help_message() -> str:
         "<b>Кнопки меню внизу экрана:</b>\n"
         "🔍 <b>Найти фильм / сериал</b> — поиск любого кино и выбор из списка\n"
         "🍿 <b>Мой Кинождун</b> — ваш список ожидания + кнопка «📤 Поделиться списком»\n"
-        "🔄 <b>Проверить статус</b> — запрос свежих дат с TMDB прямо сейчас\n"
+        "🔄 <b>Проверить статус</b> — проверка последних дат выхода\n"
         "📅 <b>Своя дата</b> — установка личной даты напоминания (ДД.ММ.ГГГГ)\n"
         "🗑 <b>Удалить из списка</b> — удаление проекта из отслеживания\n"
         "ℹ️ <b>Справка и помощь</b> — это справочное руководство\n\n"

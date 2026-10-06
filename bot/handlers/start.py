@@ -75,6 +75,14 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
     username = message.from_user.username
     first_name = message.from_user.first_name
 
+    if payload == 'help':
+        await message.answer(format_help_message(), reply_markup=main_menu_keyboard())
+        return
+    if payload == 'privacy':
+        from bot.handlers.privacy import show_privacy
+        await show_privacy(message)
+        return
+
     # --- 1. Обычный старт без аргументов ---
     if not payload:
         async with session_factory() as session:

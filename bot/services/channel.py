@@ -18,6 +18,7 @@ from bot.config import Settings
 from bot.db.models import ChannelPost
 from bot.db.repositories import Repository
 from bot.utils.formatting import format_date_ru, safe_html, linked_title
+from shared.audience import audience_metadata, exclusion_reason
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ GENRES_RU: dict[int, str] = {
     10765: "фантастика, фэнтези",
     10768: "политика",
 }
-EXCLUDED_GENRES = {10763, 10764, 10766, 10767}  # Новости, реалити-шоу, мыльные оперы, ток-шоу
+EXCLUDED_GENRES = {10763, 10764, 10767}  # Новости, реалити-шоу, ток-шоу
 
 
 def format_channel_post_text(
@@ -610,31 +611,8 @@ class ChannelPublisher:
             )
             await session.commit()
 
-            # Отправка в канал
-            reply_markup = channel_post_keyboard(
-                post_id=post.id,
-                bot_username=self.settings.BOT_USERNAME,
-                title=title,
-                event_type=event_type,
-                season_number=season_number,
-                trailer_url=trailer_url,
-                post_type=post_type,
-                site_url=getattr(self.settings, "SITE_BASE_URL", None),
-            )
-
-            try:
-                message_id = await self._send_post_to_telegram(
-                    chat_id=channel_id,
-                    post_text=post_text,
-                    poster_path=poster_path,
-                    reply_markup=reply_markup,
-                )
-                await repo.mark_channel_post_published(post.id, message_id)
-                await session.commit()
-                logger.info(f"AUTO MODE: Успешно опубликован пост в {channel_id}: «{title}» (ID: {post.id})")
-            except Exception as e:
-                logger.error(f"Не удалось отправить пост в канал {channel_id}: {e}", exc_info=True)
-
+            await self.publish_post_by_id(post.id)
+            await session.refresh(post)
             return post
 
     async def publish_post_by_id(self, post_id: int) -> bool:
@@ -648,6 +626,11 @@ class ChannelPublisher:
             post = await repo.get_channel_post(post_id)
             if not post:
                 return False
+            if post.status == 'published':
+                return True
+            if not await repo.claim_channel_post(post_id):
+                return False
+            await session.commit()
 
             post_text = post.post_text or format_channel_post_text(
                 title=post.title,
@@ -682,6 +665,10 @@ class ChannelPublisher:
                 logger.info(f"Админ одобрил и опубликовал пост «{post.title}» (#{post.id}) в канал.")
                 return True
             except Exception as e:
+                # Transport failures may occur after delivery; do not auto-retry.
+                await session.rollback()
+                await repo.update_channel_post_status(post_id, 'failed')
+                await session.commit()
                 logger.error(f"Ошибка публикации одобренного поста #{post_id}: {e}", exc_info=True)
                 return False
 
@@ -732,9 +719,16 @@ class ChannelPublisher:
             if self.tmdb_client:
                 details = (await self.tmdb_client.get_tv_details(ident) if media == "tv"
                            else await self.tmdb_client.get_movie_details(ident))
-            if not details and require_details:
+            if not details and (require_details or self.tmdb_client):
                 continue
             if details:
+                audience = {**details, **audience_metadata(media, details),
+                            'key': f'{media}:{ident}', 'media_type': media}
+                policy = dict(asian_min_votes=self.settings.SITE_ASIAN_MIN_VOTES,
+                              asian_min_popularity=self.settings.SITE_ASIAN_MIN_POPULARITY,
+                              audience_allow_keys=self.settings.SITE_AUDIENCE_ALLOW_KEYS)
+                if exclusion_reason(audience, policy):
+                    continue
                 if media == "tv" and (details.get("type") in ("Reality", "Talk Show", "News", "Video")
                         or any(g.get("id") in EXCLUDED_GENRES for g in details.get("genres", []))):
                     continue

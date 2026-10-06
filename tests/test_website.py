@@ -226,7 +226,7 @@ class EditorTests(unittest.TestCase):
     def test_rollover_episode_keeps_today_release_event(self):
         self.store.save_title("tv:9", {"release_date": today().isoformat(), "media_type": "tv", "id": 9})
         self.editor.process("tv", {"id": 9, "name": "Сериал", "first_air_date": "2010-01-01"})
-        self.assertTrue(any("сегодня" in a["title"] for a in self.store.articles()))
+        self.assertTrue(any(a['fingerprint'] == f'tmdb:tv:9:release:{today().isoformat()}' for a in self.store.articles()))
 
     def test_channel_import_filters_moderation_and_bad_digest(self):
         path = Path(self.tmp.name) / "bot.db"
@@ -520,7 +520,7 @@ class WebsiteHTTPTests(AioHTTPTestCase):
         self.assertEqual(response.status, 200)
         self.assertIn('application/ld+json', text)
         self.assertIn('rel="canonical"', text)
-        self.assertIn("Источник материала", text)
+        self.assertIn("Подробнее о проекте", text)
         self.assertIn("https://t.me/kinojdun_bot", text)
 
     async def test_seo_meta_tags_and_breadcrumbs(self):

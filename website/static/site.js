@@ -183,7 +183,7 @@ document.querySelectorAll('.site-search').forEach(siteSearch => {
             const score = document.createElement('span');
             score.className = Number(value) >= 7 ? 'rating-good' : Number(value) >= 5 ? 'rating-medium' : 'rating-low';
             score.textContent = '★ ' + value;
-            meta.append(document.createTextNode(' · '), score, document.createTextNode(' TMDB'));
+            meta.append(document.createTextNode(' · '), score, document.createTextNode(''));
           }
           copy.append(title);
           if (item.alternate_title && item.alternate_title.toLowerCase() !== item.title.toLowerCase()) {

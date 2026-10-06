@@ -274,7 +274,7 @@ class Editor:
                                     date_field + ".gte": (today()-timedelta(days=180)).isoformat(),
                                     date_field + ".lte": (today()+timedelta(days=365)).isoformat(),
                                     "include_adult": "false", "sort_by": "popularity.desc", "page": page,
-                                    **({"without_genres": "10763,10764,10767,10766"} if media == 'tv' else {})})
+                                    **({"without_genres": "10763,10764,10767"} if media == 'tv' else {})})
                                 for row in data.get("results", []):
                                     if not row.get("adult") and float(row.get("popularity") or 0) >= self.config.get("min_popularity", 5) and (int(row.get("vote_count") or 0) < self.config.get("min_votes", 50) or float(row.get("vote_average") or 0) >= self.config.get("min_rating", 6)):
                                         details.setdefault((media, row["id"]), None)

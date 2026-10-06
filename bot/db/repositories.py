@@ -135,14 +135,20 @@ class Repository:
         await self.session.execute(stmt)
         await self.session.flush()
 
-    async def set_custom_date(self, item_id: int, custom_date: Optional[date]) -> None:
-        """Установить пользовательскую дату выхода."""
-        stmt = update(TrackedItem).where(TrackedItem.id == item_id).values(
-            custom_date=custom_date,
-            updated_at=datetime.utcnow()
-        )
+    async def set_custom_date(self, item_id: int, custom_date: Optional[date], telegram_id: int) -> bool:
+        """Only the owner may change a date; a new date gets a new reminder."""
+        item = await self.get_tracked_item(item_id)
+        if not item or not item.user or item.user.telegram_id != telegram_id:
+            return False
+        if item.custom_date == custom_date:
+            return True
+        stmt = update(TrackedItem).where(
+            TrackedItem.id == item_id,
+            TrackedItem.user_id.in_(select(User.id).where(User.telegram_id == telegram_id)),
+        ).values(custom_date=custom_date, notified_reminder=False, updated_at=datetime.utcnow())
         await self.session.execute(stmt)
         await self.session.flush()
+        return True
 
     async def mark_notified(self, item_id: int, notification_type: str) -> None:
         """Отметить элемент как уведомленный (анонс, напоминание или релиз)."""
@@ -188,6 +194,17 @@ class Repository:
         )
         return list(result.scalars().all())
 
+    async def delete_user_data(self, telegram_id: int) -> None:
+        """Erase the requesting user's active profile and its dependent data."""
+        users = select(User.id).where(User.telegram_id == telegram_id)
+        items = select(TrackedItem.id).where(TrackedItem.user_id.in_(users))
+        await self.session.execute(delete(NotificationLog).where(NotificationLog.tracked_item_id.in_(items)))
+        await self.session.execute(delete(SharedWatchlist).where(SharedWatchlist.user_id.in_(users)))
+        await self.session.execute(delete(TrackedItem).where(TrackedItem.user_id.in_(users)))
+        await self.session.execute(delete(AnalyticsEvent).where(AnalyticsEvent.telegram_id == telegram_id))
+        await self.session.execute(update(User).where(User.referrer_id == telegram_id).values(referrer_id=None))
+        await self.session.execute(delete(User).where(User.telegram_id == telegram_id))
+
     async def has_notification(self, item_id: int, notification_type: str) -> bool:
         result = await self.session.execute(
             select(NotificationLog.id).where(
@@ -201,17 +218,14 @@ class Repository:
         """Получить элементы, для которых нужно отправить напоминание (выходят через N дней)."""
         target_date = date.today() + timedelta(days=days_before)
         
-        # Проверяем и next_air_date, и custom_date
+        # Пользовательская дата имеет приоритет над общей датой премьеры.
         stmt = (
             select(TrackedItem)
             .options(selectinload(TrackedItem.user))
             .where(
                 and_(
                     TrackedItem.notified_reminder == False,
-                    or_(
-                        TrackedItem.next_air_date == target_date,
-                        TrackedItem.custom_date == target_date
-                    )
+                    func.coalesce(TrackedItem.custom_date, TrackedItem.next_air_date) == target_date
                 )
             )
         )
@@ -361,6 +375,13 @@ class Repository:
         return result.scalar_one_or_none()
 
     get_channel_post_by_id = get_channel_post
+
+    async def claim_channel_post(self, post_id: int) -> bool:
+        """Atomic persisted claim prevents duplicate sends across publisher instances."""
+        result = await self.session.execute(update(ChannelPost).where(
+            ChannelPost.id == post_id, ChannelPost.status.in_(['pending', 'approved']),
+        ).values(status='publishing'))
+        return result.rowcount == 1
 
     async def get_channel_post_by_hash(self, content_hash: str) -> Optional[ChannelPost]:
         """Проверить наличие публикации по хэшу дедупликации."""

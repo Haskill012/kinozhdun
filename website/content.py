@@ -6,6 +6,7 @@ import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from website.editorial import public_article
 
 
 def today():
@@ -329,12 +330,12 @@ class Store:
             pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
             params.extend([pattern, pattern])
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
-        return [dict(r) for r in self.db.execute(
+        return [public_article(dict(r)) for r in self.db.execute(
             "SELECT * FROM articles" + where + " ORDER BY julianday(published) DESC, slug LIMIT ? OFFSET ?",
             (*params, limit, offset))]
 
     def title_articles(self, media, tmdb_id, limit=20, offset=0):
-        return [dict(r) for r in self.db.execute(
+        return [public_article(dict(r)) for r in self.db.execute(
             "SELECT * FROM articles WHERE media_type=? AND tmdb_id=? "
             "ORDER BY julianday(published) DESC, slug LIMIT ? OFFSET ?",
             (media, tmdb_id, limit, offset))]
@@ -347,7 +348,7 @@ class Store:
         row = self.db.execute("SELECT * FROM articles WHERE slug = ?", (slug,)).fetchone()
         if not row and slug.startswith("post-"):
             row = self.db.execute("SELECT * FROM articles WHERE slug LIKE ?", (f"%{slug.removeprefix('post-')[:8]}%",)).fetchone()
-        return dict(row) if row else None
+        return public_article(dict(row)) if row else None
 
     def titles(self):
         return [json.loads(r[0]) for r in self.db.execute("SELECT data FROM titles")]

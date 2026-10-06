@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копирование исходного кода приложения
 COPY bot/ ./bot/
 COPY website/ ./website/
+COPY shared/ ./shared/
 
 # Создание директории для базы данных
 RUN mkdir -p /app/data

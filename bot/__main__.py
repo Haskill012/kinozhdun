@@ -9,6 +9,7 @@ from bot.config import Settings
 from bot.db.engine import init_db, get_session_factory, create_db_engine
 from bot.services.tmdb import TMDBClient
 from bot.handlers.start import router as start_router
+from bot.handlers.privacy import router as privacy_router
 from bot.handlers.tracking import router as tracking_router
 from bot.handlers.list import router as list_router
 from bot.handlers.admin import router as admin_router
@@ -51,6 +52,7 @@ async def main() -> None:
     dp.include_router(admin_router)
     dp.include_router(inline_router)
     dp.include_router(start_router)
+    dp.include_router(privacy_router)
     dp.include_router(list_router)
     dp.include_router(tracking_router)
 

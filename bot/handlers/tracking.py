@@ -567,6 +567,12 @@ async def process_setdate_btn(callback: CallbackQuery, state: FSMContext) -> Non
     """Запрос ввода даты пользователем (FSM)."""
     await callback.answer()
     item_id = int(callback.data.split(":")[1])
+    async with callback.bot["session_factory"]() as session:
+        item = await Repository(session).get_tracked_item(item_id)
+        if not item or not item.user or item.user.telegram_id != callback.from_user.id:
+            await state.clear()
+            await callback.message.edit_text("Этот проект недоступен. Выберите проект из своего списка ожидания.")
+            return
     await state.update_data(item_id=item_id)
     await state.set_state(DateState.waiting_for_date)
     await callback.message.edit_text(
@@ -580,6 +586,10 @@ async def process_date_input(message: Message, state: FSMContext) -> None:
     """Обработка введённой пользователем даты."""
     data = await state.get_data()
     item_id = data.get("item_id")
+    if not item_id:
+        await state.clear()
+        await message.answer("Выберите проект в своём списке и укажите дату ещё раз.")
+        return
 
     text = message.text.strip()
     try:
@@ -591,15 +601,23 @@ async def process_date_input(message: Message, state: FSMContext) -> None:
         )
         return
 
+    if parsed_date < datetime.date.today():
+        await message.answer("Эта дата уже прошла. Укажите сегодняшнюю или будущую дату.")
+        return
+
     session_factory = message.bot["session_factory"]
     async with session_factory() as session:
         repo = Repository(session)
-        await repo.set_custom_date(item_id, parsed_date)
+        saved = await repo.set_custom_date(item_id, parsed_date, message.from_user.id)
         await session.commit()
 
     await state.clear()
+    if not saved:
+        await message.answer("Этот проект недоступен. Выберите проект из своего списка ожидания.")
+        return
     await message.answer(
         f"✅ Дата премьеры <b>{format_date_ru(parsed_date)}</b> успешно сохранена!\n"
-        "Бот напомнит вам о ней за 3 дня до выхода 🍿",
+        + ("Бот напомнит вам о ней за 3 дня до выхода 🍿" if parsed_date >= datetime.date.today() + datetime.timedelta(days=3)
+         else "До премьеры меньше трёх дней — дата сохранена в вашем списке 🍿"),
         reply_markup=main_menu_keyboard(),
     )

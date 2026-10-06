@@ -153,16 +153,21 @@ def create_app(config=None):
     async def about(request):
         return web.Response(text=views.about(config), content_type="text/html")
 
+    async def help_page(request):
+        return web.Response(text=views.help_page(config), content_type="text/html")
+
+    async def privacy(request):
+        return web.Response(text=views.privacy(config), content_type="text/html")
+
     async def robots(request):
         text = "User-agent: *\n" + ("Allow: /\nDisallow: /health\n" if config["public"] else "Disallow: /\n")
         if config["public"]:
-            text += "Clean-param: q /news&/movies&/series\n"
             text += "Sitemap: " + config["base_url"] + "/sitemap.xml\n"
         return web.Response(text=text, content_type="text/plain")
 
     async def sitemap(request):
         pages = [(p, None, "1.0" if p == "/" else "0.9" if p == "/calendar" else "0.8", "daily")
-                 for p in ("/", "/catalog", "/news", "/movies", "/series", "/calendar", "/about")]
+                 for p in ("/", "/catalog", "/news", "/movies", "/series", "/calendar", "/about", "/help", "/privacy")]
         pages.extend((views.title_path(t), None, "0.8", "daily") for t in store.catalog())
         pages.extend(("/news/" + a["slug"], a["updated"], "0.7", "weekly") for a in store.articles(limit=50000))
         body = ''.join(
@@ -202,7 +207,7 @@ def create_app(config=None):
 
     app.router.add_get("/api/search", search)
 
-    for path, handler in (("/", home), ("/news", listing), ("/catalog", listing), ("/movies", listing), ("/series", listing), ("/news/{slug}", article), (r"/title/{media:movie|tv}/{id:\d+}", title_page), ("/calendar", calendar), ("/about", about), ("/robots.txt", robots), ("/sitemap.xml", sitemap), ("/feed.xml", feed), ("/health", health)):
+    for path, handler in (("/", home), ("/news", listing), ("/catalog", listing), ("/movies", listing), ("/series", listing), ("/news/{slug}", article), (r"/title/{media:movie|tv}/{id:\d+}", title_page), ("/calendar", calendar), ("/about", about), ("/help", help_page), ("/privacy", privacy), ("/robots.txt", robots), ("/sitemap.xml", sitemap), ("/feed.xml", feed), ("/health", health)):
         app.router.add_get(path, handler)
     app.router.add_static("/static/", ROOT / "website" / "static", show_index=False)
     return app

@@ -19,7 +19,7 @@ class TrackingHomeTests(unittest.TestCase):
                 store.publish(fingerprint,title,'series','Описание',[], 'https://www.themoviedb.org/tv/1')
             self.assertEqual({a['title'] for a in tracking_events(store)}, {'Настоящий новый трейлер', 'Выход по календарю'})
             html=streaming_home(store,cfg)
-            for text in ('ТРЕКЕР ЛЮБИМЫХ ФИЛЬМОВ И СЕРИАЛОВ','spotlight','+ Ждать','Что изменилось','Ближайшие события', 'Больше всего ждут', 'Не проверяйте даты сами.'):
+            for text in ('ТРЕКЕР ЛЮБИМЫХ ФИЛЬМОВ И СЕРИАЛОВ','spotlight','+ Ждать','Что изменилось','Ближайшие события', 'Стоит добавить в список', 'Не проверяйте даты сами.'):
                 self.assertIn(text,html)
             ids=re.findall(r'\bid="([^"]+)"',html)
             self.assertEqual(len(ids),len(set(ids)))

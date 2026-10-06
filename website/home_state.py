@@ -79,7 +79,7 @@ def change_type(article):
         return None
     event, value = match[2], match[3]
     if event == 'status':
-        return {'Canceled': ('🔴', 'ЗАКРЫЛИ В TMDB'), 'Ended': ('◷', 'ЗАВЕРШЁН В TMDB')}.get(value, ('🟢', 'ИЗМЕНИЛСЯ СТАТУС'))
+        return {'Canceled': ('🔴', 'ПРОЕКТ ЗАКРЫТ'), 'Ended': ('◷', 'ИСТОРИЯ ЗАВЕРШЕНА')}.get(value, ('🟢', 'ИЗМЕНИЛСЯ СТАТУС'))
     if event == 'date':
         return ('📅', 'ИЗМЕНИЛИ ДАТУ' if 'изменилась' in article.get('title', '') else 'НАЗНАЧИЛИ ДАТУ')
     return {'date-removed': ('🟡', 'ДАТА УТОЧНЯЕТСЯ'), 'trailer': ('🎬', 'НОВЫЙ ТРЕЙЛЕР'), 'release': ('🍿', 'ВЫХОД ПО КАЛЕНДАРЮ')}[event]

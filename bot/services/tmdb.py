@@ -131,7 +131,7 @@ class TMDBClient:
 
     async def get_tv_details(self, tv_id: int) -> dict[str, Any]:
         """Получает детальную информацию о сериале."""
-        data = await self._get(f"/tv/{tv_id}")
+        data = await self._get(f"/tv/{tv_id}", {"append_to_response": "videos", "include_video_language": "ru,en,null"})
         if not data:
             return {}
 
@@ -156,6 +156,10 @@ class TMDBClient:
             "vote_count": data.get("vote_count"),
             "genres": data.get("genres", []),
             "type": data.get("type"),
+            "origin_country": data.get("origin_country", []),
+            "original_language": data.get("original_language"),
+            "popularity": data.get("popularity"),
+            "videos": data.get("videos", {}),
             "number_of_seasons": data.get("number_of_seasons"),
             "seasons": data.get("seasons", []),
             "next_episode_to_air": data.get("next_episode_to_air"),
@@ -182,7 +186,7 @@ class TMDBClient:
 
     async def get_movie_details(self, movie_id: int) -> dict[str, Any]:
         """Получает детальную информацию о фильме."""
-        data = await self._get(f"/movie/{movie_id}")
+        data = await self._get(f"/movie/{movie_id}", {"append_to_response": "release_dates,videos", "include_video_language": "ru,en,null"})
         if not data:
             return {}
 
@@ -199,6 +203,12 @@ class TMDBClient:
             "poster_path": data.get("poster_path"),
             "status": data.get("status"),
             "release_date": data.get("release_date"),
+            "genres": data.get("genres", []),
+            "production_countries": data.get("production_countries", []),
+            "original_language": data.get("original_language"),
+            "popularity": data.get("popularity"),
+            "release_dates": data.get("release_dates", {}),
+            "videos": data.get("videos", {}),
             "network": network,
             "belongs_to_collection": data.get("belongs_to_collection"),
             "backdrop_path": data.get("backdrop_path"),
