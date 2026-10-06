@@ -7,7 +7,7 @@ from datetime import date, datetime, timezone, timedelta
 import aiohttp
 from bot.services.season_dates import season_premieres
 from website.trailers import official_trailers, select_trailers, trailer_season
-from website.title_names import canonical_title, source_aliases
+from website.title_names import canonical_title, source_aliases, source_seo_aliases
 from website.artwork import artwork
 
 logger = logging.getLogger(__name__)
@@ -125,6 +125,7 @@ class Editor:
         item = {"key": key, "id": detail["id"], "media_type": media, "title": title,
                 "original_title": detail.get("original_title") or detail.get("original_name"),
                 "aliases": source_aliases(detail),
+                "seo_aliases": source_seo_aliases(detail),
                 "overview": detail.get("overview", ""), "release_date": release,
                 "image": "https://image.tmdb.org/t/p/w1280" + poster if poster else None,
                 "poster": "https://image.tmdb.org/t/p/w500" + poster_path if poster_path else None,

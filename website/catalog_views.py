@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 
 from website.editor import today, date_ru
 from website.views import esc, image, layout, title_path, title_link, trailer_player, card
+from website.title_names import seo_names, normalized
 
 
 def rating_label(item):
@@ -26,6 +27,8 @@ def collection(items, heading, url, eyebrow="ВЫБОР КИНОЖДУНА"):
 
 
 def project_page(store, config, item, news_page=1):
+    alternatives = seo_names(item)
+    other_names = '<p class="project-alternate-names">' + esc(' · '.join(alternatives)) + '</p>' if alternatives else ''
     movie = item["media_type"] == "movie"
     kind = "Фильм" if movie else "Сериал"
     catalog_url = "/movies" if movie else "/series"
@@ -66,11 +69,21 @@ def project_page(store, config, item, news_page=1):
     other = [t for t in store.catalog() if t["key"] != item["key"] and t["media_type"] == item["media_type"]]
     other.sort(key=lambda t: len(set(t.get('genres', [])) & set(item.get('genres', []))), reverse=True)
     trailer = f'<div id="trailer" class="theater">{trailer_player(item.get("trailer"), item.get("trailer_language"), item.get("trailer_season"))}</div>' if item.get("trailer") else '<div class="trailer-unavailable"><span>Трейлер пока не опубликован</span><p>Добавим официальный ролик, когда он появится.</p></div>'
-    content = f'''<div class="project-shell"><div class="page-shell"><div class="breadcrumbs"><a href="/catalog">Каталог</a><span> / </span><a href="{catalog_url}">{'Фильмы' if movie else 'Сериалы'}</a><span> / </span>{esc(item['title'])}</div></div><section class="project-hero">{image(item.get('image'), item['title'], 'project-backdrop', eager=True)}<div class="project-gradient"></div><div class="page-shell project-grid"><div class="project-poster">{image(item.get('poster'), item['title'], eager=True)}</div><div class="project-copy"><span class="eyebrow lime">{state}</span><h1>{esc(item['title'])}</h1><div class="project-meta">{meta}</div><p class="project-genres">{esc(genres)}</p><p class="project-overview">{esc(item.get('overview'))}</p><div class="project-actions">{watch}<a class="button outline" href="#news-history">История новостей</a><a class="button outline" href="{esc(tracker)}" target="_blank" rel="noopener">＋ В список ожидания</a></div><p class="tracking-note">Ваш список и напоминания — в Telegram-боте КиноЖдун.</p></div></div></section><div class="page-shell"><dl class="project-facts">{dates}<div><dt>Источник</dt><dd><a href="{esc(item['source_url'])}" target="_blank" rel="noopener">TMDB ↗</a></dd></div></dl>{trailer}{news}{collection(other[:6], 'Вам может понравиться', catalog_url, 'ЕЩЁ НЕМНОГО КИНО')}</div></div>'''
+    content = f'''<div class="project-shell"><div class="page-shell"><div class="breadcrumbs"><a href="/catalog">Каталог</a><span> / </span><a href="{catalog_url}">{'Фильмы' if movie else 'Сериалы'}</a><span> / </span>{esc(item['title'])}</div></div><section class="project-hero">{image(item.get('image'), item['title'], 'project-backdrop', eager=True)}<div class="project-gradient"></div><div class="page-shell project-grid"><div class="project-poster">{image(item.get('poster'), item['title'], eager=True)}</div><div class="project-copy"><span class="eyebrow lime">{state}</span><h1>{esc(item['title'])}</h1>{other_names}<div class="project-meta">{meta}</div><p class="project-genres">{esc(genres)}</p><p class="project-overview">{esc(item.get('overview'))}</p><div class="project-actions">{watch}<a class="button outline" href="#news-history">История новостей</a><a class="button outline" href="{esc(tracker)}" target="_blank" rel="noopener">＋ В список ожидания</a></div><p class="tracking-note">Ваш список и напоминания — в Telegram-боте КиноЖдун.</p></div></div></section><div class="page-shell"><dl class="project-facts">{dates}<div><dt>Источник</dt><dd><a href="{esc(item['source_url'])}" target="_blank" rel="noopener">TMDB ↗</a></dd></div></dl>{trailer}{news}{collection(other[:6], 'Вам может понравиться', catalog_url, 'ЕЩЁ НЕМНОГО КИНО')}</div></div>'''
     schema = {"@context": "https://schema.org", "@type": "Movie" if movie else "TVSeries", "name": item["title"], "description": item.get("overview"), "url": config["base_url"] + title_path(item)}
-    seo_title = item["title"] + (" — дата выхода, трейлер и новости" if movie else " — дата выхода серий, трейлер и новости")
-    release_info = f"{date_label}: {date_ru(release)}." if release else f"{date_label} пока не указана в источнике."
-    description = f"{item['title']}: {release_info} Описание, трейлер и новости {'фильма' if movie else 'сериала'}. Отслеживайте выход в Telegram-боте КиноЖдун."
+    if alternatives:
+        schema['alternateName'] = alternatives
+    original = item.get('original_title') or ''
+    qualifier = []
+    if normalized(original) != normalized(item['title']) and len(item['title']) + len(original) <= 90:
+        qualifier.append(original)
+    if year:
+        qualifier.append(year)
+    seo_title = item['title'] + (' (' + ', '.join(qualifier) + ')' if qualifier else '')
+    seo_title += ' — дата выхода' if movie else ' — дата выхода серий'
+    release_info = f"{date_label}: {date_ru(release)}." if release else f"{date_label}: дата пока не указана в источнике."
+    display_names = item['title'] + (' (' + ', '.join(alternatives) + ')' if alternatives else '')
+    description = f"{display_names}. {release_info} Описание, трейлер и новости {'фильма' if movie else 'сериала'} на КиноЖдуне."
     return layout(config, seo_title, description, content, title_path(item), "movies" if movie else "series", schema=schema, og_image=item.get("image"))
 
 
