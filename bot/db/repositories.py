@@ -110,7 +110,9 @@ class Repository:
         stmt = (
             select(TrackedItem)
             .options(selectinload(TrackedItem.user))
-            .where(TrackedItem.status.in_(['waiting', 'announced']))
+            .where(or_(TrackedItem.status.in_(['waiting', 'announced']),
+                       and_(TrackedItem.media_type == 'tv',
+                            TrackedItem.status.notin_(['Ended', 'Canceled', 'ended']))))
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

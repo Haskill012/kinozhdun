@@ -1,5 +1,7 @@
 """Хендлеры для просмотра списка отслеживаемых элементов, проверки их статуса и расшаривания «Мой Кинождун»."""
 
+from bot.services.season_dates import upcoming_season
+
 import datetime
 import json
 import logging
@@ -92,16 +94,8 @@ async def cmd_status(message: Message) -> None:
                 if details:
                     if details.get("network"):
                         item.network = details["network"]
-                    next_ep = details.get("next_episode_to_air")
-                    if next_ep and next_ep.get("air_date"):
-                        try:
-                            item.next_air_date = datetime.date.fromisoformat(next_ep["air_date"])
-                            item.next_season_number = next_ep.get("season_number")
-                            item.status = "announced"
-                        except (ValueError, TypeError):
-                            pass
-                    if details.get("status"):
-                        item.status = "ended" if details.get("status") in ("Ended", "Canceled") else item.status
+                    item.next_season_number, item.next_air_date = upcoming_season(details)
+                    item.status = "announced" if item.next_air_date else details.get("status", "waiting")
             else:
                 details = await tmdb_client.get_movie_details(item.tmdb_id)
                 if details:
@@ -143,7 +137,17 @@ async def process_info(callback: CallbackQuery) -> None:
             return
 
         settings = callback.bot["settings"]
-        text = format_item_details(item)
+        if item.media_type == "tv":
+            details = await callback.bot["tmdb_client"].get_tv_details(item.tmdb_id)
+            if details:
+                item.next_season_number, item.next_air_date = upcoming_season(details)
+                item.status = "announced" if item.next_air_date else details.get("status", "waiting")
+                await session.commit()
+                text = format_item_details(details, "tv")
+            else:
+                text = format_item_details(item)
+        else:
+            text = format_item_details(item)
         await callback.message.edit_text(
             text,
             reply_markup=item_details_keyboard(

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from bot.db.models import TrackedItem
 from bot.db.repositories import Repository
 from bot.services.tmdb import TMDBClient
+from bot.services.season_dates import upcoming_season, season_premieres
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +26,11 @@ class TrackerService:
             return None
 
         today = datetime.date.today()
-        next_ep = details.get("next_episode_to_air")
+        season, premiere = upcoming_season(details, today)
+        next_ep = {"air_date": premiere.isoformat(), "season_number": season} if premiere else None
         tmdb_status = details.get("status")
 
-        # 1. Проверяем появление или изменение даты следующего эпизода / сезона
+        # 1. Проверяем появление или изменение даты премьеры сезона
         if next_ep and next_ep.get("air_date"):
             try:
                 new_date = datetime.date.fromisoformat(next_ep["air_date"])
@@ -36,7 +38,8 @@ class TrackerService:
 
                 # Если даты раньше не было или она изменилась на будущую
                 if item.next_air_date != new_date and new_date >= today:
-                    is_postponed = item.next_air_date is not None and new_date > item.next_air_date
+                    is_postponed = (item.next_air_date is not None and new_date > item.next_air_date
+                                    and item.next_season_number == new_season)
                     channel_event = "date_postponed" if is_postponed else "date_announced"
                     return {
                         "type": "announced",
@@ -60,32 +63,13 @@ class TrackerService:
             except (ValueError, TypeError):
                 pass
 
-        # 2. Проверяем появление нового сезона в массиве сезонов
-        seasons = details.get("seasons", [])
-        if seasons:
-            for s in reversed(seasons):
-                s_num = s.get("season_number", 0)
-                if s_num == 0:
-                    continue  # Пропускаем спецвыпуски
-                s_air_date_str = s.get("air_date")
-                if s_air_date_str:
-                    try:
-                        s_air_date = datetime.date.fromisoformat(s_air_date_str)
-                        if (item.last_known_season and s_num > item.last_known_season) or (item.next_air_date != s_air_date):
-                            if s_air_date >= today and item.next_air_date != s_air_date:
-                                is_postponed = item.next_air_date is not None and s_air_date > item.next_air_date
-                                channel_event = "date_postponed" if is_postponed else "date_announced"
-                                return {
-                                    "type": "announced",
-                                    "channel_event_type": channel_event,
-                                    "next_season": s_num,
-                                    "next_air_date": s_air_date,
-                                    "old_air_date": item.next_air_date,
-                                    "status": "announced",
-                                    "source_url": details.get("tmdb_url"),
-                                }
-                    except (ValueError, TypeError):
-                        pass
+        # Confirm a tracked premiere from season data even after TMDB advances the episode.
+        for number, premiered in season_premieres(details):
+            if (premiered <= today and item.next_air_date == premiered
+                    and item.status != "released" and not item.notified_released):
+                return {"type": "released", "channel_event_type": "released",
+                        "next_season": number, "next_air_date": premiered,
+                        "status": "released", "source_url": details.get("tmdb_url")}
 
         # 3. Изменение статуса сериала (съёмки, закрыт, продлён)
         if tmdb_status and tmdb_status != item.status:
@@ -203,6 +187,13 @@ class TrackerService:
                     details = tmdb_cache.get(cache_key) or {}
 
                     update_info = None
+                    if item.media_type == "tv" and details:
+                        valid_premieres = {d for _, d in season_premieres(details)}
+                        if item.next_air_date and item.next_air_date not in valid_premieres:
+                            item.next_season_number, item.next_air_date = upcoming_season(details)
+                            item.notified_announced = False
+                            item.notified_released = False
+                            item.notified_reminder = False
                     if item.media_type == "tv":
                         update_info = self.evaluate_tv_update(item, details)
                     else:

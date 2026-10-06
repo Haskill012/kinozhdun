@@ -4,6 +4,7 @@ import datetime
 import html
 import os
 from typing import Any
+from bot.services.season_dates import upcoming_season, season_premieres
 
 
 def safe_html(text: Any) -> str:
@@ -140,7 +141,7 @@ def format_item_details(item: Any, media_type_hint: str | None = None) -> str:
         network = safe_html(item.get("network"))
         seasons_count = item.get("number_of_seasons")
         next_ep = item.get("next_episode_to_air")
-        next_date = next_ep.get("air_date") if isinstance(next_ep, dict) else item.get("release_date")
+        next_date = upcoming_season(item)[1] if media_type == "tv" else item.get("release_date")
         custom_date = None
         first_date = item.get("first_air_date")
         overview = safe_html(item.get("overview", ""))
@@ -155,7 +156,7 @@ def format_item_details(item: Any, media_type_hint: str | None = None) -> str:
         seasons_count = getattr(item, "last_known_season", None)
         next_date = getattr(item, "next_air_date", None)
         custom_date = getattr(item, "custom_date", None)
-        first_date = getattr(item, "last_known_air_date", None)
+        first_date = None  # Last aired episode is not the first release.
         overview = safe_html(getattr(item, "overview", ""))
         rating = getattr(item, "vote_average", None)
 
@@ -183,9 +184,20 @@ def format_item_details(item: Any, media_type_hint: str | None = None) -> str:
         lines.append(f"⭐ <b>Рейтинг TMDB:</b> {float(rating):.1f} / 10")
 
     if next_date:
-        lines.append(f"📅 <b>Дата премьеры нового сезона:</b> <b>{format_date_ru(next_date)}</b>")
+        label = "Дата премьеры нового сезона" if media_type == "tv" else "Дата премьеры фильма"
+        lines.append(f"📅 <b>{label}:</b> <b>{format_date_ru(next_date)}</b>")
     else:
-        lines.append("📅 <b>Дата премьеры:</b> <i>пока не объявлена</i> 🔍")
+        label = "Дата премьеры нового сезона" if media_type == "tv" else "Дата премьеры фильма"
+        lines.append(f"📅 <b>{label}:</b> <i>пока не объявлена</i> 🔍")
+
+    if media_type == "tv" and isinstance(item, dict):
+        aired = [(n, d) for n, d in season_premieres(item) if d < datetime.date.today()]
+        if aired:
+            number, premiered = aired[-1]
+            lines.append(f"✅ <b>Премьера {number}-го сезона состоялась:</b> {format_date_ru(premiered)}")
+        episode = item.get("next_episode_to_air") or {}
+        if episode.get("air_date") and episode.get("episode_number"):
+            lines.append(f"📺 <b>Следующая серия:</b> {format_date_ru(episode['air_date'])} ({episode.get('season_number', '?')} сезон, {episode['episode_number']} серия)")
 
     if custom_date:
         lines.append(f"⏰ <b>Ваше личное напоминание:</b> <b>{format_date_ru(custom_date)}</b>")

@@ -1,5 +1,7 @@
 """Хендлеры для поиска, предпросмотра, добавления, удаления и настройки отслеживаемых элементов."""
 
+from bot.services.season_dates import upcoming_season
+
 import datetime
 import logging
 from typing import Any, Optional
@@ -216,12 +218,7 @@ async def save_single_tracked_item(
                     last_known_air_date = datetime.date.fromisoformat(last_ep["air_date"])
                 except (ValueError, TypeError):
                     pass
-            next_ep = details.get("next_episode_to_air")
-            if next_ep and next_ep.get("air_date"):
-                try:
-                    next_air_date = datetime.date.fromisoformat(next_ep["air_date"])
-                except (ValueError, TypeError):
-                    pass
+            next_air_date = upcoming_season(details)[1]
         else:
             release = details.get("release_date")
             if release:

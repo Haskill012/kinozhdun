@@ -72,7 +72,31 @@ class Store:
           published TEXT, added TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         """)
+        self.repair_episode_articles()
         self.db.commit()
+
+    def repair_episode_articles(self):
+        """Correct legacy TMDB episode headlines, preserving URLs and publication dates."""
+        for row in self.db.execute("SELECT * FROM articles WHERE media_type='tv' AND fingerprint LIKE 'tmdb:%'").fetchall():
+            match = re.search(r"Речь о (\d+)-м эпизоде (\d+)-го сезона", row["summary"])
+            if not match or not row["release_date"] or not (":date:" in row["fingerprint"] or ":release:" in row["fingerprint"]):
+                continue
+            episode, season = map(int, match.groups())
+            original = re.match(r"«(.+?)»", row["title"])
+            if not original:
+                continue
+            released = datetime.fromisoformat(row["release_date"]).strftime("%d.%m.%Y")
+            heading = f"«{original[1]}»: {season}-й сезон, {episode}-я серия — {released}"
+            body = json.loads(row["body"])
+            # Older versions compared dates of different episodes as a postponement.
+            body = [p for p in body if not p.startswith("Ранее в каталоге была указана дата")]
+            if episode > 1:
+                clarification = "Это дата очередной серии, а не премьера нового сезона."
+                if clarification not in body:
+                    body.insert(1, clarification)
+            if row["title"] != heading or json.loads(row["body"]) != body:
+                self.db.execute("UPDATE articles SET title=?, body=?, updated=? WHERE slug=?",
+                                (heading, json.dumps(body, ensure_ascii=False), now(), row["slug"]))
 
     def publish(self, fingerprint, title, category, summary, body, source_url,
                 image=None, media_type=None, tmdb_id=None, release_date=None, published=None, item=None):

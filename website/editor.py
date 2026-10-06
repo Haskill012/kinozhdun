@@ -5,6 +5,7 @@ import re
 from datetime import date, datetime, timezone, timedelta
 
 import aiohttp
+from bot.services.season_dates import season_premieres
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +116,12 @@ class Editor:
                 "first_release": valid_date(detail.get("release_date") if media == "movie" else detail.get("first_air_date")),
                 "genres": [g["name"] for g in detail.get("genres", [])],
                 "source_url": f"https://www.themoviedb.org/{media}/{detail['id']}"}
+        if media == "tv":
+            premieres = season_premieres(detail)
+            if premieres:
+                number, premiered = premieres[-1]
+                item["season_premiere"] = premiered.isoformat()
+                item["premiere_season"] = number
         if bot_linked:
             item["bot_linked"] = True
         if news_related or publish_card:
@@ -137,8 +144,13 @@ class Editor:
                                paragraphs, item["source_url"], item["image"], media, detail["id"], release, item=item)
 
         if release and release >= today().isoformat() and (previous or release != today().isoformat()) and (not previous or previous.get("release_date") != release):
-            old = previous.get("release_date") if previous else None
+            same_episode = (media != "tv" or not previous or
+                            (previous.get("season"), previous.get("episode")) == (item["season"], item["episode"]))
+            old = previous.get("release_date") if previous and same_episode else None
             heading = f"«{title}»: дата выхода — {date_ru(release)}" if not old else f"«{title}»: дата выхода изменилась"
+            if media == "tv" and item["season"] and item["episode"]:
+                subject = f"{item['season']}-й сезон, {item['episode']}-я серия"
+                heading = f"«{title}»: {subject} — {date_ru(release)}" if not old else f"«{title}»: дата выхода {subject} изменилась"
             summary = f"В каталоге TMDB указана дата {date_ru(release)}.{context}"
             body = [summary]
             if old:
@@ -158,7 +170,7 @@ class Editor:
                                 "Текущая запись уже изменилась. Проверяйте фактическую доступность у распространителя."],
                                item['source_url'], item['image'], media, detail['id'], previous['release_date'], item=item)
         if release == today().isoformat():
-            post("release:" + release, f"«{title}»: выход по календарю сегодня", f"По данным TMDB, выход {kind} указан на {date_ru(release)}.{context}",
+            post("release:" + release, f"«{title}»: выход по календарю сегодня", f"По данным TMDB, выход {'эпизода' if media == 'tv' and item['episode'] else kind} указан на {date_ru(release)}.{context}",
                  [f"В каталоге TMDB указана сегодняшняя дата выхода.{context}", "Доступность в кинотеатрах и онлайн-сервисах зависит от региона. Проверяйте сведения у распространителя."])
         if previous and item["status"] != previous.get("status") and item["status"]:
             labels = {"Canceled": "закрыт", "Ended": "завершён", "In Production": "в производстве", "Post Production": "на постпродакшне", "Released": "вышел", "Returning Series": "продолжается", "Planned": "запланирован"}

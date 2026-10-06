@@ -180,6 +180,32 @@ class EditorTests(unittest.TestCase):
         self.editor.process("tv", tv)
         self.assertIn("3-м эпизоде 4-го сезона", self.store.articles()[0]["summary"])
 
+    def test_episode_rollover_is_not_a_postponement(self):
+        tv = {"id": 8, "name": "Гангстерленд", "next_episode_to_air":
+              {"air_date": self.release, "season_number": 2, "episode_number": 3}}
+        self.editor.process("tv", tv)
+        tv["next_episode_to_air"] = {"air_date": (today() + timedelta(days=12)).isoformat(),
+                                     "season_number": 2, "episode_number": 4}
+        self.editor.process("tv", tv)
+        articles = self.store.articles()
+        self.assertTrue(any("4-я серия" in a["title"] for a in articles))
+        self.assertFalse(any("изменилась" in a["title"] for a in articles))
+
+    def test_legacy_episode_news_repaired_without_changing_url(self):
+        summary = "В каталоге TMDB указана дата 09.10.2026. Речь о 4-м эпизоде 2-го сезона."
+        self.store.publish("tmdb:tv:8:date:2026-10-09", "«Гангстерленд»: дата выхода — 09.10.2026",
+                           "series", summary, [summary], "https://www.themoviedb.org/tv/8",
+                           media_type="tv", tmdb_id=8, release_date="2026-10-09")
+        before = self.store.articles()[0]
+        self.store.repair_episode_articles()
+        after = self.store.articles()[0]
+        self.assertEqual(before["slug"], after["slug"])
+        self.assertEqual(before["published"], after["published"])
+        self.assertIn("2-й сезон, 4-я серия", after["title"])
+        self.assertIn("Это дата очередной серии, а не премьера нового сезона.", after["body"])
+        self.store.repair_episode_articles()
+        self.assertEqual(after, self.store.articles()[0])
+
     def test_no_dates_or_adult_content_do_not_generate_release_news(self):
         for detail in ({**self.movie, "release_date": "invalid"}, {**self.movie, "adult": True}):
             self.editor.process("movie", detail)

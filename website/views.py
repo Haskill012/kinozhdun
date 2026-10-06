@@ -219,18 +219,23 @@ def article_page(store, config, article):
     schema = {"@context": "https://schema.org", "@graph": [article_obj, breadcrumbs]}
 
     release_badge = ""
+    release_label = "Выход серии" if article.get("media_type") == "tv" and re.search(r"Речь о \d+-м эпизоде|\d+-я серия", article.get("summary", "") + article.get("title", "")) else "Премьера"
     if article.get("release_date"):
         try:
             rd = date.fromisoformat(article["release_date"])
             diff = (rd - today()).days
             if diff > 0:
-                release_badge = f'<div class="article-countdown">📅 Премьера: <b>{date_ru(article["release_date"])}</b> (через {diff} дн.)</div>'
+                release_badge = f'<div class="article-countdown">📅 {release_label}: <b>{date_ru(article["release_date"])}</b> (через {diff} дн.)</div>'
             elif diff == 0:
-                release_badge = f'<div class="article-countdown">🎉 Премьера <b>сегодня</b> ({date_ru(article["release_date"])})!</div>'
+                release_badge = f'<div class="article-countdown">🎉 {release_label} <b>сегодня</b> ({date_ru(article["release_date"])})!</div>'
         except (ValueError, TypeError):
             pass
 
-    content = f'''<div class="page-shell"><div class="breadcrumbs"><a href="/">Главная</a> / <a href="/news">Материалы</a> / {category}</div><article class="article"><span class="eyebrow lime">{category}</span><h1>{esc(article['title'])}</h1><div class="meta"><span>Редакция КиноЖдуна</span><span>•</span><time datetime="{esc(article['published'])}">{'.'.join(stamp(article['published']))}</time></div>{release_badge}<p class="article-lead">{esc(article['summary'])}</p>{image(article.get('image'), article['title'], 'article-cover', eager=True)}<div class="article-body">{body}<div class="source"><strong>Источник материала</strong><a href="{esc(article['source_url'])}" target="_blank" rel="noopener noreferrer">Открыть источник ↗</a><small>Сведения могут обновляться. Подробнее — <a href="/about">о нашей редакции</a>.</small></div><div class="article-cta"><h2>Не пропустите премьеру</h2><p>Сохраните проект в трекер: КиноЖдун пришлёт уведомление в Telegram за 3 дня до даты выхода.</p><a class="button" href="{esc(bot_url)}" target="_blank" rel="noopener">🔔 Напомнить о премьере в Telegram ↗</a></div></div></article><section class="news-section"><div class="section-heading"><h2>Ещё немного кино<span class="lime">.</span></h2><a href="/news" class="text-link">Все материалы ↗</a></div><div class="news-grid">{''.join(card(a) for a in related)}</div></section></div>'''
+    episode_article = release_label == "Выход серии"
+    cta_heading = "Следите за новыми сезонами" if episode_article else "Не пропустите премьеру"
+    cta_text = "Сохраните сериал в трекер: КиноЖдун сообщит о датах премьер новых сезонов." if episode_article else "Сохраните проект в трекер: КиноЖдун пришлёт уведомление в Telegram за 3 дня до даты выхода."
+    cta_button = "🔔 Отслеживать новые сезоны в Telegram ↗" if episode_article else "🔔 Напомнить о премьере в Telegram ↗"
+    content = f'''<div class="page-shell"><div class="breadcrumbs"><a href="/">Главная</a> / <a href="/news">Материалы</a> / {category}</div><article class="article"><span class="eyebrow lime">{category}</span><h1>{esc(article['title'])}</h1><div class="meta"><span>Редакция КиноЖдуна</span><span>•</span><time datetime="{esc(article['published'])}">{'.'.join(stamp(article['published']))}</time></div>{release_badge}<p class="article-lead">{esc(article['summary'])}</p>{image(article.get('image'), article['title'], 'article-cover', eager=True)}<div class="article-body">{body}<div class="source"><strong>Источник материала</strong><a href="{esc(article['source_url'])}" target="_blank" rel="noopener noreferrer">Открыть источник ↗</a><small>Сведения могут обновляться. Подробнее — <a href="/about">о нашей редакции</a>.</small></div><div class="article-cta"><h2>{cta_heading}</h2><p>{cta_text}</p><a class="button" href="{esc(bot_url)}" target="_blank" rel="noopener">{cta_button}</a></div></div></article><section class="news-section"><div class="section-heading"><h2>Ещё немного кино<span class="lime">.</span></h2><a href="/news" class="text-link">Все материалы ↗</a></div><div class="news-grid">{''.join(card(a) for a in related)}</div></section></div>'''
     return layout(config, article["title"], article["summary"][:180], content, path, "news", schema=schema, og_image=article.get("image"))
 
 

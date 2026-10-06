@@ -47,6 +47,9 @@ def project_page(store, config, item, news_page=1):
     dates = f'<div><dt>{date_label}</dt><dd>{date_ru(release)}</dd></div>'
     if not movie and item.get("season") and item.get("episode"):
         dates += f'<div><dt>Ближайшая серия</dt><dd>{item["season"]} сезон · {item["episode"]} серия</dd></div>'
+    if not movie and item.get("season_premiere"):
+        label = f"Премьера {item['premiere_season']}-го сезона"
+        dates += f'<div><dt>{label}</dt><dd>{date_ru(item["season_premiere"])}</dd></div>'
     if rating:
         dates += f'<div><dt>Оценки зрителей</dt><dd>{item.get("votes", 0):,} голосов</dd></div>'.replace(',', ' ')
     news_count = store.title_articles_count(item["media_type"], item["id"])
