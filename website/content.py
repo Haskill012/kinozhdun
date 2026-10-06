@@ -51,6 +51,75 @@ def slugify(text: str, max_length: int = 60) -> str:
     return cleaned[:max_length].rstrip('-') or 'post'
 
 
+def clean_post_paragraphs(raw_text: str, payload_json: str = None, known_titles: dict = None) -> list[str]:
+    if not raw_text:
+        return []
+
+    items_map = {}
+    if payload_json:
+        try:
+            payload_data = json.loads(payload_json)
+            if isinstance(payload_data, list):
+                for it in payload_data:
+                    title = it.get('title')
+                    media = it.get('media_type')
+                    tmdb_id = it.get('tmdb_id')
+                    if title and media and tmdb_id:
+                        items_map[str(title).strip()] = (str(media), int(tmdb_id))
+        except Exception:
+            pass
+
+    if known_titles:
+        for title, val in known_titles.items():
+            t_clean = str(title).strip()
+            if t_clean and t_clean not in items_map:
+                items_map[t_clean] = val
+
+    paragraphs = [p.strip() for p in raw_text.split('\n\n') if p.strip()]
+    cleaned_paragraphs = []
+
+    # Match longer titles first
+    sorted_titles = sorted(items_map.items(), key=lambda x: len(x[0]), reverse=True)
+
+    for p in paragraphs:
+        block = p
+        # 1. Normalize absolute kinojdun.ru links to relative site paths
+        block = re.sub(r'https?://(?:www\.)?kinojdun\.ru(/title/[a-z]+/\d+|/calendar)', r'\1', block)
+
+        # 2. Check and wrap titles
+        for title, (media, tmdb_id) in sorted_titles:
+            link = f'/title/{media}/{tmdb_id}'
+            if link in block:
+                continue
+
+            escaped = re.escape(title)
+            # Case 2a: Inside <b>Title</b>
+            if re.search(rf'<b>\s*{escaped}\s*</b>', block):
+                block = re.sub(rf'<b>\s*{escaped}\s*</b>', f'<a href="{link}"><b>{title}</b></a>', block, count=1)
+            # Case 2b: Inside «Title»
+            elif re.search(rf'«\s*{escaped}\s*»', block):
+                block = re.sub(rf'«\s*{escaped}\s*»', f'«<a href="{link}"><b>{title}</b></a>»', block, count=1)
+            # Case 2c: On its own line or before newline
+            elif re.search(rf'(?m)^\s*{escaped}\s*(?:\r?\n|$)', block):
+                block = re.sub(rf'(?m)^\s*{escaped}\s*(?=\r?\n|$)', f'<a href="{link}"><b>{title}</b></a>', block, count=1)
+            # Case 2d: In text if title is sufficiently distinctive
+            elif len(title) >= 3 and title in block:
+                pattern = rf'(?<!/)(?<![\w/]){escaped}(?![\w/])'
+                if re.search(pattern, block):
+                    block = re.sub(pattern, f'<a href="{link}"><b>{title}</b></a>', block, count=1)
+
+        # 3. Footer calendar link
+        if 'Все даты и подробности на KinoЖдун' in block and '/calendar' not in block:
+            if 'Все даты и подробности на KinoЖдун ↗' in block:
+                block = block.replace('Все даты и подробности на KinoЖдун ↗', '<a href="/calendar">Все даты и подробности на KinoЖдун ↗</a>', 1)
+            else:
+                block = block.replace('Все даты и подробности на KinoЖдун', '<a href="/calendar">Все даты и подробности на KinoЖдун ↗</a>', 1)
+
+        cleaned_paragraphs.append(block)
+
+    return cleaned_paragraphs
+
+
 def extract_digest_summary(text: str, title: str = "", max_len: int = 180) -> str:
     cleaned = plain(text)
     paragraphs = [p.strip() for p in cleaned.split("\n\n") if p.strip()]
@@ -62,8 +131,10 @@ def extract_digest_summary(text: str, title: str = "", max_len: int = 180) -> st
         # Ignore emoji headers like "🍿 Что выходит сегодня..." or "🎬 Сегодня на экране..."
         if re.match(r"^[🎬🍿🔥📅📢]?\s*(Что выходит|Главные премьеры|Сегодня на экране|Что посмотреть)", p):
             continue
-        # Ignore list item blocks
-        if p.startswith(("📺", "🎬", "•", "-", "└")):
+        # Ignore list item blocks or items with ratings/TMDB lines or footer links
+        if (p.startswith(("📺", "🎬", "•", "-", "└"))
+                or "★" in p or "TMDB" in p
+                or "Все даты" in p or "подробности" in p or "t.me" in p):
             continue
         candidate = p
         break
@@ -74,7 +145,7 @@ def extract_digest_summary(text: str, title: str = "", max_len: int = 180) -> st
         elif "Главные премьеры недели" in (title or ""):
             candidate = "Самые ожидаемые новинки кино и сериалов этой недели по данным трекера КиноЖдун."
         else:
-            candidate = paragraphs[0]
+            candidate = paragraphs[0].split("\n")[0].strip()
 
     # Clean leading emoji
     candidate = re.sub(r"^[🎬🍿🔥📅📢\s]+", "", candidate).strip()
@@ -115,6 +186,7 @@ class Store:
         """)
         self.repair_episode_articles()
         self.purge_corrupted_digests()
+        self.repair_digest_links()
         self.db.commit()
 
     def repair_episode_articles(self):
@@ -146,7 +218,7 @@ class Store:
         for row in rows:
             text = (row["summary"] or "") + " " + (row["body"] or "")
             is_corrupt = (
-                "d2d6d01c" in row["slug"]
+                ("chto-vyhodit-segodnya" in row["slug"] and "d2d6d01c" in row["slug"])
                 or "мифическим утром" in text
                 or "Good Mythical Morning" in text
                 or "Монолог фа" in text
@@ -154,6 +226,38 @@ class Store:
             )
             if is_corrupt:
                 self.db.execute("DELETE FROM articles WHERE slug=?", (row["slug"],))
+        self.db.commit()
+
+    def repair_digest_links(self):
+        """Ensure project cards and calendar links in digest articles are preserved and linked."""
+        known_titles = {}
+        for row in self.db.execute("SELECT data FROM titles").fetchall():
+            try:
+                t = json.loads(row[0])
+                if t.get("title") and t.get("media_type") and t.get("id"):
+                    known_titles[str(t["title"]).strip()] = (str(t["media_type"]), int(t["id"]))
+            except Exception:
+                pass
+
+        rows = self.db.execute("SELECT slug, title, summary, body FROM articles WHERE category IN ('news', 'series', 'movies')").fetchall()
+        for row in rows:
+            try:
+                body = json.loads(row["body"])
+            except Exception:
+                continue
+            if not isinstance(body, list):
+                continue
+            raw_text = "\n\n".join(body)
+            is_digest = any(h in row["title"] for h in ("Что посмотреть", "Что выходит", "Сегодня на экране", "Главные премьеры"))
+            has_calendar = "Все даты и подробности на KinoЖдун" in raw_text
+            if not (is_digest or has_calendar):
+                continue
+
+            cleaned_paragraphs = clean_post_paragraphs(raw_text, known_titles=known_titles)
+            new_summary = extract_digest_summary(raw_text, row["title"]) if is_digest else row["summary"]
+            if cleaned_paragraphs != body or new_summary != row["summary"]:
+                self.db.execute("UPDATE articles SET body=?, summary=?, updated=? WHERE slug=?",
+                                (json.dumps(cleaned_paragraphs, ensure_ascii=False), new_summary, now(), row["slug"]))
         self.db.commit()
 
     def publish(self, fingerprint, title, category, summary, body, source_url,
@@ -511,11 +615,12 @@ class Store:
                 rows = db.execute("SELECT * FROM channel_posts WHERE status='published' AND credibility='confirmed' AND is_sponsored=0").fetchall()
             for row in rows:
                 r = dict(row)
-                text = plain(r.get("post_text"))
+                text = r.get("post_text") or ""
                 if not text:
                     continue
+                plain_text = plain(text)
                 if r.get("event_type") == "weekly_digest":
-                    dates = re.findall(r"\b(\d{2}\.\d{2}\.\d{4})\b", text)
+                    dates = re.findall(r"\b(\d{2}\.\d{2}\.\d{4})\b", plain_text)
                     try:
                         dates = [datetime.strptime(d, "%d.%m.%Y").date() for d in dates]
                         inconsistent = len(dates) >= 3 and any(not dates[0] <= d <= dates[1] for d in dates[2:])
@@ -527,9 +632,8 @@ class Store:
                         self.db.commit()
                         continue
                 if r.get("event_type") == "daily_digest":
-                    if (any(bad in text for bad in ("мифическим утром", "Good Mythical Morning"))
-                            or "d2d6d01c" in r.get("content_hash", "")
-                            or bool(re.search(r"[\u4e00-\u9fff]", text))):
+                    if (any(bad in plain_text for bad in ("мифическим утром", "Good Mythical Morning"))
+                            or bool(re.search(r"[\u4e00-\u9fff]", plain_text))):
                         self.db.execute("DELETE FROM articles WHERE fingerprint=?", ("channel:" + r["content_hash"],))
                         self.db.commit()
                         continue
@@ -537,7 +641,7 @@ class Store:
                 source = (f"https://www.themoviedb.org/{r['media_type']}/{r['tmdb_id']}"
                           if r.get("tmdb_id") and r.get("media_type") in ("movie", "tv") else channel_url)
                 summary = extract_digest_summary(text, plain(r["title"]))
-                body = [p for p in text.split("\n\n") if p]
+                body = clean_post_paragraphs(text, r.get("payload"))
                 count += self.publish(
                     "channel:" + r["content_hash"], plain(r["title"]),
                     "series" if r.get("media_type") == "tv" else "movies" if r.get("media_type") == "movie" else "news",
@@ -545,6 +649,22 @@ class Store:
                     "https://image.tmdb.org/t/p/w780" + image if image and image.startswith("/") else None,
                     r.get("media_type"), r.get("tmdb_id"), r.get("air_date"),
                     timestamp(r.get("published_at") or r.get("created_at")))
+
+                if r.get("payload"):
+                    try:
+                        payload_items = json.loads(r["payload"])
+                        if isinstance(payload_items, list):
+                            for it in payload_items:
+                                m = it.get("media_type")
+                                tid = it.get("tmdb_id")
+                                ttitle = it.get("title")
+                                if m and tid and ttitle:
+                                    timg = ("https://image.tmdb.org/t/p/w780" + it["poster_path"]
+                                            if it.get("poster_path") and str(it["poster_path"]).startswith("/") else None)
+                                    tsrc = f"https://www.themoviedb.org/{m}/{tid}"
+                                    self.ensure_news_card(m, int(tid), ttitle, tsrc, timg)
+                    except Exception:
+                        pass
         except sqlite3.Error:
             # The bot may be creating/migrating its tables; retry next cycle.
             return count

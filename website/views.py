@@ -1,5 +1,6 @@
 """HTML rendering: all indexable content is served without JavaScript."""
 import html
+from html.parser import HTMLParser
 import hashlib
 from pathlib import Path
 import json
@@ -17,6 +18,61 @@ CATEGORIES = {"news": "Новости", "movies": "Фильмы", "series": "С�
 
 def esc(value):
     return html.escape(str(value or ""), quote=True)
+
+
+ALLOWED_HTML_TAGS = {"a", "b", "strong", "i", "em", "code", "br"}
+
+
+class SafeHTMLParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.output = []
+        self.open_tags = []
+
+    def handle_starttag(self, tag, attrs):
+        t = tag.lower()
+        if t in ALLOWED_HTML_TAGS:
+            if t == "a":
+                href = ""
+                for k, v in attrs:
+                    if k.lower() == "href":
+                        href = v.strip()
+                        break
+                if href.startswith(("/", "https://", "http://", "tg://")):
+                    safe_href = html.escape(href, quote=True)
+                    rel = ' rel="noopener"' if href.startswith("http") else ""
+                    self.output.append(f'<a href="{safe_href}"{rel}>')
+                    self.open_tags.append("a")
+            elif t == "br":
+                self.output.append("<br>")
+            else:
+                self.output.append(f"<{t}>")
+                self.open_tags.append(t)
+
+    def handle_endtag(self, tag):
+        t = tag.lower()
+        if t in self.open_tags:
+            self.output.append(f"</{t}>")
+            self.open_tags.remove(t)
+
+    def handle_data(self, data):
+        self.output.append(html.escape(data))
+
+    def get_html(self):
+        return "".join(self.output)
+
+
+def sanitize_paragraph_html(p: str) -> str:
+    if not p:
+        return ""
+    p_clean = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', str(p), flags=re.IGNORECASE | re.DOTALL)
+    parser = SafeHTMLParser()
+    try:
+        parser.feed(p_clean)
+        cleaned = parser.get_html()
+    except Exception:
+        cleaned = esc(p)
+    return cleaned.replace("\n", "<br>")
 
 
 def image(url, title, cls="", eager=False):
@@ -196,10 +252,10 @@ def article_page(store, config, article):
     body_paragraphs = json.loads(article["body"])
     rendered = []
     for i, p in enumerate(body_paragraphs):
-        p_clean = p.strip()
-        if i == 0 and (p_clean == article["summary"].strip() or (len(p_clean) < 60 and ("Что выходит сегодня" in p_clean or "Сегодня на экране" in p_clean))):
+        p_clean = re.sub(r"<[^>]*>", "", p).strip()
+        if i == 0 and (p_clean == article["summary"].strip() or (len(p_clean) < 60 and any(h in p_clean for h in ("Что выходит сегодня", "Сегодня на экране", "Что посмотреть", "Главные премьеры")))):
             continue
-        rendered.append(f'<p>{esc(p).replace(chr(10), "<br>")}</p>')
+        rendered.append(f'<p>{sanitize_paragraph_html(p)}</p>')
     body = "".join(rendered)
     item = store.catalog_item(f"{article.get('media_type')}:{article.get('tmdb_id')}")
     if trailer_key:

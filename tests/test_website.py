@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 import sqlite3
 import tempfile
@@ -238,7 +239,7 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(self.store.import_channel(path, "https://t.me/channel"), 1)
         self.assertEqual(self.store.import_channel(path, "https://t.me/channel"), 0)
         self.assertEqual(len(self.store.articles()), 1)
-        self.assertNotIn("<b>", self.store.articles()[0]["body"])
+        self.assertIn("<b>", self.store.articles()[0]["body"])
         with closing(sqlite3.connect(path)) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM channel_posts").fetchone()[0], 5)
 
@@ -268,6 +269,66 @@ class EditorTests(unittest.TestCase):
         self.assertNotIn("фа", valid_art["summary"])
         self.assertFalse(valid_art["summary"].endswith(" "))
         self.assertTrue(len(valid_art["summary"]) <= 180)
+
+    def test_digest_import_and_article_page_preserves_card_links(self):
+        from website.views import sanitize_paragraph_html, article_page
+        path = Path(self.tmp.name) / "bot_digest_links.db"
+        payload_data = [
+            {"title": "В Филадельфии всегда солнечно", "media_type": "tv", "tmdb_id": 2710, "poster_path": "/philly.jpg"},
+            {"title": "ФБР", "media_type": "tv", "tmdb_id": 80748, "poster_path": "/fbi.jpg"}
+        ]
+        post_text_html = (
+            "🎬 <b>Сегодня на экране · 06.10.2026</b>\n\n"
+            '<b><a href="https://kinojdun.ru/title/tv/2710">В Филадельфии всегда солнечно</a></b>\n★ 8.2/10 · TMDB\nСледующая серия 12.10.2026\n\n'
+            '<b><a href="https://kinojdun.ru/title/tv/80748">ФБР</a></b>\n★ 7.9/10 · TMDB\nСледующая серия 12.10.2026\n\n'
+            '<a href="https://kinojdun.ru/calendar">Все даты и подробности на KinoЖдун ↗</a>'
+        )
+        with closing(sqlite3.connect(path)) as db:
+            db.execute("CREATE TABLE channel_posts (title, post_text, status, credibility, is_sponsored, content_hash, event_type, published_at, payload)")
+            db.execute("INSERT INTO channel_posts VALUES (?,?,?,?,?,?,?,?,?)",
+                       ("Что посмотреть — 06.10.2026", post_text_html, "published", "confirmed", 0,
+                        "hash_digest_links", "daily_digest", "2026-10-06 09:30:00", json.dumps(payload_data, ensure_ascii=False)))
+            db.commit()
+
+        imported = self.store.import_channel(path, "https://t.me/channel")
+        self.assertEqual(imported, 1)
+
+        articles = self.store.articles()
+        art = next(a for a in articles if "Что посмотреть" in a["title"])
+        body = json.loads(art["body"])
+
+        # Check relative card links and calendar links are present in body
+        self.assertTrue(any('/title/tv/2710' in p for p in body))
+        self.assertTrue(any('/title/tv/80748' in p for p in body))
+        self.assertTrue(any('/calendar' in p for p in body))
+
+        # Check news cards were created for items in payload
+        self.assertIsNotNone(self.store.catalog_item("tv:2710", False))
+        self.assertIsNotNone(self.store.catalog_item("tv:80748", False))
+
+        # Test article_page renders clickable links in HTML
+        cfg = config(Path(self.tmp.name) / "site.db")
+        html_page = article_page(self.store, cfg, art)
+        self.assertIn('<a href="/title/tv/2710">', html_page)
+        self.assertIn('<a href="/title/tv/80748">', html_page)
+        self.assertIn('<a href="/calendar">', html_page)
+
+        # Test repair_digest_links upgrades legacy plain text articles
+        self.store.save_title("tv:220542", {"key": "tv:220542", "id": 220542, "media_type": "tv", "title": "Монолог фармацевта"})
+        legacy_plain_body = [
+            "🎬 Что посмотреть · 6 октября",
+            "Монолог фармацевта\n★ 8.6/10 · TMDB\nСледующая серия 09.10.2026",
+            "Все даты и подробности на KinoЖдун ↗"
+        ]
+        self.store.publish("legacy:plain:digest", "Что посмотреть — 06.10.2026", "news",
+                           "Главные премьеры дня", legacy_plain_body, "https://t.me/channel")
+        self.store.repair_digest_links()
+
+        repaired_art = self.store.article(slugify("Что посмотреть — 06.10.2026") + "-" + hashlib.sha256(b"legacy:plain:digest").hexdigest()[:8])
+        self.assertIsNotNone(repaired_art)
+        repaired_body = json.loads(repaired_art["body"])
+        self.assertTrue(any('/title/tv/220542' in p for p in repaired_body))
+        self.assertTrue(any('/calendar' in p for p in repaired_body))
 
 
 class CatalogSyncTests(unittest.IsolatedAsyncioTestCase):
