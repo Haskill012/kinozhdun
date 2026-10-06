@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 from aiogram import Bot
 from aiogram.enums import ParseMode
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -12,15 +13,60 @@ from bot.db.repositories import Repository
 from bot.services.channel import ChannelPublisher
 from bot.services.tmdb import TMDBClient
 from bot.services.tracker import TrackerService
+from bot.services.episode_reminders import episodes_on_date
 from bot.keyboards.inline import notification_item_keyboard
 from bot.utils.formatting import (
     format_announced_notification,
     format_released_notification,
     format_reminder_notification,
     format_status_change_notification,
+    format_episode_tomorrow_notification,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def episode_reminder_now():
+    return datetime.now(ZoneInfo("Europe/Moscow"))
+
+
+async def check_episode_reminders_job(bot: Bot, session_factory, tmdb_client: TMDBClient,
+                                     settings: Settings) -> None:
+    """Notify subscribers once per episode on the preceding Moscow calendar day."""
+    now = episode_reminder_now()
+    if not 10 <= now.hour < 22:
+        return
+    target = now.date() + timedelta(days=1)
+    try:
+        async with session_factory() as session:
+            repo = Repository(session)
+            items = await repo.get_tracked_series()
+            cache = {}
+            for item in items:
+                if not item.user or not item.user.telegram_id:
+                    continue
+                try:
+                    if item.tmdb_id not in cache:
+                        details = await tmdb_client.get_tv_details(item.tmdb_id)
+                        cache[item.tmdb_id] = (await episodes_on_date(tmdb_client, item.tmdb_id, details, target)
+                                              if details else [])
+                    for episode in cache[item.tmdb_id]:
+                        event = f"episode_tomorrow:{episode['season_number']}:{episode['episode_number']}:{target.isoformat()}"
+                        if await repo.has_notification(item.id, event):
+                            continue
+                        text = format_episode_tomorrow_notification(item, episode)
+                        kb = notification_item_keyboard(item_id=item.id, media_type="tv",
+                                                       tmdb_id=item.tmdb_id, tmdb_url=item.tmdb_url,
+                                                       bot_username=settings.BOT_USERNAME)
+                        await bot.send_message(item.user.telegram_id, text, reply_markup=kb,
+                                               parse_mode=ParseMode.HTML)
+                        await repo.log_notification(item.id, event, text)
+                        # Persist each successful send before moving to another subscriber.
+                        await session.commit()
+                except Exception:
+                    logger.warning("Не удалось обработать напоминание о серии; повтор при следующей проверке.")
+    except Exception:
+        logger.exception("Ошибка проверки напоминаний о новых сериях.")
 
 
 async def check_updates_job(
@@ -198,6 +244,16 @@ def setup_scheduler(
         kwargs={"bot": bot, "session_factory": session_factory},
         id="check_upcoming_reminders",
         replace_existing=True,
+    )
+
+    # First check at 10:00 Moscow; daytime retries also catch late catalogue updates.
+    scheduler.add_job(
+        check_episode_reminders_job,
+        "cron", hour="10-21", minute=0,
+        next_run_time=now_utc + timedelta(seconds=30),
+        kwargs={"bot": bot, "session_factory": session_factory,
+                "tmdb_client": tmdb_client, "settings": settings},
+        id="check_episode_reminders", replace_existing=True, max_instances=1,
     )
 
     # Публикация отложенных постов в канал (каждые 15 минут, первый запуск через 15 сек)

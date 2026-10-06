@@ -181,6 +181,22 @@ class Repository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none() is not None
 
+    async def get_tracked_series(self) -> List[TrackedItem]:
+        result = await self.session.execute(
+            select(TrackedItem).options(selectinload(TrackedItem.user))
+            .where(TrackedItem.media_type == "tv")
+        )
+        return list(result.scalars().all())
+
+    async def has_notification(self, item_id: int, notification_type: str) -> bool:
+        result = await self.session.execute(
+            select(NotificationLog.id).where(
+                NotificationLog.tracked_item_id == item_id,
+                NotificationLog.notification_type == notification_type,
+            ).limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
     async def get_items_for_reminder(self, days_before: int = 3) -> List[TrackedItem]:
         """Получить элементы, для которых нужно отправить напоминание (выходят через N дней)."""
         target_date = date.today() + timedelta(days=days_before)

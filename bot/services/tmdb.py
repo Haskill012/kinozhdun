@@ -170,6 +170,7 @@ class TMDBClient:
             "season_number": data.get("season_number"),
             "air_date": data.get("air_date"),
             "episode_count": len(data.get("episodes", [])),
+            "episodes": data.get("episodes", []),
             "name": data.get("name"),
             "overview": data.get("overview"),
         }
@@ -265,4 +266,3 @@ class TMDBClient:
         """Получает сериалы с новыми эпизодами сегодня из TMDB."""
         data = await self._get("/tv/airing_today", {"page": page})
         return data.get("results", [])
-

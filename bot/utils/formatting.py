@@ -289,6 +289,19 @@ def format_released_notification(item: Any) -> str:
     return "\n".join(lines)
 
 
+def format_episode_tomorrow_notification(item: Any, episode: dict) -> str:
+    title = linked_title(getattr(item, "title", "Без названия"), item)
+    lines = ["📺 <b>Уже завтра выходит новая серия!</b>\n",
+             f"🎬 <b>«{title}»</b>",
+             f"🎞 <b>{episode['season_number']} сезон, {episode['episode_number']} серия</b>",
+             f"📅 <b>Дата выхода:</b> {format_date_ru(episode['air_date'])}"]
+    network = safe_html(getattr(item, "network", None))
+    if network:
+        lines.append(f"🏢 <b>Платформа:</b> {network}")
+    lines.append("\n🍿 <i>По данным TMDB. Доступность зависит от региона и платформы.</i>")
+    return "\n".join(lines)
+
+
 def format_reminder_notification(item: Any, days_left: int = 3) -> str:
     """Форматирует персональное напоминание за несколько дней до даты."""
     title = linked_title(getattr(item, "title", "Без названия"), item)
