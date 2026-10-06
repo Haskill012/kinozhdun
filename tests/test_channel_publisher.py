@@ -305,7 +305,7 @@ class TestChannelPublisher(unittest.IsolatedAsyncioTestCase):
         digest = await self.publisher.create_daily_digest(target_date=today)
         self.assertIsNotNone(digest)
         self.assertEqual(digest.event_type, "daily_digest")
-        self.assertIn("Что выходит сегодня", digest.post_text)
+        self.assertIn("Сегодня на экране", digest.post_text)
         self.assertIn("Новый Фильм", digest.post_text)
         self.assertIn("премьера фильма", digest.post_text)
         self.assertIn("Крутой Сериал", digest.post_text)

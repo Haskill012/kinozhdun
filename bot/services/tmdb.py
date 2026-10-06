@@ -151,6 +151,11 @@ class TMDBClient:
             "overview": data.get("overview"),
             "poster_path": data.get("poster_path"),
             "status": data.get("status"),
+            "backdrop_path": data.get("backdrop_path"),
+            "vote_average": data.get("vote_average"),
+            "vote_count": data.get("vote_count"),
+            "genres": data.get("genres", []),
+            "type": data.get("type"),
             "number_of_seasons": data.get("number_of_seasons"),
             "seasons": data.get("seasons", []),
             "next_episode_to_air": data.get("next_episode_to_air"),
@@ -196,6 +201,9 @@ class TMDBClient:
             "release_date": data.get("release_date"),
             "network": network,
             "belongs_to_collection": data.get("belongs_to_collection"),
+            "backdrop_path": data.get("backdrop_path"),
+            "vote_average": data.get("vote_average"),
+            "vote_count": data.get("vote_count"),
             "tmdb_url": f"https://www.themoviedb.org/movie/{movie_id}",
         }
 

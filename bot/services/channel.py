@@ -4,12 +4,16 @@ import datetime
 import hashlib
 import json
 import logging
+import re
 from typing import Any, Optional
 from aiogram import Bot
 from aiogram.enums import ParseMode
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LinkPreviewOptions
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from bot.services.digest_style import render_digest, telegram_text_length
+from bot.services.episode_reminders import episodes_on_date
+from bot.services.season_dates import season_premieres
 from bot.config import Settings
 from bot.db.models import ChannelPost
 from bot.db.repositories import Repository
@@ -92,6 +96,7 @@ def format_channel_post_text(
     trailer_url: Optional[str] = None,
     items: Optional[list[dict[str, Any]]] = None,
     date_label: Optional[str] = None,
+    site_url: str = "https://kinojdun.ru",
 ) -> str:
     """Форматирует красивый, лаконичный и вовлекающий пост для Telegram-канала в стиле Кинождуна."""
     title = safe_html(title)
@@ -235,72 +240,9 @@ def format_channel_post_text(
         body_parts.append("\n🍿 <i>В Кинождуне всегда можно найти другие интересные премьеры.</i>")
         return f"{header}\n\n" + "\n".join(body_parts)
 
-    # --- 9. «Что выходит сегодня» (Daily Digest) ---
-    elif event_type == "daily_digest":
-        date_str = date_label or format_date_ru(datetime.date.today())
-        lines = [
-            f"🍿 <b>Что выходит сегодня — {date_str}</b>\n",
-            "Собрали главные кино- и телепремьеры сегодняшнего дня:\n",
-        ]
-        if items:
-            for item in items:
-                m_type = item.get("media_type", "movie")
-                t_name = item.get("title", "Без названия")
-                tag = item.get("tag", "")
-                genres = item.get("genres", "")
-                network_name = item.get("network", "")
-
-                icon = "🎬" if m_type == "movie" else "📺"
-
-                details = []
-                if tag and tag not in ("сериал", "премьера"):
-                    details.append(tag)
-                elif tag == "премьера":
-                    details.append("премьера фильма" if m_type == "movie" else "новый сериал")
-                if genres:
-                    details.append(genres)
-                if network_name:
-                    details.append(network_name)
-
-                details_str = " • ".join(details)
-                if details_str:
-                    lines.append(f"{icon} <b>{t_name}</b>\n   └ <i>{details_str}</i>")
-                else:
-                    lines.append(f"{icon} <b>{t_name}</b>")
-
-        lines.append("\n🍿 <i>Не хотите пропускать важные даты? Добавьте проекты в Кинождун — бот вовремя пришлёт напоминание.</i>")
-        return "\n".join(lines)
-
-    # --- 10. «Главные премьеры недели» (Weekly Digest) ---
-    elif event_type == "weekly_digest":
-        range_str = f" ({date_label})" if date_label else ""
-        lines = [
-            f"🔥 <b>Главные премьеры недели{range_str}</b>\n",
-            "Самые ожидаемые новинки кино и сериалов этой недели:\n",
-        ]
-        if items:
-            for item in items:
-                m_type = item.get("media_type", "movie")
-                t_name = item.get("title", "Без названия")
-                d_str = item.get("date_str", "")
-                tag = item.get("tag", "")
-                genres = item.get("genres", "")
-
-                icon = "🎬" if m_type == "movie" else "📺"
-                date_prefix = f"<b>{d_str}</b> — " if d_str else ""
-
-                details = []
-                if tag:
-                    details.append(tag)
-                if genres:
-                    details.append(genres)
-                details_str = f"\n   └ <i>{' • '.join(details)}</i>" if details else ""
-
-                lines.append(f"{icon} {date_prefix}<b>{t_name}</b>{details_str}")
-
-        lines.append("\n<b>Не хочешь следить за датами самостоятельно?</b>")
-        lines.append("Добавь интересующие фильмы и сериалы в Кинождун — бот сообщит о важных изменениях.")
-        return "\n".join(lines)
+    elif event_type in ("daily_digest", "weekly_digest"):
+        return render_digest(items, date_label or format_date_ru(datetime.date.today()),
+                             weekly=event_type == "weekly_digest", site_url=site_url)
 
     # --- Дефолтный формат новостного поста ---
     header = f"🎬 <b>«{title}»{season_label}</b>"
@@ -352,10 +294,15 @@ def channel_post_keyboard(
     if trailer_url:
         buttons.append([InlineKeyboardButton(text="▶️ Смотреть трейлер", url=trailer_url)])
 
-    action_row = [InlineKeyboardButton(text=btn_text, url=deep_link)]
-    if site_url:
-        action_row.append(InlineKeyboardButton(text="🌐 На сайт", url=site_url))
-    buttons.append(action_row)
+    if post_type in ("daily_digest", "weekly_digest") or event_type in ("daily_digest", "weekly_digest"):
+        if site_url:
+            buttons.append([InlineKeyboardButton(text="Все релизы на KinoЖдун ↗", url=site_url.rstrip('/') + '/calendar')])
+        buttons.append([InlineKeyboardButton(text="🔔 Настроить напоминания", url=deep_link)])
+    else:
+        action_row = [InlineKeyboardButton(text=btn_text, url=deep_link)]
+        if site_url:
+            action_row.append(InlineKeyboardButton(text="🌐 На сайт", url=site_url))
+        buttons.append(action_row)
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -478,9 +425,9 @@ class ChannelPublisher:
         reply_markup: InlineKeyboardMarkup,
     ) -> int:
         """Отправляет пост в Telegram с фото (если есть постер) или текстом."""
-        if poster_path:
+        if poster_path and telegram_text_length(post_text) <= 1024:
             photo_url = poster_path if poster_path.startswith("http") else f"{self.settings.TMDB_IMAGE_BASE_URL}{poster_path}"
-            caption_text = post_text if len(post_text) <= 1024 else (post_text[:1020] + "...")
+            caption_text = post_text
             try:
                 msg = await self.bot.send_photo(
                     chat_id=chat_id,
@@ -498,6 +445,7 @@ class ChannelPublisher:
             text=post_text,
             reply_markup=reply_markup,
             parse_mode=ParseMode.HTML,
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
         )
         return msg.message_id
 
@@ -771,6 +719,66 @@ class ChannelPublisher:
 
         return published_count
 
+    async def enrich_digest_items(self, items, start, end, require_details=False):
+        enriched = []
+        seen = set()
+        for source in items:
+            item = dict(source)
+            media, ident = item["media_type"], item["tmdb_id"]
+            if (media, ident) in seen:
+                continue
+            seen.add((media, ident))
+            details = {}
+            if self.tmdb_client:
+                details = (await self.tmdb_client.get_tv_details(ident) if media == "tv"
+                           else await self.tmdb_client.get_movie_details(ident))
+            if not details and require_details:
+                continue
+            if details:
+                if media == "tv" and (details.get("type") in ("Reality", "Talk Show", "News", "Video")
+                        or any(g.get("id") in EXCLUDED_GENRES for g in details.get("genres", []))):
+                    continue
+                votes = int(details.get("vote_count") or 0)
+                rating = float(details.get("vote_average") or 0)
+                if votes >= 50 and rating < 6:
+                    continue
+                item.update({k: details.get(k) for k in ("network", "backdrop_path", "vote_average", "vote_count")})
+                name = details.get("title") or item.get("title")
+                if name and not re.search(r"[а-яА-ЯёЁa-zA-Z]", name):
+                    name = details.get("original_title")
+                if not name or not re.search(r"[а-яА-ЯёЁa-zA-Z]", name):
+                    continue
+                item["title"] = name
+                if media == "tv":
+                    # Local tracked series represent season premieres; discovery
+                    # candidates must have an episode confirmed for the actual day.
+                    if start == end:
+                        episodes = await episodes_on_date(self.tmdb_client, ident, details, start)
+                        if not episodes:
+                            continue
+                        season = episodes[0]["season_number"]
+                        numbers = [ep["episode_number"] for ep in episodes]
+                        item["tag"] = ("новый сериал" if season == 1 else f"старт {season} сезона") if numbers == [1] else f"{season} сезон · " + ", ".join(map(str, numbers)) + (" серия" if len(numbers) == 1 else " серии")
+                    else:
+                        premieres = [(n, d) for n, d in season_premieres(details) if start <= d <= end]
+                        if not premieres:
+                            continue
+                        season, released = premieres[0]
+                        item["tag"] = "новый сериал" if season == 1 else f"старт {season} сезона"
+                        item["date_str"] = format_date_ru(released)
+                else:
+                    try:
+                        released = datetime.date.fromisoformat(details.get("release_date"))
+                    except (ValueError, TypeError):
+                        continue
+                    if not start <= released <= end:
+                        continue
+                    item["date_str"] = format_date_ru(released)
+            enriched.append(item)
+            if len(enriched) >= 5:
+                break
+        return enriched
+
     async def create_daily_digest(self, target_date: Optional[datetime.date] = None) -> Optional[ChannelPost]:
         """Формирует и публикует/ставит в очередь утренний дайджест «Что выходит сегодня»."""
         target_date = target_date or datetime.date.today()
@@ -802,45 +810,29 @@ class ChannelPublisher:
                 })
                 seen_ids.add((it.media_type, it.tmdb_id))
 
-            # Если релизов в локальной БД мало, дополняем качественными сериалами из TMDB (airing_today)
+            items_payload = await self.enrich_digest_items(items_payload, target_date, target_date)
+            seen_ids = {(i["media_type"], i["tmdb_id"]) for i in items_payload}
             if len(items_payload) < 3 and self.tmdb_client:
                 try:
                     airing = await self.tmdb_client.get_airing_today_tv()
-                    valid_tv = []
+                    airing.sort(key=lambda x: (x.get("vote_count", 0) * 2 + x.get("popularity", 0)), reverse=True)
                     for tv in airing:
-                        g_ids = tv.get("genre_ids", [])
-                        if any(g in EXCLUDED_GENRES for g in g_ids):
+                        if len(items_payload) >= 5:
+                            break
+                        ident = tv.get("id")
+                        if not ident or ("tv", ident) in seen_ids:
                             continue
-                        # Отсекаем совсем неизвестные шоу
+                        if any(g in EXCLUDED_GENRES for g in tv.get("genre_ids", [])):
+                            continue
                         if tv.get("vote_count", 0) < 5 and tv.get("popularity", 0) < 15:
                             continue
-                        valid_tv.append(tv)
-
-                    # Сортируем по популярности и оценкам
-                    valid_tv.sort(key=lambda x: (x.get("vote_count", 0) * 2 + x.get("popularity", 0)), reverse=True)
-
-                    for tv in valid_tv:
-                        tv_id = tv.get("id")
-                        tv_name = tv.get("name")
-                        if ("tv", tv_id) not in seen_ids and tv_name:
-                            g_ids = tv.get("genre_ids", [])
-                            g_names = [GENRES_RU[g] for g in g_ids if g in GENRES_RU]
-                            genres_str = ", ".join(g_names[:2])
-                            p_path = tv.get("poster_path") or tv.get("backdrop_path")
-
-                            items_payload.append({
-                                "title": tv_name,
-                                "media_type": "tv",
-                                "tmdb_id": tv_id,
-                                "tag": "сериал",
-                                "genres": genres_str,
-                                "poster_path": p_path,
-                            })
-                            seen_ids.add(("tv", tv_id))
-                            if len(items_payload) >= 5:
-                                break
-                except Exception as e:
-                    logger.warning(f"Ошибка получения airing today tv из TMDB: {e}")
+                        candidate = {"title": tv.get("name"), "media_type": "tv", "tmdb_id": ident}
+                        enriched = await self.enrich_digest_items([candidate], target_date, target_date, require_details=True)
+                        items_payload.extend(enriched)
+                        if enriched:
+                            seen_ids.add(("tv", ident))
+                except Exception:
+                    logger.warning("Не удалось дополнить дневную подборку из TMDB.")
 
             if not items_payload:
                 logger.info(f"На дату {target_date} нет запланированных релизов. Пропуск дайджеста.")
@@ -864,9 +856,10 @@ class ChannelPublisher:
                 event_type="daily_digest",
                 items=items_payload,
                 date_label=date_label,
+                site_url=self.settings.SITE_BASE_URL,
             )
 
-            lead_poster = next((it.get("poster_path") for it in items_payload if it.get("poster_path")), None)
+            lead_poster = next((it.get("backdrop_path") for it in items_payload if it.get("backdrop_path")), None)
 
             post = await repo.create_channel_post(
                 title=f"Что выходит сегодня — {date_label}",
@@ -916,43 +909,32 @@ class ChannelPublisher:
                 })
                 seen_ids.add((it.media_type, it.tmdb_id))
 
-            # Если релизов в локальной БД мало, дополняем ожидаемыми популярными фильмами из TMDB
+            items_payload = await self.enrich_digest_items(items_payload, start_date, end_date)
+            seen_ids = {(i["media_type"], i["tmdb_id"]) for i in items_payload}
             if len(items_payload) < 2 and self.tmdb_client:
                 try:
                     upcoming = await self.tmdb_client.get_upcoming_movies()
-                    # Сортируем фильмы по популярности
                     upcoming.sort(key=lambda x: x.get("popularity", 0), reverse=True)
-
-                    for m in upcoming:
-                        m_id = m.get("id")
-                        r_date_str = m.get("release_date")
-                        m_title = m.get("title")
-                        if ("movie", m_id) not in seen_ids and m_title and r_date_str:
-                            try:
-                                r_date = datetime.date.fromisoformat(r_date_str)
-                                formatted_r_date = format_date_ru(r_date)
-                            except Exception:
-                                formatted_r_date = r_date_str
-
-                            g_ids = m.get("genre_ids", [])
-                            g_names = [GENRES_RU[g] for g in g_ids if g in GENRES_RU]
-                            genres_str = ", ".join(g_names[:2])
-                            p_path = m.get("poster_path") or m.get("backdrop_path")
-
-                            items_payload.append({
-                                "title": m_title,
-                                "media_type": "movie",
-                                "tmdb_id": m_id,
-                                "date_str": formatted_r_date,
-                                "tag": "премьера фильма",
-                                "genres": genres_str,
-                                "poster_path": p_path,
-                            })
-                            seen_ids.add(("movie", m_id))
-                            if len(items_payload) >= 6:
-                                break
-                except Exception as e:
-                    logger.warning(f"Ошибка получения upcoming movies из TMDB: {e}")
+                    for movie in upcoming:
+                        if len(items_payload) >= 5:
+                            break
+                        ident = movie.get("id")
+                        if not ident or ("movie", ident) in seen_ids:
+                            continue
+                        try:
+                            released = datetime.date.fromisoformat(movie.get("release_date"))
+                        except (ValueError, TypeError):
+                            continue
+                        if not start_date <= released <= end_date:
+                            continue
+                        candidate = {"title": movie.get("title"), "media_type": "movie", "tmdb_id": ident,
+                                     "date_str": format_date_ru(released), "tag": "премьера фильма"}
+                        enriched = await self.enrich_digest_items([candidate], start_date, end_date, require_details=True)
+                        items_payload.extend(enriched)
+                        if enriched:
+                            seen_ids.add(("movie", ident))
+                except Exception:
+                    logger.warning("Не удалось дополнить недельную подборку из TMDB.")
 
             # Если релизов все еще меньше 2, пропускаем
             if len(items_payload) < 2:
@@ -977,9 +959,10 @@ class ChannelPublisher:
                 event_type="weekly_digest",
                 items=items_payload,
                 date_label=range_label,
+                site_url=self.settings.SITE_BASE_URL,
             )
 
-            lead_poster = next((it.get("poster_path") for it in items_payload if it.get("poster_path")), None)
+            lead_poster = next((it.get("backdrop_path") for it in items_payload if it.get("backdrop_path")), None)
 
             post = await repo.create_channel_post(
                 title=f"Главные премьеры недели ({range_label})",
