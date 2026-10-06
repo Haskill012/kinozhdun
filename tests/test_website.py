@@ -531,7 +531,7 @@ class WebsiteHTTPTests(AioHTTPTestCase):
         text = await response.text()
         self.assertIn('name="twitter:card"', text)
         self.assertIn('BreadcrumbList', text)
-        self.assertIn('Напомнить о премьере в Telegram', text)
+        self.assertIn('+ Ждать', text)
 
     async def test_search_escapes_input_and_is_not_indexed(self):
         response = await self.client.get("/news", params={"q": '"><script>alert(1)</script>'})

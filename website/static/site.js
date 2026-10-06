@@ -1,4 +1,104 @@
 // Images stay optional: articles and navigation always work without JavaScript.
+document.querySelectorAll('.dynamic-spotlight').forEach(hero => {
+  const slides = [...hero.querySelectorAll('[data-slide]')];
+  if (slides.length < 2) return;
+  const controls = hero.querySelector('.spotlight-controls');
+  const dots = [...hero.querySelectorAll('[data-go]')];
+  const pause = hero.querySelector('.spotlight-pause');
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let active = 0, timer, hovered = false, focused = false, visible = true;
+  let stopped = reduced.matches;
+  let transitionRevision = 0;
+  const hydrate = index => {
+    const img = slides[index].querySelector('img[data-src]');
+    if (img) {
+      img.loading = 'eager';
+      img.src = img.dataset.src;
+      img.removeAttribute('data-src');
+    }
+  };
+  const schedule = () => {
+    clearTimeout(timer);
+    const paused = stopped || reduced.matches || hovered || focused || !visible || document.hidden;
+    hero.setAttribute('data-motion-paused', String(paused));
+    if (!paused) {
+      timer = setTimeout(() => show(active + 1, false), 7000);
+    }
+  };
+  const show = (index, manual = true) => {
+    index = (index + slides.length) % slides.length;
+    if (index === active) return;
+    const revision = ++transitionRevision;
+    const previous = slides[active];
+    const next = slides[index];
+    hydrate(index);
+    // Cancel older fades before beginning a new one, including rapid key presses.
+    slides.forEach(slide => {
+      slide.classList.remove('is-leaving');
+      slide.classList.remove('is-entering');
+      slide.hidden = slide !== previous && slide !== next;
+      slide.inert = slide !== next;
+      slide.setAttribute('aria-hidden', String(slide !== next));
+    });
+    previous.classList.add('is-leaving');
+    next.classList.add('is-entering');
+    next.hidden = false;
+    active = index;
+    setTimeout(() => {
+      if (revision !== transitionRevision) return;
+      previous.hidden = true;
+      previous.classList.remove('is-leaving');
+    }, reduced.matches ? 0 : 650);
+    dots.forEach((dot, i) => dot.setAttribute('aria-pressed', String(i === active)));
+    hero.querySelector('.spotlight-counter').textContent = `${active + 1} / ${slides.length}`;
+    if (manual) hero.querySelector('.spotlight-announcement').textContent = next.getAttribute('aria-label');
+    hydrate((active + 1) % slides.length);
+    schedule();
+  };
+  controls.hidden = false;
+  controls.addEventListener('click', event => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    if (button.hasAttribute('data-go')) show(Number(button.dataset.go));
+    if (button.hasAttribute('data-direction')) show(active + Number(button.dataset.direction));
+    if (button === pause) {
+      stopped = !stopped;
+      syncPause();
+      schedule();
+    }
+  });
+  const syncPause = () => {
+    pause.setAttribute('aria-pressed', String(stopped || reduced.matches));
+    pause.setAttribute('aria-label', stopped || reduced.matches ? 'Включить автопереключение' : 'Остановить автопереключение');
+    pause.textContent = stopped || reduced.matches ? '▷' : 'Ⅱ';
+    pause.disabled = reduced.matches;
+  };
+  hero.addEventListener('keydown', event => {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      // Preserve a useful focus target when a slide's own CTA was focused.
+      if (!controls.contains(document.activeElement)) controls.querySelector('[data-direction]').focus();
+      show(active + (event.key === 'ArrowRight' ? 1 : -1));
+    }
+  });
+  hero.addEventListener('pointerenter', event => { if (event.pointerType === 'mouse') { hovered = true; schedule(); } });
+  hero.addEventListener('pointerleave', () => { hovered = false; schedule(); });
+  hero.addEventListener('focusin', () => { focused = true; schedule(); });
+  hero.addEventListener('focusout', () => setTimeout(() => { focused = hero.contains(document.activeElement); schedule(); }, 0));
+  document.addEventListener('visibilitychange', schedule);
+  reduced.addEventListener('change', () => { syncPause(); schedule(); });
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(entries => { visible = entries[0].isIntersecting; schedule(); }).observe(hero);
+  }
+  syncPause();
+  // Hydrate one neighbour after the first image, so LCP has priority.
+  const firstImage = slides[0].querySelector('img');
+  const ready = () => hydrate(1);
+  if (!firstImage || firstImage.complete) ready();
+  else { firstImage.addEventListener('load', ready, { once: true }); firstImage.addEventListener('error', ready, { once: true }); }
+  schedule();
+});
+
 document.querySelectorAll('.site-search').forEach(siteSearch => {
   const input = siteSearch.querySelector('input');
   const dropdown = siteSearch.querySelector('.site-search-dropdown');

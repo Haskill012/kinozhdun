@@ -169,55 +169,32 @@ def title_link(item, config):
 
 
 def premiere_rows(items, config, limit=5):
-    items = sorted([i for i in items if i.get("release_date") and i["release_date"] >= today().isoformat()], key=lambda i: i["release_date"])
-    if not items:
+    from website.home_state import event_state, days_text, watch_label
+    states = [(i, event_state(i)) for i in items]
+    states = sorted([(i, state) for i, state in states if state['date'] and state['date'] >= today()], key=lambda pair: pair[1]['date'])
+    if not states:
         return '<div class="empty compact"><span>◷</span><h3>Новые даты — скоро здесь</h3><p>Показываем только даты из источника. Следите за любимыми проектами в боте.</p></div>'
     rows = []
-    for item in items[:limit]:
-        d = date.fromisoformat(item["release_date"])
+    for item, state in states[:limit]:
+        d = state['date']
         diff_days = (d - today()).days
         if diff_days == 0:
             badge = '<span class="date-badge date-today">Сегодня!</span>'
         elif diff_days == 1:
             badge = '<span class="date-badge date-tomorrow">Завтра</span>'
         else:
-            badge = f'<span class="date-badge">через {diff_days} дн.</span>'
+            badge = f'<span class="date-badge">Через {days_text(diff_days)}</span>'
         month = ["ЯНВ", "ФЕВ", "МАР", "АПР", "МАЙ", "ИЮН", "ИЮЛ", "АВГ", "СЕН", "ОКТ", "НОЯ", "ДЕК"][d.month - 1]
-        label = "Фильм" if item["media_type"] == "movie" else "Сериал"
-        if item.get("episode"):
-            label += f" · {item.get('season') or '?'} сезон, {item['episode']} серия"
-        rows.append(f'''<div class="premiere-row"><div class="premiere-date"><b>{d.day:02}</b><span>{month} {d.year}</span>{badge}</div><a class="premiere-poster" href="{title_path(item)}" aria-label="Открыть карточку: {esc(item['title'])}">{image(item.get('poster'), item['title'])}</a><a class="premiere-title" href="{title_path(item)}"><strong>{esc(item['title'])}</strong><span>{esc(label)}</span></a><a class="reminder" href="{esc(title_link(item, config))}" target="_blank" rel="noopener" aria-label="Отслеживать {esc(item['title'])}">＋ <span>Ждать</span></a></div>''')
+        label = state['kind']
+        if ' · ' in state['detail']:
+            label += ' · ' + state['detail'].split(' · ', 1)[1]
+        rows.append(f'''<div class="premiere-row"><div class="premiere-date"><b>{d.day:02}</b><span>{month} {d.year}</span>{badge}</div><a class="premiere-poster" href="{title_path(item)}" aria-label="Открыть карточку: {esc(item['title'])}">{image(item.get('poster'), item['title'])}</a><a class="premiere-title" href="{title_path(item)}"><strong>{esc(item['title'])}</strong><span>{esc(label)}</span></a><a class="reminder" href="{esc(title_link(item, config))}" target="_blank" rel="noopener" aria-label="{watch_label(item)}: {esc(item['title'])}">{watch_label(item)}</a></div>''')
     return "".join(rows)
 
 
 def home(store, config):
-    if store.catalog():
-        from website.catalog_views import streaming_home
-        return streaming_home(store, config)
-    articles, seen = [], set()
-    for article in store.articles(limit=40):
-        if article.get("release_date") and article["release_date"] < today().isoformat() and ":trailer:" not in article.get("fingerprint", ""):
-            continue
-        key = (article['media_type'], article['tmdb_id']) if article.get('tmdb_id') else article['slug']
-        if key not in seen:
-            articles.append(article)
-            seen.add(key)
-        if len(articles) == 7:
-            break
-    titles = store.catalog() if config.get("catalog_size") else store.titles()
-    main_article = next((a for a in articles if a.get("image")), articles[0] if articles else None)
-    hero_media = image((main_article.get("image") if main_article else None) or "/static/mascot.jpg", main_article["title"] if main_article and main_article.get("image") else "Ждун в кинотеатре — талисман КиноЖдуна", "hero-image", eager=True)
-    spotlight = f'''<a class="hero-story" href="/news/{esc(main_article['slug'])}"><span>В ФОКУСЕ</span><strong>{esc(main_article['title'])}</strong><i>↗</i></a>''' if main_article else ""
-    content = f'''<div class="page-shell"><div class="edition"><span><i class="live-dot"></i> КИНО, СЕРИАЛЫ И ВСЁ, ЧТО МЫ ЖДЁМ</span><span>ВАШ ПРОВОДНИК В МИР ПРЕМЬЕР ↙</span></div>
-    <section class="hero">{hero_media}<div class="hero-shade"></div><div class="hero-content"><span class="eyebrow"><span class="live-dot"></span> В ОЖИДАНИИ ХОРОШЕГО КИНО</span><h1>Следующее<br>«вау» —<br><em>уже близко.</em></h1><p>Новости кино и сериалов, даты премьер<br>и новые сезоны. Всё, ради чего стоит ждать.</p><div class="hero-actions"><a class="button" href="/calendar">Что скоро выйдет <span>↗</span></a><a class="text-link" href="{esc(config['channel_url'])}" target="_blank" rel="noopener">Наш Telegram ↗</a></div></div><span class="hero-mark">✳</span>{spotlight}</section>
-    <div class="ticker"><span>НЕ ПРОПУСТИТЕ ГЛАВНОЕ</span><div>НОВЫЕ СЕЗОНЫ <i>✳</i> БОЛЬШИЕ ПРЕМЬЕРЫ <i>✳</i> ТРЕЙЛЕРЫ <i>✳</i> ДАТЫ ВЫХОДА <i>✳</i> ВАШ СПИСОК ОЖИДАНИЯ</div></div>
-    <section class="news-section"><div class="section-heading"><div><span class="eyebrow muted">ЛЕНТА КИНОЖДУНА</span><h2>Пока вы ждёте<span class="lime">.</span></h2></div><a class="text-link" href="/news">Все материалы ↗</a></div>
-    <div class="tabs"><a class="selected" href="/news">Всё интересное</a><a href="/movies">Фильмы</a><a href="/series">Сериалы</a><a href="/news?category=guides">Гид КиноЖдуна</a><span class="tabs-note">Ничего лишнего. Только кино.</span></div><div class="news-grid">{''.join(card(a) for a in articles[:6])}</div></section>
-    <section class="calendar-teaser"><div><span class="eyebrow muted">СОХРАНИТЕ ДАТУ</span><h2>Скоро<br>на экранах<span class="lime">.</span></h2><p>Премьеры, которые уже<br>появились в календаре.</p><a class="text-link" href="/calendar">Весь календарь ↗</a></div><div class="premiere-list">{premiere_rows(titles, config)}</div></section>
-    <section class="news-section"><div class="section-heading"><h2>Что посмотреть<span class="lime">.</span></h2><a href="/movies">Все фильмы и сериалы ↗</a></div><div class="news-grid">{''.join(title_card(t) for t in store.catalog()[-6:])}</div></section>
-    {bot_banner(config)}
-    <section class="channel-section"><span class="channel-symbol">↗</span><div><span class="eyebrow muted">КИНОЖДУН В TELEGRAM</span><h2>Хорошие новости.<br>В хорошей компании.</h2><p>Новости кино, трейлеры и главные премьеры — в нашем канале.</p></div><a class="button outline" href="{esc(config['channel_url'])}" target="_blank" rel="noopener">Перейти в канал ↗</a></section></div>'''
-    return layout(config, "Новости кино и сериалов, даты выхода и новые сезоны", "КиноЖдун — новости фильмов и сериалов, календарь премьер и Telegram-бот для отслеживания дат выхода.", content, active="home")
+    from website.catalog_views import streaming_home
+    return streaming_home(store, config)
 
 
 def listing(store, config, category, query, page):
@@ -306,7 +283,7 @@ def article_page(store, config, article):
     episode_article = release_label == "Выход серии"
     cta_heading = "Следите за новыми сезонами" if episode_article else "Не пропустите премьеру"
     cta_text = "Сохраните сериал в трекер: КиноЖдун сообщит о датах премьер новых сезонов." if episode_article else "Сохраните проект в трекер: КиноЖдун пришлёт уведомление в Telegram за 3 дня до даты выхода."
-    cta_button = "🔔 Отслеживать новые сезоны в Telegram ↗" if episode_article else "🔔 Напомнить о премьере в Telegram ↗"
+    cta_button = "+ Ждать"
     content = f'''<div class="page-shell"><div class="breadcrumbs"><a href="/">Главная</a> / <a href="/news">Материалы</a> / {category}</div><article class="article"><span class="eyebrow lime">{category}</span><h1>{esc(article['title'])}</h1><div class="meta"><span>Редакция КиноЖдуна</span><span>•</span><time datetime="{esc(article['published'])}">{'.'.join(stamp(article['published']))}</time></div>{release_badge}<p class="article-lead">{esc(article['summary'])}</p>{image(article.get('image'), article['title'], 'article-cover', eager=True)}<div class="article-body">{body}<div class="source"><strong>Источник материала</strong><a href="{esc(article['source_url'])}" target="_blank" rel="noopener noreferrer">Открыть источник ↗</a><small>Сведения могут обновляться. Подробнее — <a href="/about">о нашей редакции</a>.</small></div><div class="article-cta"><h2>{cta_heading}</h2><p>{cta_text}</p><a class="button" href="{esc(bot_url)}" target="_blank" rel="noopener">{cta_button}</a></div></div></article><section class="news-section"><div class="section-heading"><h2>Ещё немного кино<span class="lime">.</span></h2><a href="/news" class="text-link">Все материалы ↗</a></div><div class="news-grid">{''.join(card(a) for a in related)}</div></section></div>'''
     return layout(config, article["title"], article["summary"][:180], content, path, "news", schema=schema, og_image=article.get("image"))
 
