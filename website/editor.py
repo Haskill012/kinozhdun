@@ -9,6 +9,7 @@ from bot.services.season_dates import season_premieres
 from website.trailers import official_trailers, select_trailers, trailer_season
 from website.title_names import canonical_title, source_aliases, source_seo_aliases
 from website.artwork import artwork
+from website.audience import audience_metadata, exclusion_reason
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,8 @@ class Editor:
                 return await response.json()
 
     async def fetch_details(self, media, tmdb_id):
-        detail = await self.fetch(f"/{media}/{tmdb_id}", append_to_response="videos,alternative_titles,translations", include_video_language="ru,en,null")
+        append = "videos,alternative_titles,translations" + (",release_dates" if media == 'movie' else '')
+        detail = await self.fetch(f"/{media}/{tmdb_id}", append_to_response=append, include_video_language="ru,en,null")
         if detail.get("id") != tmdb_id:
             raise RuntimeError("TMDB вернул другой идентификатор проекта")
         if media == "tv":
@@ -73,6 +75,8 @@ class Editor:
         return detail
 
     def eligible(self, media, detail, require_recent=True):
+        if exclusion_reason({**detail, **audience_metadata(media, detail), 'media_type': media, 'key': f"{media}:{detail.get('id')}"}, self.config):
+            return False
         if detail.get("adult") or not detail.get("poster_path") or not detail.get("overview"):
             return False
         if media == "tv" and (detail.get("type") in ("Reality", "Talk Show", "News", "Video") or any(g.get("id") in (10763, 10764, 10767, 10766) for g in detail.get("genres", []))):
@@ -104,7 +108,9 @@ class Editor:
         existing = self.store.catalog_item(key, False) or {}
         bot_linked = publish_card or existing.get("bot_linked", False)
         news_related = self.store.has_news_title(media, detail["id"])
-        if not news_related and not bot_linked and "popularity" in detail and not self.eligible(media, detail, require_recent=False):
+        metadata = audience_metadata(media, detail)
+        blocked = exclusion_reason({**detail, **metadata, 'media_type': media, 'key': key}, self.config)
+        if not blocked and not news_related and not bot_linked and "popularity" in detail and not self.eligible(media, detail, require_recent=False):
             self.store.db.execute("DELETE FROM catalog WHERE key=?", (key,))
             self.store.delete_title(key)
             return
@@ -141,6 +147,7 @@ class Editor:
                 "first_release": valid_date(detail.get("release_date") if media == "movie" else detail.get("first_air_date")),
                 "genres": [g["name"] for g in detail.get("genres", [])],
                 "source_url": f"https://www.themoviedb.org/{media}/{detail['id']}"}
+        item.update(metadata)
         if media == "tv":
             premieres = season_premieres(detail)
             if premieres:
@@ -152,6 +159,10 @@ class Editor:
         if news_related or publish_card:
             self.store.ensure_news_card(media, detail["id"], title, item["source_url"], item=item)
         self.store.update_catalog(item)
+        if blocked:
+            # Keep old URLs, snapshots and explicitly opened cards; suppress automatic news.
+            self.store.save_title(key, item)
+            return
         if not emit_news:
             self.store.save_title(key, item)
             return
@@ -262,7 +273,8 @@ class Editor:
                                 data = await self.fetch(f"/discover/{media}", **{
                                     date_field + ".gte": (today()-timedelta(days=180)).isoformat(),
                                     date_field + ".lte": (today()+timedelta(days=365)).isoformat(),
-                                    "include_adult": "false", "sort_by": "popularity.desc", "page": page})
+                                    "include_adult": "false", "sort_by": "popularity.desc", "page": page,
+                                    **({"without_genres": "10763,10764,10767,10766"} if media == 'tv' else {})})
                                 for row in data.get("results", []):
                                     if not row.get("adult") and float(row.get("popularity") or 0) >= self.config.get("min_popularity", 5) and (int(row.get("vote_count") or 0) < self.config.get("min_votes", 50) or float(row.get("vote_average") or 0) >= self.config.get("min_rating", 6)):
                                         details.setdefault((media, row["id"]), None)

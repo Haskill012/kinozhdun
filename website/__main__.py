@@ -14,6 +14,7 @@ from website.content import Store
 from website.editor import Editor
 from website.search import ProjectSearch, result
 from website import views
+from website.audience import audience_articles
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -42,6 +43,9 @@ def configuration():
             "min_rating": float(os.getenv("SITE_MIN_RATING", "6.0")),
             "min_votes": int(os.getenv("SITE_MIN_VOTES", "50")),
             "min_popularity": float(os.getenv("SITE_MIN_POPULARITY", "5")),
+            "asian_min_votes": max(50, int(os.getenv("SITE_ASIAN_MIN_VOTES", "1000"))),
+            "asian_min_popularity": max(0, float(os.getenv("SITE_ASIAN_MIN_POPULARITY", "20"))),
+            "audience_allow_keys": tuple(k.strip() for k in os.getenv("SITE_AUDIENCE_ALLOW_KEYS", "").split(',') if k.strip()),
             "batch_size": min(20, max(1, int(os.getenv("SITE_BATCH_SIZE", "12")))),
             "yandex_verification": os.getenv("SITE_YANDEX_VERIFICATION", ""),
             "google_verification": os.getenv("SITE_GOOGLE_VERIFICATION", ""),
@@ -173,7 +177,7 @@ def create_app(config=None):
         from email.utils import format_datetime
         from datetime import datetime
         items = []
-        for a in store.articles(limit=30):
+        for a in audience_articles(store, config, limit=30):
             url = xml_escape(config["base_url"] + "/news/" + a["slug"])
             items.append(f'<item><title>{xml_escape(a["title"])}</title><link>{url}</link><guid isPermaLink="true">{url}</guid><description>{xml_escape(a["summary"])}</description><pubDate>{format_datetime(datetime.fromisoformat(a["published"]))}</pubDate></item>')
         return web.Response(text='<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>КиноЖдун</title><link>' + xml_escape(config["base_url"]) + '</link><description>Новости кино и сериалов</description><language>ru</language>' + ''.join(items) + '</channel></rss>', content_type="application/rss+xml")

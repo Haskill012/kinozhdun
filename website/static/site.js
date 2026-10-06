@@ -177,8 +177,14 @@ document.querySelectorAll('.site-search').forEach(siteSearch => {
           const meta = document.createElement('small');
           const parts = [item.media_type === 'tv' ? 'Сериал' : 'Фильм'];
           if (item.year) parts.push(item.year);
-          if (Number(item.rating) > 0) parts.push('★ ' + Number(item.rating).toFixed(1) + ' TMDB');
           meta.textContent = parts.join(' · ');
+          if (Number(item.rating) > 0) {
+            const value = Number(item.rating).toFixed(1);
+            const score = document.createElement('span');
+            score.className = Number(value) >= 7 ? 'rating-good' : Number(value) >= 5 ? 'rating-medium' : 'rating-low';
+            score.textContent = '★ ' + value;
+            meta.append(document.createTextNode(' · '), score, document.createTextNode(' TMDB'));
+          }
           copy.append(title);
           if (item.alternate_title && item.alternate_title.toLowerCase() !== item.title.toLowerCase()) {
             const alternate = document.createElement('small');

@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 
 from website.editor import date_ru, today
 from website.artwork import allowed_asset
+from website.audience import audience_items, audience_articles
 
 ASSET_VERSION = hashlib.sha256((Path(__file__).parent / "static/site.css").read_bytes() + (Path(__file__).parent / "static/site.js").read_bytes()).hexdigest()[:12]
 
@@ -170,7 +171,7 @@ def title_link(item, config):
 
 def premiere_rows(items, config, limit=5):
     from website.home_state import event_state, days_text, watch_label
-    states = [(i, event_state(i)) for i in items]
+    states = [(i, event_state(i)) for i in audience_items(items, config)]
     states = sorted([(i, state) for i, state in states if state['date'] and state['date'] >= today()], key=lambda pair: pair[1]['date'])
     if not states:
         return '<div class="empty compact"><span>◷</span><h3>Новые даты — скоро здесь</h3><p>Показываем только даты из источника. Следите за любимыми проектами в боте.</p></div>'
@@ -199,7 +200,7 @@ def home(store, config):
 
 def listing(store, config, category, query, page):
     size = 12
-    articles = store.articles(category, query, size + 1, (page - 1) * size)
+    articles = audience_articles(store, config, category=category, query=query, limit=size + 1, offset=(page - 1) * size)
     catalog = [t for t in store.catalog() if t["media_type"] == ("movie" if category == "movies" else "tv") and query.casefold() in t["title"].casefold()] if category in ("movies", "series") else []
     if catalog or (config.get("catalog_size") and category in ("movies", "series")):
         entries = catalog[(page-1)*size:page*size+1]

@@ -7,6 +7,8 @@ from website.editor import today, date_ru
 from website.views import esc, image, layout, title_path, title_link, trailer_player, card, premiere_rows
 from website.title_names import seo_names, normalized
 from website.home_state import event_state, hero_projects, waiting, change_type, relative_time, watch_label
+from website.audience import audience_items, exclusion_reason
+from website.ratings import rating_class
 
 
 def rating_label(item):
@@ -18,7 +20,7 @@ def poster_card(item):
     year = (item.get("first_release") or "")[:4]
     kind = "Фильм" if item["media_type"] == "movie" else "Сериал"
     genres = item.get("genres", [])
-    badge = f'<span class="poster-rating">★ {rating}</span>' if rating else ''
+    badge = f'<span class="poster-rating"><span class="{rating_class(rating)}">★ {rating}</span></span>' if rating else ''
     return f'''<a class="poster-card" href="{title_path(item)}" aria-label="{esc(item['title'])}, {kind.lower()}, {esc(year)}"><div class="poster-art">{image(item.get('poster') or item.get('image'), item['title'])}{badge}<span class="poster-open">Подробнее ↗</span></div><div class="poster-copy"><h3>{esc(item['title'])}</h3><p>{esc(year)}<span> · </span>{kind}</p><small>{esc(genres[0].capitalize() if genres else '')}</small></div></a>'''
 
 
@@ -42,7 +44,7 @@ def project_page(store, config, item, news_page=1):
     state = "Скоро премьера" if future else "Уже вышел" if movie and release else "Сериал"
     if not movie and future and item.get("season"):
         state = "Новый сезон скоро" if item.get("episode") == 1 else "Новая серия скоро"
-    meta = f'<span class="score">★ {rating} <small>TMDB</small></span>' if rating else '<span class="unrated">Рейтинг формируется</span>'
+    meta = f'<span class="score"><span class="{rating_class(rating)}">★ {rating}</span> <small>TMDB</small></span>' if rating else '<span class="unrated">Рейтинг формируется</span>'
     meta += f'<span>{esc(year)}</span><span>{kind}</span>'
     if not movie and item.get("season"):
         meta += f'<span>{item["season"]} сезон</span>'
@@ -68,7 +70,7 @@ def project_page(store, config, item, news_page=1):
     pagination = '<nav class="pagination" aria-label="История новостей">' + ''.join(pager) + '</nav>' if pager else ''
     entries = '<div class="news-grid">' + ''.join(card(a) for a in related_news) + '</div>' if related_news else '<p class="muted">Новостей об этом проекте пока нет. Они появятся здесь после публикации.</p>'
     news = f'<section id="news-history" class="collection project-news"><div class="collection-heading"><div><span class="eyebrow muted">ОТ НОВЫХ К РАННИМ · {news_count}</span><h2>История новостей</h2></div></div>{entries}{pagination}</section>'
-    other = [t for t in store.catalog() if t["key"] != item["key"] and t["media_type"] == item["media_type"]]
+    other = [t for t in audience_items(store.catalog(), config) if t["key"] != item["key"] and t["media_type"] == item["media_type"]]
     other.sort(key=lambda t: len(set(t.get('genres', [])) & set(item.get('genres', []))), reverse=True)
     trailer = f'<div id="trailer" class="theater">{trailer_player(item.get("trailer"), item.get("trailer_language"), item.get("trailer_season"))}</div>' if item.get("trailer") else '<div class="trailer-unavailable"><span>Трейлер пока не опубликован</span><p>Добавим официальный ролик, когда он появится.</p></div>'
     content = f'''<div class="project-shell"><div class="page-shell"><div class="breadcrumbs"><a href="/catalog">Каталог</a><span> / </span><a href="{catalog_url}">{'Фильмы' if movie else 'Сериалы'}</a><span> / </span>{esc(item['title'])}</div></div><section class="project-hero">{image(item.get('image'), item['title'], 'project-backdrop', eager=True)}<div class="project-gradient"></div><div class="page-shell project-grid"><div class="project-poster">{image(item.get('poster'), item['title'], eager=True)}</div><div class="project-copy"><span class="eyebrow lime">{state}</span><h1>{esc(item['title'])}</h1>{other_names}<div class="project-meta">{meta}</div><p class="project-genres">{esc(genres)}</p><p class="project-overview">{esc(item.get('overview'))}</p><div class="project-actions"><a class="button" href="{esc(tracker)}" target="_blank" rel="noopener">{watch_label(item)}</a>{watch}<a class="button outline" href="#news-history">История новостей</a></div><p class="tracking-note">В список ожидания можно добавить проект в Telegram. Бот сообщит об изменениях и напомнит о выходе.</p></div></div></section><div class="page-shell"><dl class="project-facts">{dates}<div><dt>Источник</dt><dd><a href="{esc(item['source_url'])}" target="_blank" rel="noopener">TMDB ↗</a></dd></div></dl>{trailer}{news}{collection(other[:6], 'Вам может понравиться', catalog_url, 'ЕЩЁ НЕМНОГО КИНО')}</div></div>'''
@@ -92,6 +94,8 @@ def project_page(store, config, item, news_page=1):
 def catalog_page(store, config, path, params, extra_items=None):
     from website.search import matches
     all_items = store.catalog()
+    if not params.get('q'):
+        all_items = audience_items(all_items, config)
     if params.get('q') and extra_items:
         merged = {item['key']: item for item in all_items}
         merged.update({item['key']: item for item in extra_items})
@@ -126,9 +130,10 @@ def catalog_page(store, config, path, params, extra_items=None):
     return layout(config, heading, 'Популярные фильмы и сериалы: описания, рейтинги, даты выхода и трейлеры.', content, path, 'movies' if path == '/movies' else 'series' if path == '/series' else 'catalog', noindex=bool(query or genre or minimum or sort != 'popular' or media and path == '/catalog'))
 
 
-def tracking_events(store, limit=4):
+def tracking_events(store, limit=4, config=None):
     return [article for article in store.articles(limit=500)
-            if change_type(article)][:limit]
+            if change_type(article) and not exclusion_reason(
+                store.catalog_item(f"{article.get('media_type')}:{article.get('tmdb_id')}", False) or {}, config)][:limit]
 
 
 def tracking_collection(items, heading, url, config):
@@ -144,7 +149,7 @@ def tracking_collection(items, heading, url, config):
 def spotlight_slide(item, config, index):
     state = event_state(item)
     rating = rating_label(item)
-    meta = ' · '.join(filter(None, ['★ ' + rating + ' TMDB' if rating else '',
+    meta = ' · '.join(filter(None, [
                                   (item.get('first_release') or '')[:4],
                                   ' · '.join(item.get('genres', [])[:2])]))
     art = image(item.get('image') or item.get('poster'), item['title'], 'spotlight-image', eager=index == 0)
@@ -156,12 +161,13 @@ def spotlight_slide(item, config, index):
     heading = 'h1' if index == 0 else 'h2'
     title_class = 'spotlight-title long-title' if len(item['title']) > 32 else 'spotlight-title'
     hidden = ' hidden inert aria-hidden="true"' if index else ' aria-hidden="false"'
-    return f'''<article class="spotlight-slide" data-slide="{index}" role="group" aria-label="{esc(item['title'])}"{hidden}>{art}<div class="spotlight-shade"></div><div class="spotlight-copy"><span class="eyebrow lime">{esc(state['label'])}</span><{heading} class="{title_class}">{esc(item['title'])}</{heading}><div class="spotlight-meta">{esc(meta)}</div><div class="featured-event"><strong>{esc(state['headline'])}</strong><span>{esc(state['detail'])}</span></div><div class="spotlight-actions"><a class="button" href="{esc(title_link(item, config))}" target="_blank" rel="noopener">{watch_label(item)}</a><a class="button outline" href="{title_path(item)}">Подробнее ↗</a></div></div></article>'''
+    score = f'<span class="{rating_class(rating)}">★ {rating}</span> TMDB · ' if rating else ''
+    return f'''<article class="spotlight-slide" data-slide="{index}" role="group" aria-label="{esc(item['title'])}"{hidden}>{art}<div class="spotlight-shade"></div><div class="spotlight-copy"><span class="eyebrow lime">{esc(state['label'])}</span><{heading} class="{title_class}">{esc(item['title'])}</{heading}><div class="spotlight-meta">{score}{esc(meta)}</div><div class="featured-event"><strong>{esc(state['headline'])}</strong><span>{esc(state['detail'])}</span></div><div class="spotlight-actions"><a class="button" href="{esc(title_link(item, config))}" target="_blank" rel="noopener">{watch_label(item)}</a><a class="button outline" href="{title_path(item)}">Подробнее ↗</a></div></div></article>'''
 
 
 def streaming_home(store, config):
-    titles = store.catalog()
-    events = tracking_events(store, 6)
+    titles = audience_items(store.catalog(), config)
+    events = tracking_events(store, 6, config)
     featured = hero_projects(titles, events)
     slides = ''.join(spotlight_slide(item, config, i) for i, item in enumerate(featured))
     controls = ''

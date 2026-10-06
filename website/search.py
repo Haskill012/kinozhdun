@@ -29,7 +29,7 @@ def rank(item, query):
 def result(item):
     return {"title": item["title"], "url": f"/title/{item['media_type']}/{item['id']}",
             "media_type": item["media_type"], "year": (item.get("first_release") or "")[:4],
-            "rating": item.get("rating") if item.get("votes", 0) > 0 else None,
+            "rating": item.get("rating") if item.get("votes", 0) >= 50 else None,
             "poster": item.get("poster") if allowed_asset(item.get("poster")) else None,
             "alternate_title": item.get("original_title")}
 
