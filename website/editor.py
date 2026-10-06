@@ -117,6 +117,7 @@ class Editor:
             trailer = None
         poster = detail.get("backdrop_path") or detail.get("poster_path")
         item = {"key": key, "id": detail["id"], "media_type": media, "title": title,
+                "original_title": detail.get("original_title") or detail.get("original_name"),
                 "overview": detail.get("overview", ""), "release_date": release,
                 "image": "https://image.tmdb.org/t/p/w1280" + poster if poster else None,
                 "poster": "https://image.tmdb.org/t/p/w500" + detail["poster_path"] if detail.get("poster_path") else None,

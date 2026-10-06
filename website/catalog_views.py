@@ -75,6 +75,7 @@ def project_page(store, config, item, news_page=1):
 
 
 def catalog_page(store, config, path, params):
+    from website.search import matches
     all_items = store.catalog()
     media = 'movie' if path == '/movies' else 'tv' if path == '/series' else params.get('type', '')
     media = media if media in ('movie', 'tv') else ''
@@ -86,7 +87,7 @@ def catalog_page(store, config, path, params):
     minimum = minimum if minimum in ('6', '7', '8') else ''
     scoped = [t for t in all_items if not media or t['media_type'] == media]
     genres = sorted({g for t in scoped for g in t.get('genres', [])})
-    selected = [t for t in scoped if query.casefold() in t['title'].casefold() and (not genre or genre in t.get('genres', [])) and (not minimum or (t.get('votes', 0) >= 50 and float(t.get('rating') or 0) >= float(minimum)))]
+    selected = [t for t in scoped if matches(t, query) and (not genre or genre in t.get('genres', [])) and (not minimum or (t.get('votes', 0) >= 50 and float(t.get('rating') or 0) >= float(minimum)))]
     if sort == 'rating':
         selected.sort(key=lambda t: float(t.get('rating') or 0) if t.get('votes', 0) >= 50 else -1, reverse=True)
     elif sort == 'newest':

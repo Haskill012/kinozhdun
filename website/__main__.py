@@ -188,6 +188,13 @@ def create_app(config=None):
             "articles": store.db.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
         }, headers={"X-Robots-Tag": "noindex"})
 
+    async def search(request):
+        from website.search import suggestions
+        return web.json_response({"results": suggestions(store, request.query.get("q", ""))},
+                                 headers={"X-Robots-Tag": "noindex", "Cache-Control": "no-store"})
+
+    app.router.add_get("/api/search", search)
+
     for path, handler in (("/", home), ("/news", listing), ("/catalog", listing), ("/movies", listing), ("/series", listing), ("/news/{slug}", article), (r"/title/{media:movie|tv}/{id:\d+}", title_page), ("/calendar", calendar), ("/about", about), ("/robots.txt", robots), ("/sitemap.xml", sitemap), ("/feed.xml", feed), ("/health", health)):
         app.router.add_get(path, handler)
     app.router.add_static("/static/", ROOT / "website" / "static", show_index=False)
