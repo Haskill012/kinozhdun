@@ -149,6 +149,11 @@ class Editor:
                 "source_url": f"https://www.themoviedb.org/{media}/{detail['id']}"}
         item.update(metadata)
         if media == "tv":
+            item['seasons'] = [{k: s.get(k) for k in ('season_number', 'air_date', 'episode_count')}
+                               for s in detail.get('seasons') or []]
+            item['last_episode_to_air'] = {k: (detail.get('last_episode_to_air') or {}).get(k)
+                                          for k in ('season_number', 'episode_number', 'air_date')}
+            item['next_episode_to_air'] = {k: episode.get(k) for k in ('season_number', 'episode_number', 'air_date')}
             premieres = season_premieres(detail)
             if premieres:
                 number, premiered = premieres[-1]

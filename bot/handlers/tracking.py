@@ -1,6 +1,7 @@
 """Хендлеры для поиска, предпросмотра, добавления, удаления и настройки отслеживаемых элементов."""
 
 from bot.services.season_dates import upcoming_season
+from shared.viewing import viewing_state
 
 import datetime
 import logging
@@ -27,6 +28,7 @@ from bot.utils.formatting import (
     format_item_details,
     format_search_results_message,
     format_date_ru,
+    safe_html,
 )
 
 logger = logging.getLogger(__name__)
@@ -137,6 +139,7 @@ async def process_preview_item(callback: CallbackQuery) -> None:
         bot_username=settings.BOT_USERNAME,
         title=title,
         referrer_id=callback.from_user.id,
+        action_label=viewing_state(dict(details, media_type=media_type))['label'],
     )
     await callback.message.edit_text(text, reply_markup=reply_markup)
 
@@ -250,6 +253,7 @@ async def save_single_tracked_item(
             "title": title,
             "network": network,
             "next_air_date": next_air_date,
+            "viewing": viewing_state(dict(details, media_type=media_type)),
         }
 
 
@@ -301,20 +305,10 @@ async def process_confirm_track(callback: CallbackQuery) -> None:
         return
 
     title = info["title"]
-    network = info["network"]
-    next_air_date = info["next_air_date"]
-
-    network_str = f" ({network})" if network else ""
-    date_str = f"\n📅 Ближайшая известная дата: <code>{format_date_ru(next_air_date)}</code>" if next_air_date else "\n📅 Дата нового сезона: <i>пока не объявлена</i>"
-
+    action = info['viewing']
     text = (
-        f"🍿 <b>«{linked_title(title, {'media_type': media_type, 'tmdb_id': tmdb_id})}»</b>{network_str} добавлен в Кинождун!\n"
-        f"{date_str}\n\n"
-        "Кинождун сообщит, когда появятся важные новости:\n"
-        "• начало съёмок;\n"
-        "• дата выхода нового сезона или премьеры;\n"
-        "• трейлер и другие существенные обновления 🎬\n\n"
-        "👇 <i>Нажмите <b>«📤 Поделиться»</b>, чтобы отправить проект другу:</i>"
+        f"✅ <b>«{linked_title(title, {'media_type': media_type, 'tmdb_id': tmdb_id})}»</b> сохранён в вашем списке.\n\n"
+        f"<b>{safe_html(action['status'])}</b>\n{safe_html(action['note'])}"
     )
     reply_markup = track_success_keyboard(
         media_type=media_type,
@@ -379,15 +373,10 @@ async def process_track_from_share(callback: CallbackQuery) -> None:
     await analytics.log_content_followed_from_share(callback.from_user.id, media_type, tmdb_id, referrer_id)
 
     title = info["title"]
-    network = info["network"]
-    next_air_date = info["next_air_date"]
-    network_str = f" ({network})" if network else ""
-    date_str = f"\n📅 Ближайшая известная дата: <code>{format_date_ru(next_air_date)}</code>" if next_air_date else "\n📅 Дата нового сезона: <i>пока не объявлена</i>"
-
+    action = info['viewing']
     text = (
-        f"✅ <b>«{linked_title(title, {'media_type': media_type, 'tmdb_id': tmdb_id})}»</b>{network_str} успешно добавлен в ваш список отслеживания! 🎉\n"
-        f"{date_str}\n\n"
-        "Теперь вы будете первыми узнавать о выходе новых сезонов и датах премьер 🍿"
+        f"✅ <b>«{linked_title(title, {'media_type': media_type, 'tmdb_id': tmdb_id})}»</b> сохранён в вашем списке.\n\n"
+        f"<b>{safe_html(action['status'])}</b>\n{safe_html(action['note'])}"
     )
     reply_markup = track_success_keyboard(
         media_type=media_type,
@@ -451,15 +440,10 @@ async def process_track_from_channel(callback: CallbackQuery) -> None:
     await analytics.log_content_followed_from_channel(callback.from_user.id, post_id, media_type, tmdb_id)
 
     title = info["title"]
-    network = info["network"]
-    next_air_date = info["next_air_date"]
-    network_str = f" ({network})" if network else ""
-    date_str = f"\n📅 Дата премьеры: <code>{format_date_ru(next_air_date)}</code>" if next_air_date else "\n📅 Дата премьеры: <i>пока не объявлена</i>"
-
+    action = info['viewing']
     text = (
-        f"✅ <b>«{linked_title(title, {'media_type': media_type, 'tmdb_id': tmdb_id})}»</b>{network_str} добавлен в ваш список отслеживания! 🎉\n"
-        f"{date_str}\n\n"
-        "Мы напомним вам о премьере за 3 дня до релиза и пришлём уведомление в день выхода 🍿"
+        f"✅ <b>«{linked_title(title, {'media_type': media_type, 'tmdb_id': tmdb_id})}»</b> сохранён в вашем списке.\n\n"
+        f"<b>{safe_html(action['status'])}</b>\n{safe_html(action['note'])}"
     )
     reply_markup = track_success_keyboard(
         media_type=media_type,

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from bot.config import Settings
 from bot.db.models import Base, User, TrackedItem, NotificationLog, SharedWatchlist, AnalyticsEvent
 from bot.db.repositories import Repository
-from bot.handlers.tracking import process_setdate_btn, process_date_input
+from bot.handlers.tracking import process_setdate_btn, process_date_input, process_track_from_share
 from bot.handlers.privacy import request_deletion, confirm_deletion, cancel_deletion
 from bot.handlers.start import cmd_start
 from bot.services.channel import ChannelPublisher
@@ -165,6 +165,20 @@ class ServiceRegressionTests(unittest.IsolatedAsyncioTestCase):
             await cmd_start(msg,CommandObject(prefix='/',command='start',args=payload))
         self.assertEqual(msg.answer.await_count,2)
         self.assertIn('Удалить мои данные',str(msg.answer.call_args.kwargs['reply_markup']))
+
+    async def test_released_film_is_saved_without_past_premiere_promise(self):
+        self.tmdb.get_movie_details=AsyncMock(return_value=dict(title='Вышедший фильм',status='Released',release_date='2026-07-31',tmdb_id=301))
+        cb=self.callback(data='track_from_share:movie:301')
+        cb.from_user.username=None
+        cb.from_user.first_name='Test'
+        await process_track_from_share(cb)
+        text=cb.message.edit_text.call_args.args[0]
+        self.assertIn('Уже вышел',text)
+        self.assertNotIn('нового сезона',text)
+        async with self.factory() as session:
+            items=await Repository(session).get_user_items(101)
+            item=next(i for i in items if i.tmdb_id==301)
+            self.assertIsNone(item.next_air_date)
 
 
 class ServiceCopyTests(unittest.TestCase):

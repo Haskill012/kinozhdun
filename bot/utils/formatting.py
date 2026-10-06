@@ -5,6 +5,7 @@ import html
 import os
 from typing import Any
 from bot.services.season_dates import upcoming_season, season_premieres
+from shared.viewing import viewing_state
 
 
 def safe_html(text: Any) -> str:
@@ -409,16 +410,17 @@ def format_shared_item_prompt(title: str, details: dict[str, Any], media_type: s
     type_str = "сериал" if media_type == "tv" else "фильм"
     network = safe_html(details.get("network"))
     net_str = f"\n🏢 <b>Платформа:</b> {network}" if network else ""
+    action = viewing_state(dict(details, media_type=media_type))
 
     next_date = None
     if media_type == "tv":
-        next_ep = details.get("next_episode_to_air")
-        if next_ep and next_ep.get("air_date"):
-            next_date = next_ep["air_date"]
+        next_date = action['date'].isoformat() if action['date'] else None
     else:
         next_date = details.get("release_date")
 
     date_str = f"\n📅 <b>Дата выхода:</b> <b>{format_date_ru(next_date)}</b>" if next_date else "\n📅 <b>Дата выхода:</b> <i>пока не объявлена</i>"
+    if media_type == 'tv' and not next_date:
+        date_str = ''
 
     overview = safe_html(details.get("overview", "")).strip()
     if len(overview) > 200:
@@ -426,10 +428,10 @@ def format_shared_item_prompt(title: str, details: dict[str, Any], media_type: s
     overview_str = f"\n\n📝 <i>«{overview}»</i>" if overview else ""
 
     return (
-        f"🍿 <b>Тоже ждёшь «{safe_title}»?</b>\n\n"
+        f"🍿 <b>«{safe_title}» — в ваш список</b>\n\n"
         f"Друг поделился с вами {type_str}ом {icon} <b>«{safe_title}»</b>.{net_str}{date_str}{overview_str}\n\n"
-        "Кинождун пришлёт вам уведомление, как только появится официальная дата премьеры, трейлер или новый сезон 🍿\n\n"
-        "👇 <i>Нажмите <b>«🔔 Отслеживать»</b> ниже, чтобы добавить в свой список в 1 клик:</i>"
+        f"<b>{safe_html(action['status'])}</b>\n{safe_html(action['note'])}\n\n"
+        f"👇 <i>Нажмите <b>«{safe_html(action['label'])}»</b> ниже, чтобы добавить в свой список:</i>"
     )
 
 

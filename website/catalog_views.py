@@ -9,6 +9,7 @@ from website.title_names import seo_names, normalized
 from website.home_state import event_state, hero_projects, waiting, change_type, relative_time, watch_label
 from website.audience import audience_items, exclusion_reason
 from website.ratings import rating_class
+from shared.viewing import viewing_state
 
 
 def rating_label(item):
@@ -41,19 +42,20 @@ def project_page(store, config, item, news_page=1):
     genres = ' · '.join(g.capitalize() for g in item.get("genres", []))
     release = item.get("release_date") if not movie else item.get("first_release")
     future = bool(release and release > today().isoformat())
-    state = "Скоро премьера" if future else "Уже вышел" if movie and release else "Сериал"
-    if not movie and future and item.get("season"):
-        state = "Новый сезон скоро" if item.get("episode") == 1 else "Новая серия скоро"
+    action = viewing_state(item, today())
+    state = action['status']
+    if not movie:
+        release = action['date'].isoformat() if action['date'] else None
     meta = f'<span class="score"><span class="{rating_class(rating)}">★ {rating}</span> <small>Оценка зрителей</small></span>' if rating else '<span class="unrated">Рейтинг формируется</span>'
     meta += f'<span>{esc(year)}</span><span>{kind}</span>'
     if not movie and item.get("season"):
         meta += f'<span>{item["season"]} сезон</span>'
     tracker = title_link(item, config)
     watch = '<a class="button outline" href="#trailer"><span aria-hidden="true">▶</span> Смотреть трейлер</a>' if item.get("trailer") else ''
-    date_label = "Премьера" if future and movie else "Дата выхода" if movie else "Следующий эпизод"
+    date_label = "Премьера" if future and movie else "Дата выхода" if movie else "Ближайший выход"
     dates = f'<div><dt>{date_label}</dt><dd>{date_ru(release)}</dd></div>'
-    if not movie and item.get("season") and item.get("episode"):
-        dates += f'<div><dt>Ближайшая серия</dt><dd>{item["season"]} сезон · {item["episode"]} серия</dd></div>'
+    if not movie and action['date'] and action['season'] and action['episode']:
+        dates += f'<div><dt>Ближайшая серия</dt><dd>{action["season"]} сезон · {action["episode"]} серия</dd></div>'
     if not movie and item.get("season_premiere"):
         label = f"Премьера {item['premiere_season']}-го сезона"
         dates += f'<div><dt>{label}</dt><dd>{date_ru(item["season_premiere"])}</dd></div>'
@@ -73,7 +75,7 @@ def project_page(store, config, item, news_page=1):
     other = [t for t in audience_items(store.catalog(), config) if t["key"] != item["key"] and t["media_type"] == item["media_type"]]
     other.sort(key=lambda t: len(set(t.get('genres', [])) & set(item.get('genres', []))), reverse=True)
     trailer = f'<div id="trailer" class="theater">{trailer_player(item.get("trailer"), item.get("trailer_language"), item.get("trailer_season"))}</div>' if item.get("trailer") else '<div class="trailer-unavailable"><span>Трейлер пока не опубликован</span><p>Добавим официальный ролик, когда он появится.</p></div>'
-    content = f'''<div class="project-shell"><div class="page-shell"><div class="breadcrumbs"><a href="/catalog">Каталог</a><span> / </span><a href="{catalog_url}">{'Фильмы' if movie else 'Сериалы'}</a><span> / </span>{esc(item['title'])}</div></div><section class="project-hero">{image(item.get('image'), item['title'], 'project-backdrop', eager=True)}<div class="project-gradient"></div><div class="page-shell project-grid"><div class="project-poster">{image(item.get('poster'), item['title'], eager=True)}</div><div class="project-copy"><span class="eyebrow lime">{state}</span><h1>{esc(item['title'])}</h1>{other_names}<div class="project-meta">{meta}</div><p class="project-genres">{esc(genres)}</p><p class="project-overview">{esc(item.get('overview'))}</p><div class="project-actions"><a class="button" href="{esc(tracker)}" target="_blank" rel="noopener">{watch_label(item)}</a>{watch}<a class="button outline" href="#news-history">История новостей</a></div><p class="tracking-note">В список ожидания можно добавить проект в Telegram. Бот сообщит об изменениях и напомнит о выходе.</p></div></div></section><div class="page-shell"><dl class="project-facts">{dates}</dl>{trailer}{news}{collection(other[:6], 'Вам может понравиться', catalog_url, 'ЕЩЁ НЕМНОГО КИНО')}</div></div>'''
+    content = f'''<div class="project-shell"><div class="page-shell"><div class="breadcrumbs"><a href="/catalog">Каталог</a><span> / </span><a href="{catalog_url}">{'Фильмы' if movie else 'Сериалы'}</a><span> / </span>{esc(item['title'])}</div></div><section class="project-hero">{image(item.get('image'), item['title'], 'project-backdrop', eager=True)}<div class="project-gradient"></div><div class="page-shell project-grid"><div class="project-poster">{image(item.get('poster'), item['title'], eager=True)}</div><div class="project-copy"><span class="eyebrow lime">{state}</span><h1>{esc(item['title'])}</h1>{other_names}<div class="project-meta">{meta}</div><p class="project-genres">{esc(genres)}</p><p class="project-overview">{esc(item.get('overview'))}</p><div class="project-actions"><a class="button" href="{esc(tracker)}" target="_blank" rel="noopener">{watch_label(item)}</a>{watch}<a class="button outline" href="#news-history">История новостей</a></div><p class="tracking-note">{esc(action['note'])}</p></div></div></section><div class="page-shell"><dl class="project-facts">{dates}</dl>{trailer}{news}{collection(other[:6], 'Вам может понравиться', catalog_url, 'ЕЩЁ НЕМНОГО КИНО')}</div></div>'''
     schema = {"@context": "https://schema.org", "@type": "Movie" if movie else "TVSeries", "name": item["title"], "description": item.get("overview"), "url": config["base_url"] + title_path(item)}
     if alternatives:
         schema['alternateName'] = alternatives

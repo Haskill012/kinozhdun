@@ -531,7 +531,7 @@ class WebsiteHTTPTests(AioHTTPTestCase):
         text = await response.text()
         self.assertIn('name="twitter:card"', text)
         self.assertIn('BreadcrumbList', text)
-        self.assertIn('+ Ждать', text)
+        self.assertIn('Открыть бота', text)
 
     async def test_search_escapes_input_and_is_not_indexed(self):
         response = await self.client.get("/news", params={"q": '"><script>alert(1)</script>'})
@@ -623,7 +623,7 @@ class CatalogHTTPTests(AioHTTPTestCase):
         self.assertIn('id="trailer"', text)
         self.assertIn('youtube-nocookie.com/embed/', text)
         self.assertIn('/static/site.css?v=' + ASSET_VERSION, text)
-        self.assertIn('В список ожидания', text)
+        self.assertIn('Бот напомнит о предстоящей премьере', text)
         self.assertIn('История новостей', text)
         self.assertIn('id="news-history"', text)
         response = await self.client.get('/health')

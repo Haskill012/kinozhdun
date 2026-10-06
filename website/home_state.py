@@ -3,6 +3,7 @@ import re
 from datetime import date, datetime, timezone, timedelta
 
 from website.editor import today
+from shared.viewing import viewing_state
 
 MONTHS = ('января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
           'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря')
@@ -22,6 +23,7 @@ def days_text(days):
 
 def event_state(item, current=None):
     current = current or today()
+    action = viewing_state(item, current)
     release = parsed_date(item.get('release_date'))
     season, episode = item.get('season'), item.get('episode')
     premiere = parsed_date(item.get('season_premiere'))
@@ -31,8 +33,11 @@ def event_state(item, current=None):
             release, season, episode = premiere, item.get('premiere_season'), 1
         if episode == 1:
             kind = 'Новый сезон' if season and season > 1 else 'Премьера сериала'
+    if action['mode'] == 'save':
+        return dict(date=release, label='УЖЕ ВЫШЕЛ' if item['media_type'] == 'movie' else action['status'].upper(),
+                    headline=action['status'], detail='Можно сохранить и посмотреть позже', kind=kind)
     if not release:
-        return dict(date=None, label='СТОИТ ДОЖДАТЬСЯ', headline='Дата выхода пока не объявлена', detail='', kind=kind)
+        return dict(date=None, label='СЛЕДИТЕ ЗА ВЫХОДОМ', headline=action['status'], detail='', kind=kind)
     days = (release - current).days
     label = 'СЕГОДНЯ' if days == 0 else 'УЖЕ ЗАВТРА' if days == 1 else 'СКОРО ВЕРНЁТСЯ' if 0 < days <= 120 and episode == 1 and season and season > 1 else 'СКОРО ПРЕМЬЕРА' if 0 < days <= 120 and (item['media_type'] == 'movie' or episode == 1) else 'СТОИТ ДОЖДАТЬСЯ'
     headline = f'{kind} сегодня' if days == 0 else f'{kind} уже завтра' if days == 1 else f'{kind} через {days_text(days)}' if days > 0 else f'{kind} уже вышла · по календарю' if kind in ('Новая серия', 'Премьера фильма', 'Премьера сериала') else f'{kind} уже вышел · по календарю'
@@ -46,6 +51,8 @@ def event_state(item, current=None):
 
 def waiting(item, current=None):
     current = current or today()
+    if viewing_state(item, current)['mode'] == 'save':
+        return False
     event = event_state(item, current)['date']
     if event:
         return event >= current
@@ -54,7 +61,10 @@ def waiting(item, current=None):
 
 def watch_label(item):
     """A future authenticated adapter may supply confirmed per-user subscription state."""
-    return '✓ Жду' if item.get('is_waiting') is True else '+ Ждать'
+    state = viewing_state(item, today())
+    if item.get('is_waiting') is True:
+        return '✓ В списке' if state['mode'] == 'save' else '✓ Жду'
+    return state['label']
 
 
 def hero_projects(items, events=(), limit=6):

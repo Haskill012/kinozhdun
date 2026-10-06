@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+from shared.viewing import viewing_state
 from typing import Optional
 from aiogram import Router, F
 from aiogram.filters import CommandStart, CommandObject, Command, or_f
@@ -143,6 +144,7 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
             tmdb_id=tmdb_id,
             is_already_tracked=is_tracked,
             referrer_id=referrer_id,
+            action_label=viewing_state(dict(details, media_type=media_type))['label'],
         )
         await message.answer(text, reply_markup=reply_markup)
         return

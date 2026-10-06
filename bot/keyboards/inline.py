@@ -52,6 +52,7 @@ def preview_item_keyboard(
     bot_username: str = "kinojdun_bot",
     title: str = "",
     referrer_id: Optional[int] = None,
+    action_label: str = 'Добавить в список',
 ) -> InlineKeyboardMarkup:
     """Клавиатура для карточки предпросмотра проекта с кнопкой добавления в отслеживание."""
     builder = InlineKeyboardBuilder()
@@ -67,7 +68,7 @@ def preview_item_keyboard(
         if tracked_item_id:
             builder.button(text="🗑 Удалить из списка", callback_data=f"remove:{tracked_item_id}")
     else:
-        builder.button(text="➕ Добавить в отслеживание", callback_data=f"confirm_track:{media_type}:{tmdb_id}")
+        builder.button(text=action_label, callback_data=f"confirm_track:{media_type}:{tmdb_id}")
 
     builder.button(text="🔙 Назад к результатам поиска", callback_data="back_to_search")
     builder.button(text="❌ Закрыть", callback_data="cancel_search")
@@ -145,6 +146,7 @@ def shared_item_recipient_keyboard(
     tmdb_id: int,
     is_already_tracked: bool = False,
     referrer_id: Optional[int] = None,
+    action_label: str = 'Добавить в список',
 ) -> InlineKeyboardMarkup:
     """Клавиатура для получателя ссылки на конкретный фильм/сериал."""
     builder = InlineKeyboardBuilder()
@@ -153,7 +155,7 @@ def shared_item_recipient_keyboard(
         builder.button(text="📋 Открыть мой список", callback_data="back_to_list")
     else:
         ref_part = f":{referrer_id}" if referrer_id else ""
-        builder.button(text="🔔 Отслеживать", callback_data=f"track_from_share:{media_type}:{tmdb_id}{ref_part}")
+        builder.button(text=action_label, callback_data=f"track_from_share:{media_type}:{tmdb_id}{ref_part}")
         builder.button(text="🔎 Посмотреть подробнее", callback_data=f"preview:{media_type}:{tmdb_id}")
 
     builder.button(text="🔍 Найти другой фильм/сериал", callback_data="cancel_search")

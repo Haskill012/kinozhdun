@@ -38,13 +38,13 @@ class HomeStateTests(unittest.TestCase):
         self.assertEqual(past['kind'], 'Новая серия')
 
     def test_unknown_invalid_and_distant_dates_never_claim_announcements(self):
-        self.assertEqual(watch_label(self.item), '+ Ждать')
+        self.assertEqual(watch_label(self.item), '+ Ждать серию')
         self.assertEqual(watch_label(dict(self.item, is_waiting=True)), '✓ Жду')
-        self.assertEqual(watch_label(dict(self.item, is_waiting='true')), '+ Ждать')
+        self.assertEqual(watch_label(dict(self.item, is_waiting='true')), '+ Ждать серию')
         for value in [None, '', 'bad', '2026-02-30']:
             state = event_state(dict(self.item, release_date=value), self.current)
             self.assertIsNone(state['date'])
-            self.assertEqual(state['label'], 'СТОИТ ДОЖДАТЬСЯ')
+            self.assertEqual(state['label'], 'СЛЕДИТЕ ЗА ВЫХОДОМ')
         self.assertEqual(event_state(dict(self.item, release_date='2028-01-01'), self.current)['label'], 'СТОИТ ДОЖДАТЬСЯ')
         self.assertFalse(waiting(dict(self.item, status='Canceled', release_date=None), self.current))
         self.assertFalse(waiting(dict(self.item, release_date='2026-09-01'), self.current))
