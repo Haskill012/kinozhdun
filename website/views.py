@@ -8,6 +8,7 @@ from datetime import date, datetime
 from urllib.parse import urlencode
 
 from website.editor import date_ru, today
+from website.artwork import allowed_asset
 
 ASSET_VERSION = hashlib.sha256((Path(__file__).parent / "static/site.css").read_bytes() + (Path(__file__).parent / "static/site.js").read_bytes()).hexdigest()[:12]
 
@@ -19,7 +20,7 @@ def esc(value):
 
 
 def image(url, title, cls="", eager=False):
-    if url and (url.startswith("https://image.tmdb.org/") or url == "/static/mascot.jpg"):
+    if allowed_asset(url) and (url.startswith("https://image.tmdb.org/") or url == "/static/mascot.jpg"):
         return f'<img class="{cls}" src="{esc(url)}" alt="{esc(title)}" loading="{"eager" if eager else "lazy"}" decoding="async">'
     return f'<div class="{cls} art-placeholder"><span>КЖ</span><small>КИНО — ЭТО ОЖИДАНИЕ</small></div>'
 
@@ -50,7 +51,7 @@ def layout(config, title, description, content, path="/", active="", schema=None
             is_article = True
         elif "@graph" in schema:
             is_article = any(item.get("@type") in ("NewsArticle", "Article") for item in schema.get("@graph", []))
-    og_img = esc(og_image or (base + "/static/logo_mascot.jpg"))
+    og_img = esc(og_image if allowed_asset(og_image) else (base + "/static/logo_mascot.jpg"))
     return f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     {verification}<title>{esc(title)} — КиноЖдун</title><meta name="description" content="{esc(description)}"><meta name="robots" content="{robots}">
     <link rel="canonical" href="{esc(base + path)}"><link rel="icon" href="/static/logo_mascot.jpg" type="image/jpeg"><link rel="icon" href="/static/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/static/logo_mascot.jpg">

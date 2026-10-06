@@ -4,6 +4,7 @@ import time
 from difflib import SequenceMatcher
 import aiohttp
 from website.title_names import normalized as normalize, names, canonical_title, remote_query
+from website.artwork import artwork, allowed_asset
 
 
 def matches(item, query):
@@ -29,7 +30,8 @@ def result(item):
     return {"title": item["title"], "url": f"/title/{item['media_type']}/{item['id']}",
             "media_type": item["media_type"], "year": (item.get("first_release") or "")[:4],
             "rating": item.get("rating") if item.get("votes", 0) > 0 else None,
-            "poster": item.get("poster"), "alternate_title": item.get("original_title")}
+            "poster": item.get("poster") if allowed_asset(item.get("poster")) else None,
+            "alternate_title": item.get("original_title")}
 
 
 def suggestions(store, query, limit=8):
@@ -92,10 +94,11 @@ class ProjectSearch:
             original = row.get("original_title") or row.get("original_name")
             if not title:
                 continue
+            poster, _ = artwork(media, row)
             found.append({"key": f"{media}:{row['id']}", "id": row["id"], "media_type": media,
                           "title": canonical_title(title, original), "original_title": original,
                           "first_release": row.get("release_date") or row.get("first_air_date"),
                           "rating": row.get("vote_average"), "votes": row.get("vote_count", 0),
                           "popularity": row.get("popularity", 0), "genres": [], "remote_match": True,
-                          "poster": "https://image.tmdb.org/t/p/w500" + row["poster_path"] if row.get("poster_path") else None})
+                          "poster": "https://image.tmdb.org/t/p/w500" + poster if poster else None})
         return found

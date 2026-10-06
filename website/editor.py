@@ -8,6 +8,7 @@ import aiohttp
 from bot.services.season_dates import season_premieres
 from website.trailers import official_trailers, select_trailers, trailer_season
 from website.title_names import canonical_title, source_aliases
+from website.artwork import artwork
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,8 @@ class Editor:
 
     async def fetch_details(self, media, tmdb_id):
         detail = await self.fetch(f"/{media}/{tmdb_id}", append_to_response="videos,alternative_titles,translations", include_video_language="ru,en,null")
+        if detail.get("id") != tmdb_id:
+            raise RuntimeError("TMDB вернул другой идентификатор проекта")
         if media == "tv":
             detail["season_videos"] = {}
             seasons = sorted({s["season_number"] for s in detail.get("seasons") or []
@@ -117,13 +120,14 @@ class Editor:
         trailer = trailers[-1].get("key") if trailers else None
         if trailer and not re.fullmatch(r"[\w-]{6,32}", trailer):
             trailer = None
-        poster = detail.get("backdrop_path") or detail.get("poster_path")
+        poster_path, backdrop_path = artwork(media, detail)
+        poster = backdrop_path or poster_path
         item = {"key": key, "id": detail["id"], "media_type": media, "title": title,
                 "original_title": detail.get("original_title") or detail.get("original_name"),
                 "aliases": source_aliases(detail),
                 "overview": detail.get("overview", ""), "release_date": release,
                 "image": "https://image.tmdb.org/t/p/w1280" + poster if poster else None,
-                "poster": "https://image.tmdb.org/t/p/w500" + detail["poster_path"] if detail.get("poster_path") else None,
+                "poster": "https://image.tmdb.org/t/p/w500" + poster_path if poster_path else None,
                 "season": episode.get("season_number"), "episode": episode.get("episode_number"),
                 "status": detail.get("status"), "trailer": trailer,
                 "trailer_keys": [v["key"] for v in trailers if re.fullmatch(r"[A-Za-z0-9_-]{6,32}", v.get("key", ""))],
