@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from website.content import Store
 from website.editor import Editor
+from website.search import ProjectSearch, result
 from website import views
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -95,6 +96,7 @@ def create_app(config=None):
     store.import_channel(config["bot_database"], config["channel_url"])
     store.restore_news_cards()
     app[STORE], app[CONFIG] = store, config
+    project_search = ProjectSearch(store, config)
     app.cleanup_ctx.append(background)
 
     async def home(request):
@@ -110,7 +112,8 @@ def create_app(config=None):
             page = 1
         if request.path == "/catalog" or (config.get("catalog_size") and category in ("movies", "series")):
             from website.catalog_views import catalog_page
-            return web.Response(text=catalog_page(store, config, request.path, request.query), content_type="text/html")
+            extra = await project_search.projects(request.query.get("q", "")) if request.query.get("q") else []
+            return web.Response(text=catalog_page(store, config, request.path, request.query, extra), content_type="text/html")
         return web.Response(text=views.listing(store, config, category, request.query.get("q", "")[:100], page), content_type="text/html")
 
     async def article(request):
@@ -189,8 +192,8 @@ def create_app(config=None):
         }, headers={"X-Robots-Tag": "noindex"})
 
     async def search(request):
-        from website.search import suggestions
-        return web.json_response({"results": suggestions(store, request.query.get("q", ""))},
+        found = await project_search.projects(request.query.get("q", ""))
+        return web.json_response({"results": [result(item) for item in found]},
                                  headers={"X-Robots-Tag": "noindex", "Cache-Control": "no-store"})
 
     app.router.add_get("/api/search", search)

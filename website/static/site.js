@@ -80,7 +80,13 @@ if (siteSearch) {
           if (item.year) parts.push(item.year);
           if (Number(item.rating) > 0) parts.push('★ ' + Number(item.rating).toFixed(1) + ' TMDB');
           meta.textContent = parts.join(' · ');
-          copy.append(title, meta);
+          copy.append(title);
+          if (item.alternate_title && item.alternate_title.toLowerCase() !== item.title.toLowerCase()) {
+            const alternate = document.createElement('small');
+            alternate.textContent = item.alternate_title;
+            copy.append(alternate);
+          }
+          copy.append(meta);
           link.append(poster, copy);
           results.append(link);
         });

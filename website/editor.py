@@ -7,6 +7,7 @@ from datetime import date, datetime, timezone, timedelta
 import aiohttp
 from bot.services.season_dates import season_premieres
 from website.trailers import official_trailers, select_trailers, trailer_season
+from website.title_names import canonical_title, source_aliases
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ class Editor:
                 return await response.json()
 
     async def fetch_details(self, media, tmdb_id):
-        detail = await self.fetch(f"/{media}/{tmdb_id}", append_to_response="videos", include_video_language="ru,en,null")
+        detail = await self.fetch(f"/{media}/{tmdb_id}", append_to_response="videos,alternative_titles,translations", include_video_language="ru,en,null")
         if media == "tv":
             detail["season_videos"] = {}
             seasons = sorted({s["season_number"] for s in detail.get("seasons") or []
@@ -95,6 +96,7 @@ class Editor:
         title = detail.get("title") or detail.get("name")
         if not title:
             return
+        title = canonical_title(title, detail.get("original_title") or detail.get("original_name"))
         key = f"{media}:{detail['id']}"
         existing = self.store.catalog_item(key, False) or {}
         bot_linked = publish_card or existing.get("bot_linked", False)
@@ -118,6 +120,7 @@ class Editor:
         poster = detail.get("backdrop_path") or detail.get("poster_path")
         item = {"key": key, "id": detail["id"], "media_type": media, "title": title,
                 "original_title": detail.get("original_title") or detail.get("original_name"),
+                "aliases": source_aliases(detail),
                 "overview": detail.get("overview", ""), "release_date": release,
                 "image": "https://image.tmdb.org/t/p/w1280" + poster if poster else None,
                 "poster": "https://image.tmdb.org/t/p/w500" + detail["poster_path"] if detail.get("poster_path") else None,
