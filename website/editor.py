@@ -6,6 +6,7 @@ from datetime import date, datetime, timezone, timedelta
 
 import aiohttp
 from bot.services.season_dates import season_premieres
+from website.trailers import official_trailers, select_trailers, trailer_season
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,20 @@ class Editor:
                     raise RuntimeError(f"TMDB вернул HTTP {response.status}")
                 return await response.json()
 
+    async def fetch_details(self, media, tmdb_id):
+        detail = await self.fetch(f"/{media}/{tmdb_id}", append_to_response="videos", include_video_language="ru,en,null")
+        if media == "tv":
+            detail["season_videos"] = {}
+            seasons = sorted({s["season_number"] for s in detail.get("seasons") or []
+                              if isinstance(s.get("season_number"), int) and s["season_number"] > 0}, reverse=True)
+            for number in seasons:
+                videos = await self.fetch(f"/tv/{tmdb_id}/season/{number}/videos", include_video_language="ru,en,null")
+                results = videos.get("results") or []
+                detail["season_videos"][number] = results
+                if official_trailers(results):
+                    break
+        return detail
+
     def eligible(self, media, detail, require_recent=True):
         if detail.get("adult") or not detail.get("poster_path") or not detail.get("overview"):
             return False
@@ -96,8 +111,7 @@ class Editor:
             first = valid_date(detail.get("first_air_date"))
             if first and first >= today().isoformat():
                 release = first
-        videos = detail.get("videos", {}).get("results", [])
-        trailers = sorted([v for v in videos if v.get("official") and v.get("site") == "YouTube" and v.get("type") == "Trailer"], key=lambda v: (v.get("iso_639_1") == "ru", v.get("published_at", "")))
+        trailers = select_trailers(media, detail)
         trailer = trailers[-1].get("key") if trailers else None
         if trailer and not re.fullmatch(r"[\w-]{6,32}", trailer):
             trailer = None
@@ -111,6 +125,8 @@ class Editor:
                 "trailer_keys": [v["key"] for v in trailers if re.fullmatch(r"[A-Za-z0-9_-]{6,32}", v.get("key", ""))],
                 "trailer_languages": {v["key"]: v.get("iso_639_1") for v in trailers},
                 "trailer_language": trailers[-1].get("iso_639_1", "en") if trailer else None,
+                "trailer_season": (trailer_season(trailers[-1]) or None) if trailer and media == "tv" else None,
+                "season_trailers_loaded": media == "tv" and "season_videos" in detail,
                 "rating": detail.get("vote_average"), "votes": detail.get("vote_count", 0),
                 "popularity": detail.get("popularity", 0),
                 "first_release": valid_date(detail.get("release_date") if media == "movie" else detail.get("first_air_date")),
@@ -178,6 +194,9 @@ class Editor:
             post("status:" + item["status"], f"«{title}»: изменился статус проекта", f"Текущий статус в TMDB: {status}.",
                  [f"При автоматической проверке обнаружено изменение статуса: {status}.", "Изменение статуса в каталоге не означает анонс нового сезона. Для подтверждения деталей проверяйте страницу проекта и сообщения создателей."])
         old_keys = (previous.get("trailer_keys", [previous.get("trailer")]) if previous else [])
+        if previous and item["season_trailers_loaded"] and not previous.get("season_trailers_loaded"):
+            # Initial season metadata backfill is not a newly published trailer.
+            old_keys = item["trailer_keys"]
         for new_key in item["trailer_keys"]:
             if not previous or new_key in old_keys:
                 continue
@@ -203,7 +222,7 @@ class Editor:
         async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
             self.session = session
             try:
-                detail = await self.fetch(f"/{media}/{tmdb_id}", append_to_response="videos", include_video_language="ru,en,null")
+                detail = await self.fetch_details(media, tmdb_id)
             finally:
                 self.session = None
         self.process(media, detail, emit_news=False, publish_card=True)
@@ -254,7 +273,7 @@ class Editor:
                         details.setdefault((item["media_type"], item["id"]), None)
                     for media, tmdb_id in details:
                         try:
-                            detail = await self.fetch(f"/{media}/{tmdb_id}", append_to_response="videos", include_video_language="ru,en,null")
+                            detail = await self.fetch_details(media, tmdb_id)
                             details[(media, tmdb_id)] = detail
                         except Exception as exc:
                             errors.append(error_text(exc))
