@@ -192,8 +192,15 @@ def listing(store, config, category, query, page):
 def article_page(store, config, article):
     path = "/news/" + article["slug"]
     category = CATEGORIES.get(article["category"], "Новости")
-    body = "".join(f'<p>{esc(p)}</p>' for p in json.loads(article["body"]))
     trailer_key = article["fingerprint"].split(":trailer:")[-1] if ":trailer:" in article["fingerprint"] else None
+    body_paragraphs = json.loads(article["body"])
+    rendered = []
+    for i, p in enumerate(body_paragraphs):
+        p_clean = p.strip()
+        if i == 0 and (p_clean == article["summary"].strip() or (len(p_clean) < 60 and ("Что выходит сегодня" in p_clean or "Сегодня на экране" in p_clean))):
+            continue
+        rendered.append(f'<p>{esc(p).replace(chr(10), "<br>")}</p>')
+    body = "".join(rendered)
     item = store.catalog_item(f"{article.get('media_type')}:{article.get('tmdb_id')}")
     if trailer_key:
         body += trailer_player(trailer_key, (item or {}).get("trailer_languages", {}).get(trailer_key))

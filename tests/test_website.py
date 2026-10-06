@@ -242,6 +242,33 @@ class EditorTests(unittest.TestCase):
         with closing(sqlite3.connect(path)) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM channel_posts").fetchone()[0], 5)
 
+    def test_corrupted_daily_digest_purged_and_summary_clean(self):
+        path = Path(self.tmp.name) / "bot_corrupted.db"
+        with closing(sqlite3.connect(path)) as db:
+            db.execute("CREATE TABLE channel_posts (title, post_text, status, credibility, is_sponsored, content_hash, event_type, published_at)")
+            # Corrupted post with talk show / d2d6d01c
+            bad_text = "🍿 Что выходит сегодня — 06.10.2026\n\nСобрали главные кино- и телепремьеры сегодняшнего дня:\n\n📺 С добрым мифическим утром\n   └ комедия"
+            db.execute("INSERT INTO channel_posts VALUES (?,?,?,?,?,?,?,?)",
+                       ("Что выходит сегодня — 06.10.2026", bad_text, "published", "confirmed", 0, "hash_d2d6d01c", "daily_digest", "2026-10-06 09:30:00"))
+            # Valid digest
+            good_text = "🎬 <b>Сегодня на экране · 07.10.2026</b>\n\n<b>Укрытие</b>\n★ 8.4/10 · TMDB\n2 сезон · 1 серия\n\nВсе даты и подробности на KinoЖдун ↗"
+            db.execute("INSERT INTO channel_posts VALUES (?,?,?,?,?,?,?,?)",
+                       ("Сегодня на экране — 07.10.2026", good_text, "published", "confirmed", 0, "good_digest", "daily_digest", "2026-10-07 09:30:00"))
+            db.commit()
+
+        # Import: the bad one must be skipped/deleted, good one imported
+        imported = self.store.import_channel(path, "https://t.me/channel")
+        self.assertEqual(imported, 1)
+        articles = self.store.articles()
+        self.assertTrue(any("07.10.2026" in a["title"] for a in articles))
+        self.assertFalse(any("d2d6d01c" in a["slug"] or "мифическим утром" in a["body"] for a in articles))
+
+        # Check clean summary
+        valid_art = next(a for a in articles if "07.10.2026" in a["title"])
+        self.assertNotIn("фа", valid_art["summary"])
+        self.assertFalse(valid_art["summary"].endswith(" "))
+        self.assertTrue(len(valid_art["summary"]) <= 180)
+
 
 class CatalogSyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_news_card_metadata_retries_tmdb_and_does_not_create_archive_news(self):

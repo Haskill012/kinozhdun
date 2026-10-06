@@ -51,6 +51,47 @@ def slugify(text: str, max_length: int = 60) -> str:
     return cleaned[:max_length].rstrip('-') or 'post'
 
 
+def extract_digest_summary(text: str, title: str = "", max_len: int = 180) -> str:
+    cleaned = plain(text)
+    paragraphs = [p.strip() for p in cleaned.split("\n\n") if p.strip()]
+    if not paragraphs:
+        return title or ""
+
+    candidate = None
+    for p in paragraphs:
+        # Ignore emoji headers like "🍿 Что выходит сегодня..." or "🎬 Сегодня на экране..."
+        if re.match(r"^[🎬🍿🔥📅📢]?\s*(Что выходит|Главные премьеры|Сегодня на экране|Что посмотреть)", p):
+            continue
+        # Ignore list item blocks
+        if p.startswith(("📺", "🎬", "•", "-", "└")):
+            continue
+        candidate = p
+        break
+
+    if not candidate:
+        if any(h in (title or "") for h in ("Что выходит сегодня", "Сегодня на экране", "Что посмотреть")):
+            candidate = "Главные кино- и телепремьеры дня по данным трекера КиноЖдун."
+        elif "Главные премьеры недели" in (title or ""):
+            candidate = "Самые ожидаемые новинки кино и сериалов этой недели по данным трекера КиноЖдун."
+        else:
+            candidate = paragraphs[0]
+
+    # Clean leading emoji
+    candidate = re.sub(r"^[🎬🍿🔥📅📢\s]+", "", candidate).strip()
+
+    # Try taking the first sentence if it fits cleanly
+    sentences = re.split(r"(?<=[.!?])\s+", candidate)
+    if sentences and 25 <= len(sentences[0]) <= max_len:
+        return sentences[0].strip()
+
+    if len(candidate) <= max_len:
+        return candidate
+
+    # Cut strictly by word boundary with ellipsis
+    truncated = candidate[:max_len].rsplit(" ", 1)[0].rstrip(" ,.-:;!?")
+    return (truncated + "…") if truncated else candidate[:max_len]
+
+
 class Store:
     def __init__(self, path):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -73,6 +114,7 @@ class Store:
         CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         """)
         self.repair_episode_articles()
+        self.purge_corrupted_digests()
         self.db.commit()
 
     def repair_episode_articles(self):
@@ -98,6 +140,22 @@ class Store:
                 self.db.execute("UPDATE articles SET title=?, body=?, updated=? WHERE slug=?",
                                 (heading, json.dumps(body, ensure_ascii=False), now(), row["slug"]))
 
+    def purge_corrupted_digests(self):
+        """Purge invalid daily digests with fabricated releases, talk shows or broken word chops."""
+        rows = self.db.execute("SELECT slug, fingerprint, title, summary, body FROM articles WHERE fingerprint LIKE 'channel:%' OR slug LIKE '%vyhodit-segodnya%'").fetchall()
+        for row in rows:
+            text = (row["summary"] or "") + " " + (row["body"] or "")
+            is_corrupt = (
+                "d2d6d01c" in row["slug"]
+                or "мифическим утром" in text
+                or "Good Mythical Morning" in text
+                or "Монолог фа" in text
+                or bool(re.search(r"[\u4e00-\u9fff]", text))
+            )
+            if is_corrupt:
+                self.db.execute("DELETE FROM articles WHERE slug=?", (row["slug"],))
+        self.db.commit()
+
     def publish(self, fingerprint, title, category, summary, body, source_url,
                 image=None, media_type=None, tmdb_id=None, release_date=None, published=None, item=None):
         base_slug = slugify(title)
@@ -109,6 +167,10 @@ class Store:
             (slug, fingerprint, title, category, summary, json.dumps(body, ensure_ascii=False),
              source_url, image, media_type, tmdb_id, release_date, timestamp, timestamp))
         created = cursor.rowcount > 0
+        if not created:
+            self.db.execute(
+                "UPDATE articles SET title=?, category=?, summary=?, body=?, source_url=?, image=?, updated=? WHERE fingerprint=?",
+                (title, category, summary, json.dumps(body, ensure_ascii=False), source_url, image, now(), fingerprint))
         self.ensure_news_card(media_type, tmdb_id, title, source_url, image, release_date, item)
         self.db.commit()
         return created
@@ -464,13 +526,22 @@ class Store:
                         self.db.execute("DELETE FROM articles WHERE fingerprint=?", ("channel:" + r["content_hash"],))
                         self.db.commit()
                         continue
+                if r.get("event_type") == "daily_digest":
+                    if (any(bad in text for bad in ("мифическим утром", "Good Mythical Morning"))
+                            or "d2d6d01c" in r.get("content_hash", "")
+                            or bool(re.search(r"[\u4e00-\u9fff]", text))):
+                        self.db.execute("DELETE FROM articles WHERE fingerprint=?", ("channel:" + r["content_hash"],))
+                        self.db.commit()
+                        continue
                 image = r.get("poster_path")
                 source = (f"https://www.themoviedb.org/{r['media_type']}/{r['tmdb_id']}"
                           if r.get("tmdb_id") and r.get("media_type") in ("movie", "tv") else channel_url)
+                summary = extract_digest_summary(text, plain(r["title"]))
+                body = [p for p in text.split("\n\n") if p]
                 count += self.publish(
                     "channel:" + r["content_hash"], plain(r["title"]),
                     "series" if r.get("media_type") == "tv" else "movies" if r.get("media_type") == "movie" else "news",
-                    text[:190], [p for p in text.split("\n\n") if p], source,
+                    summary, body, source,
                     "https://image.tmdb.org/t/p/w780" + image if image and image.startswith("/") else None,
                     r.get("media_type"), r.get("tmdb_id"), r.get("air_date"),
                     timestamp(r.get("published_at") or r.get("created_at")))

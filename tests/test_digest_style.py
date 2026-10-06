@@ -70,3 +70,22 @@ class DigestStyleTests(unittest.IsolatedAsyncioTestCase):
         publisher=ChannelPublisher(None,self.settings,Mock(),tmdb_client=tmdb)
         item={**self.item,'media_type':'movie'}
         self.assertEqual(await publisher.enrich_digest_items([item],date(2026,10,6),date(2026,10,12)),[])
+
+    async def test_untranslated_foreign_titles_and_low_ratings_are_excluded(self):
+        episode = {'season_number': 1, 'episode_number': 1, 'air_date': '2026-10-06'}
+        chinese_details = {'name': '兰香如故', 'original_name': '兰香如故', 'vote_average': 7.5,
+                           'vote_count': 100, 'backdrop_path': '/img.jpg', 'next_episode_to_air': episode}
+        tmdb = Mock(get_tv_details=AsyncMock(return_value=chinese_details),
+                    get_tv_season=AsyncMock(return_value={'episodes': [episode]}))
+        publisher = ChannelPublisher(None, self.settings, Mock(), tmdb_client=tmdb)
+        # Chinese title with no cyrillic/latin translation must be excluded
+        res = await publisher.enrich_digest_items([{'media_type': 'tv', 'tmdb_id': 999}], date(2026, 10, 6), date(2026, 10, 6))
+        self.assertEqual(res, [])
+
+        # Low rating (e.g. 4.5 with 20 votes) must be excluded
+        low_rated = {'title': 'Bad Movie', 'vote_average': 4.5, 'vote_count': 25,
+                     'release_date': '2026-10-06', 'backdrop_path': '/img.jpg'}
+        tmdb_movie = Mock(get_movie_details=AsyncMock(return_value=low_rated))
+        pub_movie = ChannelPublisher(None, self.settings, Mock(), tmdb_client=tmdb_movie)
+        res_movie = await pub_movie.enrich_digest_items([{'media_type': 'movie', 'tmdb_id': 888}], date(2026, 10, 6), date(2026, 10, 6))
+        self.assertEqual(res_movie, [])

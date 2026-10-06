@@ -740,12 +740,13 @@ class ChannelPublisher:
                     continue
                 votes = int(details.get("vote_count") or 0)
                 rating = float(details.get("vote_average") or 0)
-                if votes >= 50 and rating < 6:
+                if votes >= 10 and rating < 6:
                     continue
                 item.update({k: details.get(k) for k in ("network", "backdrop_path", "vote_average", "vote_count")})
-                name = details.get("title") or item.get("title")
+                name = (details.get("name") if media == "tv" else details.get("title")) or details.get("title") or item.get("title")
+                orig = (details.get("original_name") if media == "tv" else details.get("original_title")) or details.get("original_title") or item.get("original_title")
                 if name and not re.search(r"[а-яА-ЯёЁa-zA-Z]", name):
-                    name = details.get("original_title")
+                    name = orig
                 if not name or not re.search(r"[а-яА-ЯёЁa-zA-Z]", name):
                     continue
                 item["title"] = name
@@ -821,6 +822,11 @@ class ChannelPublisher:
                             break
                         ident = tv.get("id")
                         if not ident or ("tv", ident) in seen_ids:
+                            continue
+                        name = tv.get("name") or ""
+                        if not re.search(r"[а-яА-ЯёЁa-zA-Z]", name):
+                            continue
+                        if any(bad in name.lower() for bad in ("мифическим утром", "good mythical morning", "daily show", "jimmy fallon", "jimmy kimmel")):
                             continue
                         if any(g in EXCLUDED_GENRES for g in tv.get("genre_ids", [])):
                             continue
