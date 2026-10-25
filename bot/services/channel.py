@@ -1,3 +1,5 @@
+from pathlib import Path
+ROOT = Path(__file__).resolve().parents[2]
 """Сервис автоматической публикации значимых новостей в Telegram-канал «Кинождун 🍿»."""
 
 import datetime
@@ -8,6 +10,7 @@ import re
 from typing import Any, Optional
 from aiogram import Bot
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LinkPreviewOptions
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -19,6 +22,7 @@ from bot.db.models import ChannelPost
 from bot.db.repositories import Repository
 from bot.utils.formatting import format_date_ru, safe_html, linked_title
 from shared.audience import audience_metadata, exclusion_reason
+from bot.services.social_editorial import moscow_today
 
 logger = logging.getLogger(__name__)
 
@@ -98,167 +102,28 @@ def format_channel_post_text(
     items: Optional[list[dict[str, Any]]] = None,
     date_label: Optional[str] = None,
     site_url: str = "https://kinojdun.ru",
+    tmdb_id: Optional[int] = None,
+    source_url: Optional[str] = None,
 ) -> str:
     """Форматирует красивый, лаконичный и вовлекающий пост для Telegram-канала в стиле Кинождуна."""
-    title = safe_html(title)
-    network = safe_html(network) if network else None
-    overview = safe_html(overview) if overview else None
-    type_label = "сериала" if media_type == "tv" else "фильма"
-    type_word = "сериал" if media_type == "tv" else "фильм"
-    type_word_ru = "Сериал" if media_type == "tv" else "Фильм"
-    season_label = f" (сезон {season_number})" if (media_type == "tv" and season_number) else ""
-    season_word = f"{season_number} сезон" if season_number else "новый сезон"
-
-    # --- 1. Продление на новый сезон / анонс сиквела ---
-    if event_type in ("renewed", "season_renewed"):
-        if media_type == "tv":
-            header = f"🔥 <b>«{title}» официально продлён на {season_word}</b>"
-            studio_str = f"{network} подтвердил продолжение сериала." if network else "Официально подтверждено продолжение сериала."
-        else:
-            header = f"🔥 <b>Анонсировано продолжение фильма «{title}»</b>"
-            studio_str = f"Студия {network} подтвердила разработку сиквела." if network else "Официально подтверждена разработка сиквела."
-
-        date_line = f"\n📅 <b>Премьера:</b> <code>{format_date_ru(air_date)}</code>" if air_date else "\nТочная дата выхода пока не объявлена."
-
-        body_parts = [studio_str + date_line]
-        if overview and len(overview.strip()) > 0:
-            ov = overview.strip()
-            if len(ov) > 280:
-                ov = ov[:277] + "..."
-            body_parts.append(f"\n📝 <i>«{ov}»</i>")
-
-        body_parts.append("\n🍿 <i>Кинождун сообщит, когда появятся новости о съёмках и дате премьеры.</i>")
-        return f"{header}\n\n" + "\n".join(body_parts)
-
-    # --- 2. Объявление даты выхода ---
-    elif event_type in ("date_announced", "announced"):
-        season_prefix = f" ({season_word})" if (media_type == "tv" and season_number) else ""
-        header = f"📅 <b>Объявлена дата выхода {season_label or type_label} «{title}»</b>"
-
-        body_parts = []
-        if air_date:
-            body_parts.append(f"🗓 <b>Релиз:</b> <b>{format_date_ru(air_date)}</b>")
-        if network:
-            body_parts.append(f"🏢 <b>Платформа:</b> {network}")
-
-        if overview and len(overview.strip()) > 0:
-            ov = overview.strip()
-            if len(ov) > 280:
-                ov = ov[:277] + "..."
-            body_parts.append(f"\n📝 <i>«{ov}»</i>")
-
-        body_parts.append(f"\n🍿 <i>Добавь {type_word} в Кинождун — напомним о премьере.</i>")
-        return f"{header}\n\n" + "\n".join(body_parts)
-
-    # --- 3. Перенос даты выхода ---
-    elif event_type == "date_postponed":
-        new_date_str = format_date_ru(air_date) if air_date else "не объявлена"
-        old_date_str = format_date_ru(old_air_date) if old_air_date else "ранее"
-        header = f"📅 <b>Премьеру «{title}»{season_label} перенесли</b>"
-
-        body_parts = [
-            f"🗓 <b>Новая дата выхода:</b> <b>{new_date_str}</b>",
-            f"❌ <i>Ранее премьера ожидалась {old_date_str}</i>",
-        ]
-        if network:
-            body_parts.append(f"🏢 <b>Студия:</b> {network}")
-
-        body_parts.append("\n🍿 <i>Добавь проект в Кинождун — сообщим обо всех дальнейших изменениях.</i>")
-        return f"{header}\n\n" + "\n".join(body_parts)
-
-    # --- 4. Начало съёмок ---
-    elif event_type == "filming_started":
-        target = f"{season_word}а сериала" if media_type == "tv" else "фильма"
-        header = f"🎬 <b>Начались съёмки {target} «{title}»</b>"
-
-        body_parts = ["Производство официально стартовало."]
-        if network:
-            body_parts.append(f"📺 <b>Платформа:</b> {network}")
-        if air_date:
-            body_parts.append(f"📅 <b>Релиз запланирован на:</b> <code>{format_date_ru(air_date)}</code>")
-
-        if overview and len(overview.strip()) > 0:
-            ov = overview.strip()
-            if len(ov) > 280:
-                ov = ov[:277] + "..."
-            body_parts.append(f"\n📝 <i>«{ov}»</i>")
-
-        body_parts.append("\n🍿 <i>Кинождун сообщит, когда объявят точную дату премьеры.</i>")
-        return f"{header}\n\n" + "\n".join(body_parts)
-
-    # --- 5. Завершение съёмок ---
-    elif event_type == "filming_finished":
-        target = f"{season_word}а сериала" if media_type == "tv" else "фильма"
-        header = f"🎬 <b>Завершились съёмки {target} «{title}»</b>"
-
-        body_parts = ["Съёмочный процесс завершён, проект переходит на стадию пост-продакшна."]
-        if network:
-            body_parts.append(f"📺 <b>Платформа:</b> {network}")
-        if air_date:
-            body_parts.append(f"📅 <b>Премьера:</b> <code>{format_date_ru(air_date)}</code>")
-
-        body_parts.append("\n🍿 <i>Кинождун сообщит о премьере и первом официальном трейлере.</i>")
-        return f"{header}\n\n" + "\n".join(body_parts)
-
-    # --- 6. Официальный трейлер ---
-    elif event_type == "trailer":
-        target = f"нового сезона «{title}»" if (media_type == "tv" and season_number) else f"фильма «{title}»"
-        header = f"🔥 <b>Вышел официальный трейлер {target}</b>"
-
-        body_parts = []
-        if air_date:
-            body_parts.append(f"🗓 <b>Премьера состоится:</b> <b>{format_date_ru(air_date)}</b>")
-        if network:
-            body_parts.append(f"🏢 <b>Платформа:</b> {network}")
-
-        if overview and len(overview.strip()) > 0:
-            ov = overview.strip()
-            if len(ov) > 240:
-                ov = ov[:237] + "..."
-            body_parts.append(f"\n📝 <i>«{ov}»</i>")
-
-        body_parts.append("\n🍿 <i>Кинождун напомнит о премьере за 3 дня и в день выхода.</i>")
-        return f"{header}\n\n" + "\n".join(body_parts)
-
-    # --- 7. Премьера состоялась ---
-    elif event_type == "released":
-        header = f"🍿 <b>Сегодня состоялась премьера {type_label} «{title}»{season_label}!</b>"
-        body_parts = ["Релиз уже доступен для просмотра."]
-        if network:
-            body_parts.append(f"🏢 <b>Платформа:</b> {network}")
-        body_parts.append("\n🎬 <i>Добавьте проект в личный список, чтобы не потерять.</i>")
-        return f"{header}\n\n" + "\n".join(body_parts)
-
-    # --- 8. Закрытие / завершение ---
-    elif event_type in ("canceled", "ended"):
-        status_label = "официально закрыт" if event_type == "canceled" else "завершён"
-        header = f"📢 <b>Сериал «{title}» {status_label}</b>"
-        body_parts = []
-        if network:
-            body_parts.append(f"{network} принял решение не продолжать проект.")
-        else:
-            body_parts.append("Производство сериала завершено, новых сезонов не планируется.")
-        body_parts.append("\n🍿 <i>В Кинождуне всегда можно найти другие интересные премьеры.</i>")
-        return f"{header}\n\n" + "\n".join(body_parts)
-
-    elif event_type in ("daily_digest", "weekly_digest"):
-        return render_digest(items, date_label or format_date_ru(datetime.date.today()),
+    if event_type in ("daily_digest", "weekly_digest"):
+        from bot.services.social_editorial import moscow_today
+        return render_digest(items, date_label or format_date_ru(moscow_today()),
                              weekly=event_type == "weekly_digest", site_url=site_url)
-
-    # --- Дефолтный формат новостного поста ---
-    header = f"🎬 <b>«{title}»{season_label}</b>"
-    lines = [header]
-    if network:
-        lines.append(f"🏢 <b>Студия / Платформа:</b> {network}")
-    if air_date:
-        lines.append(f"📅 <b>Дата премьеры:</b> <code>{format_date_ru(air_date)}</code>")
-    if overview and len(overview.strip()) > 0:
-        ov = overview.strip()
-        if len(ov) > 240:
-            ov = ov[:237] + "..."
-        lines.append(f"\n📝 <i>«{ov}»</i>")
-    lines.append("\n👉 <i>Хотите получать личные уведомления о премьере? Добавьте проект в Кинождун:</i>")
-    return "\n\n".join(lines)
+    from bot.services.social_editorial import event_copy
+    paragraphs, past = event_copy(title, media_type, event_type, season_number,
+                                  air_date=air_date, network=network, overview=overview,
+                                  old_air_date=old_air_date, trailer_url=trailer_url,
+                                  tmdb_id=tmdb_id, source_url=source_url)
+    paragraphs = [safe_html(p) for p in paragraphs]
+    paragraphs[0] = "<b>" + paragraphs[0] + "</b>"
+    if event_type in ("canceled", "ended"):
+        paragraphs.append("Другие фильмы и сериалы — в календаре КиноЖдуна.")
+    elif past or event_type == "released":
+        paragraphs.append("Сохраните проект в список просмотра на КиноЖдуне.")
+    else:
+        paragraphs.append("Добавьте проект в КиноЖдун — настройте личные напоминания.")
+    return "\n\n".join(paragraphs)
 
 
 def channel_post_keyboard(
@@ -297,7 +162,7 @@ def channel_post_keyboard(
 
     if post_type in ("daily_digest", "weekly_digest") or event_type in ("daily_digest", "weekly_digest"):
         if site_url:
-            buttons.append([InlineKeyboardButton(text="Все релизы на KinoЖдун ↗", url=site_url.rstrip('/') + '/calendar')])
+            buttons.append([InlineKeyboardButton(text="Календарь КиноЖдуна ↗", url=site_url.rstrip('/') + '/calendar')])
         buttons.append([InlineKeyboardButton(text="🔔 Настроить напоминания", url=deep_link)])
     else:
         action_row = [InlineKeyboardButton(text=btn_text, url=deep_link)]
@@ -424,8 +289,34 @@ class ChannelPublisher:
         post_text: str,
         poster_path: Optional[str],
         reply_markup: InlineKeyboardMarkup,
+        video_path: Optional[Any] = None,
     ) -> int:
-        """Отправляет пост в Telegram с фото (если есть постер) или текстом."""
+        """Отправляет пост в Telegram с видео (шортс), фото (если есть постер) или текстом."""
+        if video_path and Path(video_path).exists() and telegram_text_length(post_text) <= 1024:
+            try:
+                from aiogram.types import FSInputFile
+                v_path = Path(video_path)
+                thumb_input = None
+                if poster_path and Path(poster_path).exists():
+                    thumb_input = FSInputFile(poster_path)
+                elif (v_path.parent / "shorts_poster.jpg").exists():
+                    thumb_input = FSInputFile(str(v_path.parent / "shorts_poster.jpg"))
+
+                msg = await self.bot.send_video(
+                    chat_id=chat_id,
+                    video=FSInputFile(str(v_path)),
+                    thumbnail=thumb_input,
+                    caption=post_text,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML,
+                    supports_streaming=True,
+                    width=1080,
+                    height=1920,
+                )
+                return msg.message_id
+            except Exception as e:
+                logger.warning(f"Не удалось отправить шортс {video_path}, fallback на фото/текст: {e}")
+
         if poster_path and telegram_text_length(post_text) <= 1024:
             photo_url = poster_path if poster_path.startswith("http") else f"{self.settings.TMDB_IMAGE_BASE_URL}{poster_path}"
             caption_text = post_text
@@ -438,7 +329,7 @@ class ChannelPublisher:
                     parse_mode=ParseMode.HTML,
                 )
                 return msg.message_id
-            except Exception as e:
+            except TelegramBadRequest as e:
                 logger.warning(f"Не удалось отправить фото {photo_url}, fallback на текст: {e}")
 
         msg = await self.bot.send_message(
@@ -507,6 +398,7 @@ class ChannelPublisher:
             # Формируем текст публикации
             post_text = format_channel_post_text(
                 title=title,
+                tmdb_id=tmdb_id,
                 media_type=media_type,
                 event_type=event_type,
                 season_number=season_number,
@@ -634,6 +526,7 @@ class ChannelPublisher:
 
             post_text = post.post_text or format_channel_post_text(
                 title=post.title,
+                tmdb_id=post.tmdb_id,
                 media_type=post.media_type,
                 event_type=post.event_type,
                 season_number=post.season_number,
@@ -653,15 +546,44 @@ class ChannelPublisher:
                 site_url=getattr(self.settings, "SITE_BASE_URL", None),
             )
 
+            # Подготовка шортса для премьерных публикаций
+            video_path = None
+            shorts_pub = None
+            if getattr(self.settings, "SHORTS_ENABLED", True):
+                try:
+                    from bot.services.shorts_publisher import ShortsPublisher
+                    shorts_pub = ShortsPublisher(self.settings, self.bot)
+                    if shorts_pub.is_premiere_event(post):
+                        video_path = await shorts_pub.ensure_short_for_post(post)
+                except Exception as shorts_err:
+                    logger.warning("Ошибка подготовки шортса для поста #%s: %s", post.id, shorts_err)
+
             try:
                 message_id = await self._send_post_to_telegram(
                     chat_id=self.settings.TELEGRAM_CHANNEL_ID,
                     post_text=post_text,
                     poster_path=post.poster_path,
                     reply_markup=reply_markup,
+                    video_path=video_path,
                 )
                 await repo.mark_channel_post_published(post.id, message_id)
                 await session.commit()
+
+                # Мультиплатформенная публикация шортса (VK Stories, VK Wall, MAX Messenger)
+                if shorts_pub and video_path:
+                    try:
+                        await shorts_pub.distribute_all_channels(post, video_path)
+                    except Exception as dist_err:
+                        logger.warning("Ошибка дистрибуции шортса по внешним каналам: %s", dist_err)
+                if getattr(self.settings, "DZEN_POSTING_ENABLED", False) and self.settings.DZEN_SYNC_MODE == "telegram_sync":
+                    try:
+                        from bot.services.dzen_delivery import DzenPublisher
+                        await DzenPublisher(self.session_factory, self.settings).observe_channel_post(post, message_id, repo)
+                        await session.commit()
+                    except Exception as sync_error:
+                        await session.rollback()
+                        logger.warning("Telegram sent, but sync journal failed: %s", type(sync_error).__name__)
+
                 logger.info(f"Админ одобрил и опубликовал пост «{post.title}» (#{post.id}) в канал.")
                 return True
             except Exception as e:
@@ -691,6 +613,17 @@ class ChannelPublisher:
             pending_posts = await repo.get_pending_channel_posts()
             if not pending_posts:
                 return 0
+            from zoneinfo import ZoneInfo
+            fresh = []
+            for candidate in pending_posts:
+                created_day = candidate.created_at.replace(tzinfo=datetime.timezone.utc).astimezone(ZoneInfo('Europe/Moscow')).date()
+                lifetime = 6 if candidate.post_type == 'weekly_digest' else 0
+                if candidate.post_type in ('daily_digest', 'weekly_digest') and created_day + datetime.timedelta(days=lifetime) < moscow_today():
+                    await repo.update_channel_post_status(candidate.id, 'expired')
+                else:
+                    fresh.append(candidate)
+            await session.commit()
+            pending_posts = fresh
 
             # Одиночные новости из прежнего трекера остаются для ручной модерации.
             # Автоматический поток канала состоит только из общих подборок.
@@ -769,6 +702,14 @@ class ChannelPublisher:
                     if not start <= released <= end:
                         continue
                     item["date_str"] = format_date_ru(released)
+            if not details:
+                try:
+                    released = datetime.date.fromisoformat(item.get("release_date") or "")
+                except (TypeError, ValueError):
+                    continue
+                if not start <= released <= end:
+                    continue
+            item["source_url"] = f"https://www.themoviedb.org/{media}/{ident}"
             enriched.append(item)
             if len(enriched) >= 5:
                 break
@@ -776,7 +717,7 @@ class ChannelPublisher:
 
     async def create_daily_digest(self, target_date: Optional[datetime.date] = None) -> Optional[ChannelPost]:
         """Формирует и публикует/ставит в очередь утренний дайджест «Что выходит сегодня»."""
-        target_date = target_date or datetime.date.today()
+        target_date = target_date or moscow_today()
 
         async with self.session_factory() as session:
             repo = Repository(session)
@@ -800,6 +741,7 @@ class ChannelPublisher:
                     "media_type": it.media_type,
                     "tmdb_id": it.tmdb_id,
                     "tag": tag,
+                    "release_date": (it.next_air_date or it.custom_date).isoformat(),
                     "network": it.network,
                     "poster_path": it.poster_path,
                 })
@@ -844,7 +786,7 @@ class ChannelPublisher:
                 tmdb_id=None,
                 media_type=None,
                 event_type="daily_digest",
-                extra_key=f"{target_date.isoformat()}:{items_digest}",
+                extra_key=f"v2:{target_date.isoformat()}",
             )
 
             existing = await repo.get_channel_post_by_hash(fingerprint)
@@ -886,7 +828,7 @@ class ChannelPublisher:
 
     async def create_weekly_digest(self, start_date: Optional[datetime.date] = None) -> Optional[ChannelPost]:
         """Формирует и публикует/ставит в очередь понедельничный дайджест «Главные премьеры недели»."""
-        start_date = start_date or datetime.date.today()
+        start_date = start_date or moscow_today()
         end_date = start_date + datetime.timedelta(days=6)
 
         async with self.session_factory() as session:
@@ -904,6 +846,7 @@ class ChannelPublisher:
                     "tmdb_id": it.tmdb_id,
                     "date_str": format_date_ru(r_date),
                     "tag": tag,
+                    "release_date": (it.next_air_date or it.custom_date).isoformat(),
                     "network": it.network,
                     "poster_path": it.poster_path,
                 })
@@ -947,7 +890,7 @@ class ChannelPublisher:
                 tmdb_id=None,
                 media_type=None,
                 event_type="weekly_digest",
-                extra_key=f"{start_date.isoformat()}:{items_digest}",
+                extra_key=f"v2:{start_date.isoformat()}",
             )
 
             existing = await repo.get_channel_post_by_hash(fingerprint)
@@ -981,6 +924,327 @@ class ChannelPublisher:
             if self.settings.CHANNEL_AUTO_PUBLISH and self.settings.TELEGRAM_CHANNEL_ID and self.settings.CHANNEL_POSTING_ENABLED:
                 if await self.can_publish_now(repo):
                     await self.publish_post_by_id(post.id)
+            elif not self.settings.CHANNEL_AUTO_PUBLISH:
+                await self.notify_admins_pending(post)
+
+            return post
+
+    async def create_daily_premiere_short(
+        self,
+        target_date: Optional[datetime.date] = None,
+        force: bool = False,
+        force_item: Optional[dict] = None,
+    ) -> Optional[ChannelPost]:
+        """
+        Формирует и публикует ежедневный вертикальный шортс (Shorts/Reels/Clips) о главной премьере.
+        Находит топовый релиз (фильм или сезон сериала), создает ChannelPost с типом 'premiere',
+        запускает синтез нейроозвучки, нарезку видео и оверлея, и публикует во все подключенные каналы
+        (Telegram-канал, VK Истории, VK Стену, MAX Messenger).
+        """
+        target_date = target_date or moscow_today()
+
+        async with self.session_factory() as session:
+            repo = Repository(session)
+
+            # 1. Проверяем, не был ли уже опубликован шортс сегодня
+            if not force:
+                recent_premieres = await repo.get_recent_published_premieres(limit=5)
+                for p in recent_premieres:
+                    if p.published_at and p.published_at.date() == target_date:
+                        logger.info(
+                            "Премьерный шортс на сегодня (%s) уже был опубликован: #%s «%s».",
+                            target_date, p.id, p.title,
+                        )
+                        return p
+
+            # 2. Сбор кандидатов (СТРОГО актуальные премьеры: сегодня или в ближайшие 45 дней)
+            candidates = []
+            seen_keys = set()
+            published_media_ids = await repo.get_published_media_ids()
+
+            if force_item:
+                candidates.append(force_item)
+            else:
+                end_search = target_date + datetime.timedelta(days=45)
+
+                # Источник 1: Локальная база отслеживаемых релизов КиноЖдуна
+                try:
+                    tracked_items = await repo.get_items_releasing_between(target_date, end_search)
+                    for it in tracked_items:
+                        m_type = it.media_type
+                        t_id = it.tmdb_id
+                        if not m_type or not t_id or not it.title:
+                            continue
+                        if (m_type, t_id) in published_media_ids or (m_type, t_id) in seen_keys:
+                            continue
+                        r_date = it.next_air_date or it.custom_date
+                        if not r_date:
+                            continue
+                        delta = (r_date - target_date).days
+                        # СТРОГО отсекаем любые прошедшие даты (delta < 0)!
+                        if delta < 0 or delta > 45:
+                            continue
+
+                        window_prio = 0 if delta <= 7 else 1 if delta <= 21 else 2
+                        prio = (window_prio, 1, delta, -50.0)
+                        candidates.append({
+                            "priority": prio,
+                            "tmdb_id": t_id,
+                            "media_type": m_type,
+                            "title": it.title,
+                            "overview": None,
+                            "release_date": r_date,
+                            "poster_path": it.poster_path,
+                            "trailer_url": None,
+                            "season_number": it.next_season_number,
+                            "network": it.network,
+                            "popularity": 50.0,
+                        })
+                        seen_keys.add((m_type, t_id))
+                except Exception as repo_err:
+                    logger.warning("Ошибка запроса отслеживаемых релизов из БД: %s", repo_err)
+
+                # Источник 2: seed-каталог (website/catalog_seed.json)
+                seed_file = ROOT / "website" / "catalog_seed.json"
+                if seed_file.exists():
+                    try:
+                        seed_data = json.loads(seed_file.read_text(encoding="utf-8"))
+                        for raw in seed_data.get("titles", []):
+                            m_type = raw.get("media_type")
+                            t_id = raw.get("id")
+                            if not m_type or not t_id or not raw.get("title"):
+                                continue
+                            if (m_type, t_id) in published_media_ids or (m_type, t_id) in seen_keys:
+                                continue
+                            try:
+                                r_date = datetime.date.fromisoformat(raw.get("release_date") or "")
+                            except (ValueError, TypeError):
+                                r_date = None
+
+                            if not r_date:
+                                continue
+                            delta = (r_date - target_date).days
+                            # СТРОГО ИСКЛЮЧАЕМ прошедшие премьеры (delta < 0)! Никаких релизов за прошлые месяцы!
+                            if delta < 0 or delta > 45:
+                                continue
+
+                            pop = float(raw.get("popularity") or 0)
+                            trailer = raw.get("trailer")
+                            tr_url = f"https://www.youtube.com/watch?v={trailer}" if trailer else None
+                            has_tr = 0 if trailer else 1
+                            window_prio = 0 if delta <= 7 else 1 if delta <= 21 else 2
+                            prio = (window_prio, has_tr, delta, -pop)
+
+                            candidates.append({
+                                "priority": prio,
+                                "tmdb_id": t_id,
+                                "media_type": m_type,
+                                "title": raw.get("title"),
+                                "overview": raw.get("overview"),
+                                "release_date": r_date,
+                                "poster_path": raw.get("poster") or raw.get("image"),
+                                "trailer_url": tr_url,
+                                "season_number": raw.get("season"),
+                                "network": raw.get("network"),
+                                "popularity": pop,
+                            })
+                            seen_keys.add((m_type, t_id))
+                    except Exception as seed_err:
+                        logger.warning("Ошибка чтения catalog_seed.json: %s", seed_err)
+
+                # Источник 3: предстоящие премьеры из TMDB (Discover фильмов и сериалов)
+                if self.tmdb_client:
+                    # 3a. Фильмы
+                    try:
+                        upcoming_m = await self.tmdb_client.discover_upcoming_movies(target_date, end_search)
+                        for m in upcoming_m:
+                            t_id = m.get("id")
+                            if not t_id or ("movie", t_id) in seen_keys or ("movie", t_id) in published_media_ids:
+                                continue
+                            try:
+                                r_date = datetime.date.fromisoformat(m.get("release_date") or "")
+                            except (ValueError, TypeError):
+                                r_date = None
+
+                            if not r_date:
+                                continue
+                            delta = (r_date - target_date).days
+                            if delta < 0 or delta > 45:
+                                continue
+
+                            pop = float(m.get("popularity") or 0)
+                            window_prio = 0 if delta <= 7 else 1 if delta <= 21 else 2
+                            prio = (window_prio, 1, delta, -pop)
+
+                            candidates.append({
+                                "priority": prio,
+                                "tmdb_id": t_id,
+                                "media_type": "movie",
+                                "title": m.get("title"),
+                                "overview": m.get("overview"),
+                                "release_date": r_date,
+                                "poster_path": m.get("poster_path"),
+                                "trailer_url": None,
+                                "season_number": None,
+                                "network": None,
+                                "popularity": pop,
+                            })
+                            seen_keys.add(("movie", t_id))
+                    except Exception as tmdb_err:
+                        logger.warning("Ошибка запроса upcoming movies из TMDB: %s", tmdb_err)
+
+                    # 3b. Сериалы
+                    try:
+                        upcoming_tv = await self.tmdb_client.discover_upcoming_tv(target_date, end_search)
+                        for tv in upcoming_tv:
+                            t_id = tv.get("id")
+                            if not t_id or ("tv", t_id) in seen_keys or ("tv", t_id) in published_media_ids:
+                                continue
+                            try:
+                                r_date = datetime.date.fromisoformat(tv.get("first_air_date") or "")
+                            except (ValueError, TypeError):
+                                r_date = None
+
+                            if not r_date:
+                                continue
+                            delta = (r_date - target_date).days
+                            if delta < 0 or delta > 45:
+                                continue
+
+                            pop = float(tv.get("popularity") or 0)
+                            window_prio = 0 if delta <= 7 else 1 if delta <= 21 else 2
+                            prio = (window_prio, 1, delta, -pop)
+
+                            candidates.append({
+                                "priority": prio,
+                                "tmdb_id": t_id,
+                                "media_type": "tv",
+                                "title": tv.get("name"),
+                                "overview": tv.get("overview"),
+                                "release_date": r_date,
+                                "poster_path": tv.get("poster_path"),
+                                "trailer_url": None,
+                                "season_number": 1,
+                                "network": None,
+                                "popularity": pop,
+                            })
+                            seen_keys.add(("tv", t_id))
+                    except Exception as tmdb_tv_err:
+                        logger.warning("Ошибка запроса upcoming tv из TMDB: %s", tmdb_tv_err)
+
+                # Предварительная сортировка кандидатов
+                candidates.sort(key=lambda x: x["priority"])
+
+                # Обогащаем трейлерами и проверяем аудиторию для топ-10 кандидатов
+                if self.tmdb_client and candidates:
+                    top_candidates = candidates[:10]
+                    for cand in top_candidates:
+                        try:
+                            m_type = cand["media_type"]
+                            t_id = cand["tmdb_id"]
+                            details = (await self.tmdb_client.get_tv_details(t_id) if m_type == "tv"
+                                       else await self.tmdb_client.get_movie_details(t_id))
+                            if details:
+                                if not cand.get("overview"):
+                                    cand["overview"] = details.get("overview")
+                                if not cand.get("poster_path"):
+                                    cand["poster_path"] = details.get("poster_path")
+                                if not cand.get("network"):
+                                    cand["network"] = details.get("network")
+                                if not cand.get("trailer_url"):
+                                    tr = await self.tmdb_client.get_official_trailer(m_type, t_id)
+                                    if tr:
+                                        cand["trailer_url"] = tr.get("url")
+
+                                # Обновляем priority с учетом наличия трейлера
+                                delta = (cand["release_date"] - target_date).days
+                                window_prio = 0 if delta <= 7 else 1 if delta <= 21 else 2
+                                has_tr = 0 if cand.get("trailer_url") else 1
+                                cand["priority"] = (window_prio, has_tr, delta, -cand.get("popularity", 0.0))
+                        except Exception as enrich_err:
+                            logger.warning("Ошибка обогащения кандидата #%s: %s", cand.get("tmdb_id"), enrich_err)
+
+                    candidates.sort(key=lambda x: x["priority"])
+
+            if not candidates:
+                logger.info("Нет доступных кандидатов для премьерного шортса.")
+                return None
+
+            chosen = candidates[0]
+            logger.info("Выбран кандидат для ежедневного шортса: «%s» (%s ID %s, дата: %s)",
+                        chosen["title"], chosen["media_type"], chosen["tmdb_id"], chosen["release_date"])
+
+            if self.tmdb_client:
+                try:
+                    if chosen["media_type"] == "tv":
+                        details = await self.tmdb_client.get_tv_details(chosen["tmdb_id"])
+                    else:
+                        details = await self.tmdb_client.get_movie_details(chosen["tmdb_id"])
+
+                    if details:
+                        if not chosen.get("overview"):
+                            chosen["overview"] = details.get("overview")
+                        if not chosen.get("poster_path"):
+                            chosen["poster_path"] = details.get("poster_path")
+                        if not chosen.get("network"):
+                            chosen["network"] = details.get("network")
+                        if not chosen.get("trailer_url"):
+                            trailer_obj = await self.tmdb_client.get_official_trailer(chosen["media_type"], chosen["tmdb_id"])
+                            if trailer_obj:
+                                chosen["trailer_url"] = trailer_obj.get("url")
+                except Exception as det_err:
+                    logger.warning("Ошибка обогащения кандидата из TMDB: %s", det_err)
+
+            date_str = chosen["release_date"].isoformat() if chosen.get("release_date") else "nodate"
+            content_hash = generate_event_fingerprint(
+                tmdb_id=chosen["tmdb_id"],
+                media_type=chosen["media_type"],
+                event_type="premiere",
+                season_number=chosen.get("season_number"),
+                extra_key=f"short:{date_str}",
+            )
+
+            existing_post = await repo.get_channel_post_by_hash(content_hash)
+            if existing_post:
+                logger.info("Пост для «%s» уже существует (ID: %s).", chosen["title"], existing_post.id)
+                if existing_post.status != "published" and self.settings.CHANNEL_AUTO_PUBLISH:
+                    await self.publish_post_by_id(existing_post.id)
+                return existing_post
+
+            post_text = format_channel_post_text(
+                title=chosen["title"],
+                media_type=chosen["media_type"],
+                event_type="premiere",
+                season_number=chosen.get("season_number"),
+                air_date=chosen.get("release_date"),
+                network=chosen.get("network"),
+                overview=chosen.get("overview"),
+                trailer_url=chosen.get("trailer_url"),
+                site_url=self.settings.SITE_BASE_URL,
+            )
+
+            post = await repo.create_channel_post(
+                title=chosen["title"],
+                tmdb_id=chosen["tmdb_id"],
+                media_type=chosen["media_type"],
+                post_type="premiere",
+                event_type="premiere",
+                season_number=chosen.get("season_number"),
+                air_date=chosen.get("release_date"),
+                network=chosen.get("network"),
+                poster_path=chosen.get("poster_path"),
+                source="tmdb",
+                credibility="confirmed",
+                post_text=post_text,
+                trailer_url=chosen.get("trailer_url"),
+                payload=json.dumps({"overview": chosen.get("overview")}, ensure_ascii=False),
+                content_hash=content_hash,
+                status="pending",
+            )
+            await session.commit()
+
+            if self.settings.CHANNEL_AUTO_PUBLISH and self.settings.TELEGRAM_CHANNEL_ID and self.settings.CHANNEL_POSTING_ENABLED:
+                await self.publish_post_by_id(post.id)
             elif not self.settings.CHANNEL_AUTO_PUBLISH:
                 await self.notify_admins_pending(post)
 

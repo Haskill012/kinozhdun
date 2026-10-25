@@ -1,6 +1,7 @@
 """Фоновые периодические задачи планировщика APScheduler."""
 
 import logging
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -13,6 +14,7 @@ from bot.db.repositories import Repository
 from bot.services.channel import ChannelPublisher
 from bot.services.tmdb import TMDBClient
 from bot.services.tracker import TrackerService
+from bot.services.social_editorial import catalog_candidates, resolve_catalog_item
 from bot.services.episode_reminders import episodes_on_date
 from bot.keyboards.inline import notification_item_keyboard
 from bot.utils.formatting import (
@@ -50,19 +52,24 @@ async def check_episode_reminders_job(bot: Bot, session_factory, tmdb_client: TM
                         details = await tmdb_client.get_tv_details(item.tmdb_id)
                         cache[item.tmdb_id] = (await episodes_on_date(tmdb_client, item.tmdb_id, details, target)
                                               if details else [])
+                    unnotified_episodes = []
                     for episode in cache[item.tmdb_id]:
                         event = f"episode_tomorrow:{episode['season_number']}:{episode['episode_number']}:{target.isoformat()}"
-                        if await repo.has_notification(item.id, event):
-                            continue
-                        text = format_episode_tomorrow_notification(item, episode)
-                        kb = notification_item_keyboard(item_id=item.id, media_type="tv",
-                                                       tmdb_id=item.tmdb_id, tmdb_url=item.tmdb_url,
-                                                       bot_username=settings.BOT_USERNAME)
-                        await bot.send_message(item.user.telegram_id, text, reply_markup=kb,
-                                               parse_mode=ParseMode.HTML)
+                        if not await repo.has_notification(item.id, event):
+                            unnotified_episodes.append(episode)
+                    if not unnotified_episodes:
+                        continue
+                    text = format_episode_tomorrow_notification(item, unnotified_episodes)
+                    kb = notification_item_keyboard(item_id=item.id, media_type="tv",
+                                                   tmdb_id=item.tmdb_id, tmdb_url=item.tmdb_url,
+                                                   bot_username=settings.BOT_USERNAME)
+                    await bot.send_message(item.user.telegram_id, text, reply_markup=kb,
+                                           parse_mode=ParseMode.HTML)
+                    for episode in unnotified_episodes:
+                        event = f"episode_tomorrow:{episode['season_number']}:{episode['episode_number']}:{target.isoformat()}"
                         await repo.log_notification(item.id, event, text)
-                        # Persist each successful send before moving to another subscriber.
-                        await session.commit()
+                    # Persist each successful send before moving to another subscriber.
+                    await session.commit()
                 except Exception:
                     logger.warning("Не удалось обработать напоминание о серии; повтор при следующей проверке.")
     except Exception:
@@ -187,6 +194,8 @@ async def daily_digest_job(
     """Ежедневный выпуск дайджеста «Что выходит сегодня»."""
     if not settings.DAILY_DIGEST_ENABLED:
         return
+    if settings.DAILY_DIGEST_SKIP_WEEKLY_DAY and settings.WEEKLY_DIGEST_ENABLED and episode_reminder_now().weekday() == settings.WEEKLY_DIGEST_DAY:
+        return
     logger.info("Запуск формирования утреннего дайджеста «Что выходит сегодня»...")
     try:
         publisher = ChannelPublisher(session_factory, settings, bot, tmdb_client=tmdb_client)
@@ -195,6 +204,7 @@ async def daily_digest_job(
             logger.info(f"Утренний дайджест успешно сформирован (ID: {post.id}, статус: {post.status}).")
     except Exception as e:
         logger.error(f"Ошибка при формировании утреннего дайджеста: {e}", exc_info=True)
+
 
 
 async def weekly_digest_job(
@@ -213,12 +223,249 @@ async def weekly_digest_job(
         logger.error(f"Ошибка при формировании еженедельного дайджеста: {e}", exc_info=True)
 
 
+async def daily_shorts_job(
+    bot: Bot, session_factory, settings: Settings, tmdb_client: Optional[TMDBClient] = None
+) -> None:
+    """Ежедневное создание и дистрибуция вертикального шортса (Shorts/Reels/Clips) о главной премьере."""
+    if not getattr(settings, "SHORTS_ENABLED", True) or not getattr(settings, "SHORTS_AUTO_PUBLISH", True):
+        return
+    logger.info("Запуск ежедневной генерации премьерного шортса...")
+    try:
+        publisher = ChannelPublisher(session_factory, settings, bot, tmdb_client=tmdb_client)
+        post = await publisher.create_daily_premiere_short()
+        if post:
+            logger.info(f"Ежедневный шортс успешно сформирован и опубликован (ID: {post.id}, тайтл: «{post.title}»).")
+        else:
+            logger.info("Кандидатов для ежедневного шортса не найдено или шортс на сегодня уже опубликован.")
+    except Exception as e:
+        logger.error(f"Ошибка при создании ежедневного шортса: {e}", exc_info=True)
+
+
+async def check_vk_feed_job(session_factory, settings: Settings, tmdb_client=None) -> None:
+    """Периодическая публикация очередной новинки из каталога в сообщество ВКонтакте."""
+    if not getattr(settings, "VK_POSTING_ENABLED", False):
+        return
+    if not settings.VK_AUTO_PUBLISH:
+        return
+    if not settings.VK_ACCESS_TOKEN or not settings.VK_GROUP_ID:
+        return
+
+    publisher = None
+    try:
+        import json
+        from datetime import date
+        from zoneinfo import ZoneInfo
+        from bot.services.vk_publisher import VKPublisher
+        from bot.services.channel import generate_event_fingerprint
+
+        publisher = VKPublisher(session_factory, settings)
+        if not publisher.is_configured():
+            return
+
+        seed_file = Path(__file__).parent.parent.parent / "website" / "catalog_seed.json"
+        if not seed_file.exists():
+            return
+
+        with open(seed_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        titles = data.get("titles", [])
+        if not titles:
+            return
+
+        today = datetime.now(ZoneInfo("Europe/Moscow")).date()
+        async with session_factory() as session:
+            repo = Repository(session)
+            candidates_list = list(catalog_candidates(titles, today))
+
+            # Если в сид-каталоге закончились свежие премьеры, дополняем из TMDB Discover
+            if tmdb_client:
+                try:
+                    fresh_m = await tmdb_client.discover_upcoming_movies(today, today + timedelta(days=45))
+                    for m in fresh_m:
+                        if m.get("id") and not any(c.get("id") == m["id"] for c in candidates_list):
+                            candidates_list.append({
+                                "id": m["id"],
+                                "media_type": "movie",
+                                "title": m.get("title"),
+                                "overview": m.get("overview"),
+                                "release_date": m.get("release_date"),
+                                "poster": m.get("poster_path"),
+                                "popularity": m.get("popularity", 0),
+                                "rating": m.get("vote_average", 0),
+                            })
+                except Exception as tmdb_err:
+                    logger.warning("Ошибка получения TMDB discover для VK feed: %s", tmdb_err)
+
+            for item in candidates_list:
+                item = await resolve_catalog_item(item, tmdb_client, today, settings)
+                if item is None:
+                    continue
+                release_d = item["air_date"]
+                # СТРОГО: прошедшие премьеры (старше 7 дней) не публикуются в ленту!
+                if release_d and (release_d - today).days < -7:
+                    continue
+                date_str = release_d.isoformat() if release_d else "nodate"
+                event_type = item["event_type"]
+
+                h = generate_event_fingerprint(
+                    tmdb_id=item.get("id"),
+                    media_type=item.get("media_type", "movie"),
+                    event_type=event_type,
+                    season_number=item.get("season"),
+                    extra_key=date_str,
+                )
+                if not await repo.is_vk_post_exists(h):
+                    post_id = await publisher.publish_event(
+                        title=item["title"],
+                        media_type=item.get("media_type", "movie"),
+                        event_type=event_type,
+                        season_number=item.get("season"),
+                        tmdb_id=item.get("id"),
+                        air_date=release_d,
+                        episode_number=item.get("episode_number"),
+                        genres=item.get("genres", []),
+                        overview=item.get("overview"),
+                        network=item.get("network"),
+                        poster_path=(item.get("image") or item.get("poster")) if settings.VK_ATTACHMENT_MODE == "community_photo" else (item.get("poster") or item.get("image")),
+                        item_id=item.get("id"),
+                    )
+                    if post_id:
+                        logger.info(f"Фоновая автопубликация в VK: «{item['title']}» (post_id={post_id})")
+                    break
+    except Exception as e:
+        logger.error(f"Ошибка при фоновой публикации в VK: {e}", exc_info=True)
+    finally:
+        if publisher:
+            await publisher.close()
+
+
+async def check_dzen_feed_job(session_factory, settings: Settings, bot: Optional[Bot] = None, tmdb_client=None) -> None:
+    """Периодическая публикация актуальной премьеры или отправка очереди в канал Дзена."""
+    if not getattr(settings, "DZEN_POSTING_ENABLED", False):
+        return
+    if not getattr(settings, "DZEN_AUTO_PUBLISH", True):
+        return
+    if settings.DZEN_SYNC_MODE == "telegram_sync":
+        return
+
+    publisher = None
+    try:
+        import json
+        from datetime import date
+        from zoneinfo import ZoneInfo
+        from bot.services.dzen_publisher import DzenPublisher
+        from bot.services.channel import generate_event_fingerprint
+
+        publisher = DzenPublisher(session_factory, settings, bot=bot)
+        if not publisher.is_configured():
+            return
+
+        # Сначала проверяем отложенную очередь
+        sent = await publisher.publish_pending_queue()
+        if sent > 0:
+            return
+
+        seed_file = Path(__file__).parent.parent.parent / "website" / "catalog_seed.json"
+        if not seed_file.exists():
+            return
+
+        with open(seed_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        titles = data.get("titles", [])
+        if not titles:
+            return
+
+        today = datetime.now(ZoneInfo("Europe/Moscow")).date()
+        async with session_factory() as session:
+            repo = Repository(session)
+            candidates_list = list(catalog_candidates(titles, today))
+
+            if tmdb_client:
+                try:
+                    fresh_m = await tmdb_client.discover_upcoming_movies(today, today + timedelta(days=45))
+                    for m in fresh_m:
+                        if m.get("id") and not any(c.get("id") == m["id"] for c in candidates_list):
+                            candidates_list.append({
+                                "id": m["id"],
+                                "media_type": "movie",
+                                "title": m.get("title"),
+                                "overview": m.get("overview"),
+                                "release_date": m.get("release_date"),
+                                "poster": m.get("poster_path"),
+                                "popularity": m.get("popularity", 0),
+                                "rating": m.get("vote_average", 0),
+                            })
+                except Exception as tmdb_err:
+                    logger.warning("Ошибка получения TMDB discover для Dzen feed: %s", tmdb_err)
+
+            for item in candidates_list:
+                item = await resolve_catalog_item(item, tmdb_client, today, settings)
+                if item is None:
+                    continue
+                release_d = item["air_date"]
+                # СТРОГО: прошедшие премьеры (старше 7 дней) не публикуются в ленту!
+                if release_d and (release_d - today).days < -7:
+                    continue
+                date_str = release_d.isoformat() if release_d else "nodate"
+                event_type = item["event_type"]
+
+                h = generate_event_fingerprint(
+                    tmdb_id=item.get("id"),
+                    media_type=item.get("media_type", "movie"),
+                    event_type=event_type,
+                    season_number=item.get("season"),
+                    extra_key=date_str,
+                )
+                if not await repo.is_dzen_post_exists(h):
+                    post = await publisher.publish_event(
+                        title=item["title"],
+                        media_type=item.get("media_type", "movie"),
+                        event_type=event_type,
+                        season_number=item.get("season"),
+                        tmdb_id=item.get("id"),
+                        air_date=release_d,
+                        episode_number=item.get("episode_number"),
+                        genres=item.get("genres", []),
+                        overview=item.get("overview"),
+                        network=item.get("network"),
+                        poster_path=item.get("poster") or item.get("image"),
+                    )
+                    if post:
+                        logger.info(f"Фоновая автопубликация в Дзен: «{item['title']}» (status={post.status})")
+                    break
+    except Exception as e:
+        logger.error(f"Ошибка при фоновой публикации в Дзен: {e}", exc_info=True)
+    finally:
+        if publisher:
+            await publisher.close()
+
+
 def setup_scheduler(
     bot: Bot, session_factory, tmdb_client: TMDBClient, settings: Settings
 ) -> AsyncIOScheduler:
     """Настройка и конфигурирование планировщика задач."""
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
     now_utc = datetime.now(timezone.utc)
+
+    if settings.VK_POSTING_ENABLED and settings.VK_AUTO_PUBLISH:
+        scheduler.add_job(
+            check_vk_feed_job, "cron", day_of_week=settings.VK_POST_DAYS,
+            hour=settings.VK_POST_HOUR, minute=settings.VK_POST_MINUTE,
+            kwargs={"session_factory": session_factory, "settings": settings, "tmdb_client": tmdb_client},
+            coalesce=True, max_instances=1, misfire_grace_time=900,
+            id="check_vk_feed", replace_existing=True,
+        )
+
+    if getattr(settings, "DZEN_POSTING_ENABLED", False) and settings.DZEN_AUTO_PUBLISH and settings.DZEN_SYNC_MODE != "telegram_sync":
+        scheduler.add_job(
+            check_dzen_feed_job, "cron", day_of_week=settings.DZEN_POST_DAYS,
+            hour=settings.DZEN_POST_HOUR, minute=settings.DZEN_POST_MINUTE,
+            coalesce=True, max_instances=1, misfire_grace_time=900,
+            kwargs={"session_factory": session_factory, "settings": settings, "bot": bot, "tmdb_client": tmdb_client},
+            id="check_dzen_feed", replace_existing=True,
+        )
 
     # Личные уведомления по отслеживаемым фильмам и сериалам (первый запуск через 5 сек)
     scheduler.add_job(
@@ -274,6 +521,9 @@ def setup_scheduler(
         "cron",
         hour=settings.DAILY_DIGEST_HOUR,
         minute=30,
+        day_of_week=",".join(str(day) for day in range(7) if not (
+            settings.DAILY_DIGEST_SKIP_WEEKLY_DAY and settings.WEEKLY_DIGEST_ENABLED and day == settings.WEEKLY_DIGEST_DAY)),
+        coalesce=True, max_instances=1, misfire_grace_time=900,
         kwargs={
             "bot": bot,
             "session_factory": session_factory,
@@ -291,6 +541,7 @@ def setup_scheduler(
         day_of_week=settings.WEEKLY_DIGEST_DAY,
         hour=settings.WEEKLY_DIGEST_HOUR,
         minute=0,
+        coalesce=True, max_instances=1, misfire_grace_time=900,
         kwargs={
             "bot": bot,
             "session_factory": session_factory,
@@ -298,6 +549,25 @@ def setup_scheduler(
             "tmdb_client": tmdb_client,
         },
         id="channel_weekly_digest",
+        replace_existing=True,
+    )
+
+    # Ежедневный шортс о топ-премьере (по расписанию в 12:00 МСК)
+    shorts_hour = getattr(settings, "SHORTS_DAILY_HOUR", 12)
+    shorts_minute = getattr(settings, "SHORTS_DAILY_MINUTE", 0)
+    scheduler.add_job(
+        daily_shorts_job,
+        "cron",
+        hour=shorts_hour,
+        minute=shorts_minute,
+        coalesce=True, max_instances=1, misfire_grace_time=1800,
+        kwargs={
+            "bot": bot,
+            "session_factory": session_factory,
+            "settings": settings,
+            "tmdb_client": tmdb_client,
+        },
+        id="channel_daily_shorts",
         replace_existing=True,
     )
 

@@ -139,10 +139,6 @@ class TMDBClient:
         networks = data.get("networks", [])
         if networks and isinstance(networks, list) and networks[0].get("name"):
             network = networks[0]["name"]
-        elif data.get("production_companies"):
-            comps = data["production_companies"]
-            if comps and isinstance(comps, list) and comps[0].get("name"):
-                network = comps[0]["name"]
 
         return {
             "tmdb_id": data.get("id"),
@@ -283,4 +279,30 @@ class TMDBClient:
     async def get_airing_today_tv(self, page: int = 1) -> list[dict[str, Any]]:
         """Получает сериалы с новыми эпизодами сегодня из TMDB."""
         data = await self._get("/tv/airing_today", {"page": page})
+        return data.get("results", [])
+
+    async def discover_upcoming_movies(
+        self, start_date: Any, end_date: Any, page: int = 1
+    ) -> list[dict[str, Any]]:
+        """Ищет предстоящие премьеры фильмов в заданном диапазоне дат, отсортированные по популярности."""
+        params = {
+            "primary_release_date.gte": start_date.isoformat() if hasattr(start_date, "isoformat") else str(start_date),
+            "primary_release_date.lte": end_date.isoformat() if hasattr(end_date, "isoformat") else str(end_date),
+            "sort_by": "popularity.desc",
+            "page": page,
+        }
+        data = await self._get("/discover/movie", params)
+        return data.get("results", [])
+
+    async def discover_upcoming_tv(
+        self, start_date: Any, end_date: Any, page: int = 1
+    ) -> list[dict[str, Any]]:
+        """Ищет предстоящие премьеры сериалов в заданном диапазоне дат, отсортированные по популярности."""
+        params = {
+            "first_air_date.gte": start_date.isoformat() if hasattr(start_date, "isoformat") else str(start_date),
+            "first_air_date.lte": end_date.isoformat() if hasattr(end_date, "isoformat") else str(end_date),
+            "sort_by": "popularity.desc",
+            "page": page,
+        }
+        data = await self._get("/discover/tv", params)
         return data.get("results", [])

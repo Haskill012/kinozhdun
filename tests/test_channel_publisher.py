@@ -146,7 +146,7 @@ class TestChannelPublisher(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(post_postponed)
         self.assertNotEqual(post_announcement.id, post_postponed.id)
         self.assertEqual(post_postponed.event_type, "date_postponed")
-        self.assertIn("перенесли", post_postponed.post_text)
+        self.assertIn("изменилась дата выхода", post_postponed.post_text)
         self.assertIn("24.04.2027", post_postponed.post_text)
         self.assertIn("17.04.2027", post_postponed.post_text)
 
@@ -161,8 +161,11 @@ class TestChannelPublisher(unittest.IsolatedAsyncioTestCase):
             network="Amazon",
         )
         self.assertIsNotNone(post)
-        self.assertIn("официально продлён на 3 сезон", post.post_text)
-        self.assertIn("Amazon подтвердил продолжение", post.post_text)
+        self.assertIn("анонс продолжения", post.post_text)
+        self.assertIn("3 сезон", post.post_text)
+        self.assertNotIn("официально", post.post_text)
+        self.assertIn("Amazon", post.post_text)
+        self.assertIn("Источник: https://www.themoviedb.org/tv/82856", post.post_text)
 
         kb = channel_post_keyboard(post.id, "kinojdun_bot", "Фоллаут", event_type="renewed", season_number=3)
         btn = kb.inline_keyboard[0][0]
@@ -182,7 +185,9 @@ class TestChannelPublisher(unittest.IsolatedAsyncioTestCase):
             trailer_url=trailer_url,
         )
         self.assertIsNotNone(post)
-        self.assertIn("Вышел официальный трейлер нового сезона «Фоллаут»", post.post_text)
+        self.assertIn("новый трейлер", post.post_text)
+        self.assertIn("2 сезон", post.post_text)
+        self.assertNotIn("официальный", post.post_text)
 
         kb = channel_post_keyboard(
             post.id,
@@ -305,7 +310,7 @@ class TestChannelPublisher(unittest.IsolatedAsyncioTestCase):
         digest = await self.publisher.create_daily_digest(target_date=today)
         self.assertIsNotNone(digest)
         self.assertEqual(digest.event_type, "daily_digest")
-        self.assertIn("Сегодня на экране", digest.post_text)
+        self.assertIn("Фильмы и новые серии сегодня", digest.post_text)
         self.assertIn("Новый Фильм", digest.post_text)
         self.assertIn("премьера фильма", digest.post_text)
         self.assertIn("Крутой Сериал", digest.post_text)
@@ -358,6 +363,44 @@ class TestChannelPublisher(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Премьера Понедельника", digest.post_text)
         self.assertIn("Премьера Четверга", digest.post_text)
 
+    async def test_daily_premiere_short_never_picks_past_release(self):
+        """Проверка: для ежедневного шортса строго отсекаются прошедшие премьеры (август/сентябрь при октябре)."""
+        from unittest.mock import patch
+        from pathlib import Path
+        target_date = date(2026, 10, 25)
+
+        mock_tmdb = MagicMock()
+        mock_tmdb.discover_upcoming_movies = AsyncMock(return_value=[
+            {"id": 9991, "title": "Августовский фильм", "release_date": "2026-08-17", "popularity": 5000.0, "poster_path": None},
+            {"id": 9992, "title": "Сентябрьский фильм", "release_date": "2026-09-10", "popularity": 4000.0, "poster_path": None},
+            {"id": 9993, "title": "Будущая премьера", "release_date": "2026-10-29", "popularity": 3000.0, "poster_path": None},
+        ])
+        mock_tmdb.discover_upcoming_tv = AsyncMock(return_value=[])
+        mock_tmdb.get_movie_details = AsyncMock(return_value={
+            "id": 9993, "title": "Будущая премьера", "release_date": "2026-10-29",
+            "overview": "Описание премьеры", "poster_path": "/poster.jpg"
+        })
+        mock_tmdb.get_official_trailer = AsyncMock(return_value={"url": "https://youtube.com/watch?v=abc"})
+
+        publisher = ChannelPublisher(
+            session_factory=self.session_factory,
+            settings=self.settings,
+            bot=self.mock_bot,
+            tmdb_client=mock_tmdb,
+        )
+
+        with patch("bot.services.shorts_publisher.ShortsPublisher.ensure_short_for_post", new_callable=AsyncMock) as mock_short:
+            mock_short.return_value = Path("dummy.mp4")
+            post = await publisher.create_daily_premiere_short(target_date=target_date)
+
+        self.assertIsNotNone(post)
+        self.assertEqual(post.title, "Будущая премьера")
+        self.assertEqual(post.air_date, date(2026, 10, 29))
+        self.assertGreaterEqual(post.air_date, target_date)
+        self.assertNotEqual(post.air_date, date(2026, 8, 17))
+        self.assertNotEqual(post.air_date, date(2026, 9, 10))
+
 
 if __name__ == "__main__":
     unittest.main()
+
