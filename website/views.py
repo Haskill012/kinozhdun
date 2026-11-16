@@ -96,6 +96,44 @@ def search_form(prefix="site"):
     return '<form class="site-search" action="/catalog" method="get" role="search" aria-label="Поиск фильмов и сериалов"><div class="site-search-field"><span aria-hidden="true">⌕</span><input id="{prefix}-search-input" name="q" type="search" placeholder="Найти фильм или сериал" aria-label="Название фильма или сериала" autocomplete="off" maxlength="100" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="{prefix}-search-results"><button class="site-search-clear" type="button" aria-label="Очистить поиск" hidden>×</button></div><div class="site-search-dropdown" hidden><p class="site-search-status" role="status" aria-live="polite"></p><div id="{prefix}-search-results" role="listbox" aria-label="Найденные фильмы и сериалы"></div><a class="site-search-all" href="/catalog">Все результаты →</a></div><noscript><button type="submit">Найти</button></noscript></form>'.replace("{prefix}", prefix)
 
 
+def title_link(item, config):
+    return config["bot_url"] + "?start=c_" + item["media_type"] + "_" + str(item["id"])
+
+
+def max_title_link(item, config):
+    base = config.get("max_bot_url", "https://max.ru/id5001170357_1_bot")
+    return base + "?start=c_" + item["media_type"] + "_" + str(item["id"])
+
+
+def vk_bot_link(tg_url, config=None):
+    from urllib.parse import parse_qs, urlencode, urlsplit
+    config = config or {}
+    base = config.get('vk_bot_url', 'https://vk.me/club242087163')
+    payload = parse_qs(urlsplit(tg_url).query).get('start', [''])[0]
+    return base + '?' + urlencode({'ref': payload, 'ref_source': 'kinojdun'}) if payload else base
+
+
+def bot_dropdown(label, tg_url, max_url, btn_class="button", wrapper_class="", aria_label=None, config=None):
+    aria_attr = f' aria-label="{esc(aria_label)}"' if aria_label else ""
+    classes = f"bot-dropdown {wrapper_class}".strip()
+    return (
+        f'<div class="{classes}">'
+        f'<button type="button" class="{btn_class} bot-dropdown-trigger" aria-expanded="false"{aria_attr}>'
+        f'<span>{label}</span><span class="bot-dropdown-caret" aria-hidden="true">▾</span></button>'
+        f'<div class="bot-dropdown-menu">'
+        f'<a class="bot-dropdown-item bot-dropdown-tg" href="{esc(tg_url)}" target="_blank" rel="noopener">'
+        f'<svg class="bot-icon tg-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.75-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/></svg>'
+        f'<span class="bot-name">Telegram</span><span class="bot-arrow">↗</span></a>'
+        f'<a class="bot-dropdown-item bot-dropdown-max" href="{esc(max_url)}" target="_blank" rel="noopener">'
+        f'<span class="bot-icon max-icon" aria-hidden="true">M</span>'
+        f'<span class="bot-name">Макс</span><span class="bot-arrow">↗</span></a>'
+        f'<a class="bot-dropdown-item bot-dropdown-vk" href="{esc(vk_bot_link(tg_url, config))}" target="_blank" rel="noopener">'
+        f'<span class="bot-icon vk-icon" aria-hidden="true">VK</span>'
+        f'<span class="bot-name">ВКонтакте</span><span class="bot-arrow">↗</span></a>'
+        f'</div></div>'
+    )
+
+
 def layout(config, title, description, content, path="/", active="", schema=None, noindex=False, og_image=None):
     base = config["base_url"]
     structured = schema or {"@context": "https://schema.org", "@type": "WebSite", "name": "КиноЖдун", "url": base, "inLanguage": "ru"}
@@ -118,7 +156,8 @@ def layout(config, title, description, content, path="/", active="", schema=None
             is_article = True
         elif "@graph" in schema:
             is_article = any(item.get("@type") in ("NewsArticle", "Article") for item in schema.get("@graph", []))
-    og_img = esc(og_image if allowed_asset(og_image) else (base + "/static/logo_mascot.jpg"))
+    from website.social_images import social_image_url
+    og_img = esc(social_image_url(base, og_image) if allowed_asset(og_image) else (base + "/static/logo_mascot.jpg"))
     return f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     {verification}<title>{esc(title)} — КиноЖдун</title><meta name="description" content="{esc(description)}"><meta name="robots" content="{robots}">
     <link rel="canonical" href="{esc(base + path)}"><link rel="icon" href="/static/logo_mascot.jpg" type="image/jpeg"><link rel="icon" href="/static/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/static/logo_mascot.jpg">
@@ -127,11 +166,11 @@ def layout(config, title, description, content, path="/", active="", schema=None
     <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{esc(title)}"><meta name="twitter:description" content="{esc(description)}"><meta name="twitter:image" content="{og_img}">
     <meta name="theme-color" content="#111312"><link rel="alternate" type="application/rss+xml" title="КиноЖдун — новости" href="/feed.xml">
     <link rel="stylesheet" href="/static/site.css?v={ASSET_VERSION}"><script type="application/ld+json">{jsonld}</script><script src="/static/site.js?v={ASSET_VERSION}" defer></script>{metrika}</head>
-    <body data-metrika-id="{esc(config.get('yandex_metrika_id'))}" data-bot-url="{esc(config['bot_url'])}" data-channel-url="{esc(config['channel_url'])}"><a class="skip" href="#content">Перейти к содержимому</a><header><div class="header-inner"><a class="brand" href="/" aria-label="КиноЖдун — главная"><img class="brand-logo" src="/static/logo_mascot.jpg" alt="КиноЖдун" width="48" height="48"><span>кино<span class="brand-light">ждун</span><small>ХОРОШЕЕ КИНО СТОИТ ЖДАТЬ</small></span></a>
+    <body data-metrika-id="{esc(config.get('yandex_metrika_id'))}" data-bot-url="{esc(config['bot_url'])}" data-max-bot-url="{esc(config.get('max_bot_url', ''))}" data-vk-bot-url="{esc(config.get('vk_bot_url', 'https://vk.me/club242087163'))}" data-channel-url="{esc(config['channel_url'])}"><a class="skip" href="#content">Перейти к содержимому</a><header><div class="header-inner"><a class="brand" href="/" aria-label="КиноЖдун — главная"><img class="brand-logo" src="/static/logo_mascot.jpg" alt="КиноЖдун" width="48" height="48"><span>кино<span class="brand-light">ждун</span><small>ХОРОШЕЕ КИНО СТОИТ ЖДАТЬ</small></span></a>
     {search_form()}
-    <nav aria-label="Основная навигация">{nav}</nav><a class="button small" href="{esc(config['bot_url'])}" target="_blank" rel="noopener">↗ Открыть бота</a></div></header>
+    <nav aria-label="Основная навигация">{nav}</nav>{bot_dropdown('↗ Открыть бота', config['bot_url'], config.get('max_bot_url', 'https://max.ru/id5001170357_1_bot'), btn_class='button small', wrapper_class='header-bot-dropdown', config=config)}</div></header>
     <main id="content">{content}</main>
-    <footer><div class="footer-top"><a class="brand footer-brand" href="/"><img class="brand-logo footer-logo" src="/static/logo_mascot.jpg" alt="КиноЖдун" width="38" height="38"><span>кино<span class="brand-light">ждун</span><span class="lime">✳</span></span></a><p>Ваш следующий любимый фильм<br>ещё впереди.</p><div><a href="{esc(config['channel_url'])}" target="_blank" rel="noopener">Telegram-канал ↗</a><a href="{esc(config['bot_url'])}" target="_blank" rel="noopener">Бот с напоминаниями ↗</a><a href="/about">О проекте</a></div></div>
+    <footer><div class="footer-top"><a class="brand footer-brand" href="/"><img class="brand-logo footer-logo" src="/static/logo_mascot.jpg" alt="КиноЖдун" width="38" height="38"><span>кино<span class="brand-light">ждун</span><span class="lime">✳</span></span></a><p>Ваш следующий любимый фильм<br>ещё впереди.</p><div><a href="{esc(config['channel_url'])}" target="_blank" rel="noopener">Telegram-канал ↗</a><a href="{esc(config['bot_url'])}" target="_blank" rel="noopener">Бот в Telegram ↗</a><a href="{esc(config.get('max_bot_url', 'https://max.ru/id5001170357_1_bot'))}" target="_blank" rel="noopener">Бот в Макс ↗</a><a href="{esc(config.get('vk_bot_url', 'https://vk.me/club242087163'))}" target="_blank" rel="noopener">Бот ВКонтакте ↗</a><a href="/about">О проекте</a></div></div>
     <div class="footer-bottom"><span>© {today().year} КиноЖдун</span><span class="footer-service-links"><a href="/help">Помощь</a><a href="/privacy">Конфиденциальность</a></span></div></footer></body></html>'''
 
 
@@ -167,11 +206,8 @@ def title_page(store, config, item, news_page=1):
 
 
 def bot_banner(config):
-    return f'''<section class="bot-banner"><div><span class="eyebrow">ВАШ ЛИЧНЫЙ ТРЕКЕР ПРЕМЬЕР</span><h2>Ждать — ваше дело.<br>Напомнить — наше<span class="lime">.</span></h2><p>Добавьте фильм или сериал в Telegram-бота.<br>КиноЖдун сообщит, когда появится дата выхода.</p><a class="button" href="{esc(config['bot_url'])}" target="_blank" rel="noopener">Начать ждать в боте <span>↗</span></a><small>Бесплатно. Без установки. В вашем Telegram.</small></div><div class="chat-scene" aria-label="Пример работы бота"><div class="chat-top"><img class="chat-avatar" src="/static/logo_mascot.jpg" alt="КиноЖдун"><div>КиноЖдун<small>бот · ваш список ожидания</small></div><span>•••</span></div><div class="bubble own">Хочу следить за новым сезоном</div><div class="bubble"><strong>🍿 Уже ждём вместе!</strong><p>Добавьте любимый сериал в список. Я проверю дату и пришлю уведомление, когда она появится.</p><span class="chat-action">✓ В списке ожидания</span></div><div class="chat-input">Написать сообщение… <span>➤</span></div></div></section>'''
+    return f'''<section class="bot-banner"><div><span class="eyebrow">ВАШ ЛИЧНЫЙ ТРЕКЕР ПРЕМЬЕР</span><h2>Ждать — ваше дело.<br>Напомнить — наше<span class="lime">.</span></h2><p>Добавьте фильм или сериал в Telegram, Макс или ВКонтакте.<br>КиноЖдун сообщит, когда появится дата выхода.</p>{bot_dropdown('Начать ждать в боте ↗', config['bot_url'], config.get('max_bot_url', 'https://max.ru/id5001170357_1_bot'), btn_class='button', wrapper_class='banner-bot-dropdown', config=config)}<small>Бесплатно. Без установки. В Telegram, Макс и ВКонтакте.</small></div><div class="chat-scene" aria-label="Пример работы бота"><div class="chat-top"><img class="chat-avatar" src="/static/logo_mascot.jpg" alt="КиноЖдун"><div>КиноЖдун<small>бот · ваш список ожидания</small></div><span>•••</span></div><div class="bubble own">Хочу следить за новым сезоном</div><div class="bubble"><strong>🍿 Уже ждём вместе!</strong><p>Добавьте любимый сериал в список. Я проверю дату и пришлю уведомление, когда она появится.</p><span class="chat-action">✓ В списке ожидания</span></div><div class="chat-input">Написать сообщение… <span>➤</span></div></div></section>'''
 
-
-def title_link(item, config):
-    return config["bot_url"] + "?start=c_" + item["media_type"] + "_" + str(item["id"])
 
 
 def premiere_rows(items, config, limit=5):
@@ -194,7 +230,7 @@ def premiere_rows(items, config, limit=5):
         label = state['kind']
         if ' · ' in state['detail']:
             label += ' · ' + state['detail'].split(' · ', 1)[1]
-        rows.append(f'''<div class="premiere-row"><div class="premiere-date"><b>{d.day:02}</b><span>{month} {d.year}</span>{badge}</div><a class="premiere-poster" href="{title_path(item)}" aria-label="Открыть карточку: {esc(item['title'])}">{image(item.get('poster'), item['title'])}</a><a class="premiere-title" href="{title_path(item)}"><strong>{esc(item['title'])}</strong><span>{esc(label)}</span></a><a class="reminder" href="{esc(title_link(item, config))}" target="_blank" rel="noopener" aria-label="{watch_label(item)}: {esc(item['title'])}">{watch_label(item)}</a></div>''')
+        rows.append(f'''<div class="premiere-row"><div class="premiere-date"><b>{d.day:02}</b><span>{month} {d.year}</span>{badge}</div><a class="premiere-poster" href="{title_path(item)}" aria-label="Открыть карточку: {esc(item['title'])}">{image(item.get('poster'), item['title'])}</a><a class="premiere-title" href="{title_path(item)}"><strong>{esc(item['title'])}</strong><span>{esc(label)}</span></a>{bot_dropdown(watch_label(item), title_link(item, config), max_title_link(item, config), btn_class='reminder', wrapper_class='premiere-bot-dropdown', aria_label=f"{watch_label(item)}: {item['title']}", config=config)}</div>''')
     return "".join(rows)
 
 
@@ -246,6 +282,8 @@ def article_page(store, config, article):
     if item:
         body += f'<p><a href="{title_path(item)}">Карточка «{esc(item["title"])}» ↗</a></p>'
     bot_url = (config["bot_url"] + f"?start=c_{article['media_type']}_{article['tmdb_id']}" if article.get("media_type") in ("tv", "movie") and article.get("tmdb_id") else config["bot_url"])
+    max_base = config.get("max_bot_url", "https://max.ru/id5001170357_1_bot")
+    max_url = (max_base + f"?start=c_{article['media_type']}_{article['tmdb_id']}" if article.get("media_type") in ("tv", "movie") and article.get("tmdb_id") else max_base)
     related = [a for a in audience_articles(store, config, limit=7) if a["slug"] != article["slug"]][:3]
 
     cat_url = config["base_url"] + ("/movies" if article["category"] == "movies" else "/series" if article["category"] == "series" else "/news")
@@ -292,7 +330,7 @@ def article_page(store, config, article):
     cta_heading = action['status'] if action else 'Сохраните кино на потом'
     cta_text = action['note'] if action else 'Выбирайте фильмы и сериалы и сохраняйте свой список в Telegram.'
     cta_button = action['label'] if action else 'Открыть бота'
-    content = f'''<div class="page-shell"><div class="breadcrumbs"><a href="/">Главная</a> / <a href="/news">Материалы</a> / {category}</div><article class="article"><span class="eyebrow lime">{category}</span><h1>{esc(article['title'])}</h1><div class="meta"><span>Редакция КиноЖдуна</span><span>•</span><time datetime="{esc(article['published'])}">{'.'.join(stamp(article['published']))}</time></div>{release_badge}<p class="article-lead">{esc(article['summary'])}</p>{image(article.get('image'), article['title'], 'article-cover', eager=True)}<div class="article-body">{body}<div class="source"><strong>Подробнее о проекте</strong><a href="{esc(article['source_url'])}" target="_blank" rel="noopener noreferrer">Открыть источник ↗</a><small>Сведения могут обновляться. Подробнее — <a href="/about">о нашей редакции</a>.</small></div><div class="article-cta"><h2>{cta_heading}</h2><p>{cta_text}</p><a class="button" href="{esc(bot_url)}" target="_blank" rel="noopener">{cta_button}</a></div></div></article><section class="news-section"><div class="section-heading"><h2>Ещё немного кино<span class="lime">.</span></h2><a href="/news" class="text-link">Все материалы ↗</a></div><div class="news-grid">{''.join(card(a) for a in related)}</div></section></div>'''
+    content = f'''<div class="page-shell"><div class="breadcrumbs"><a href="/">Главная</a> / <a href="/news">Материалы</a> / {category}</div><article class="article"><span class="eyebrow lime">{category}</span><h1>{esc(article['title'])}</h1><div class="meta"><span>Редакция КиноЖдуна</span><span>•</span><time datetime="{esc(article['published'])}">{'.'.join(stamp(article['published']))}</time></div>{release_badge}<p class="article-lead">{esc(article['summary'])}</p>{image(article.get('image'), article['title'], 'article-cover', eager=True)}<div class="article-body">{body}<div class="source"><strong>Подробнее о проекте</strong><a href="{esc(article['source_url'])}" target="_blank" rel="noopener noreferrer">Открыть источник ↗</a><small>Сведения могут обновляться. Подробнее — <a href="/about">о нашей редакции</a>.</small></div><div class="article-cta"><h2>{cta_heading}</h2><p>{cta_text}</p>{bot_dropdown(cta_button, bot_url, max_url, btn_class='button', wrapper_class='article-bot-dropdown', config=config)}</div></div></article><section class="news-section"><div class="section-heading"><h2>Ещё немного кино<span class="lime">.</span></h2><a href="/news" class="text-link">Все материалы ↗</a></div><div class="news-grid">{''.join(card(a) for a in related)}</div></section></div>'''
     return layout(config, article["title"], article["summary"][:180], content, path, "news", schema=schema, og_image=article.get("image"))
 
 

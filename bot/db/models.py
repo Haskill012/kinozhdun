@@ -124,3 +124,39 @@ class AnalyticsEvent(Base):
     reference_id: Mapped[Optional[str]] = mapped_column(String, nullable=True) # tmdb_id, watchlist token, post_id
     payload: Mapped[Optional[str]] = mapped_column(String, nullable=True) # JSON с доп. контекстом
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class VKPost(Base):
+    """Журнал публикаций в сообщество ВКонтакте для дедупликации и статистики."""
+    __tablename__ = 'vk_posts'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    content_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    tmdb_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    media_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    event_type: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    vk_post_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    status: Mapped[str] = mapped_column(String, default='published')  # 'published', 'failed'
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class DzenPost(Base):
+    """Журнал публикаций в канал Дзена для дедупликации, очереди и статистики."""
+    __tablename__ = 'dzen_posts'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    content_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    tmdb_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    media_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    event_type: Mapped[str] = mapped_column(String, nullable=False)
+    post_type: Mapped[str] = mapped_column(String, default='news')
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    post_text: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    poster_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    dzen_publication_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default='published')  # 'pending', 'published', 'failed'
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+

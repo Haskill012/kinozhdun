@@ -83,8 +83,33 @@ class EpisodeReminderTests(unittest.IsolatedAsyncioTestCase):
         self.tmdb.get_tv_season.return_value = {"episodes": [self.episode, other]}
         await self.run_job()
         await self.run_job()
-        self.assertEqual(self.bot.send_message.await_count, 4)
-        self.assertTrue(any("5 серия" in c.args[1] for c in self.bot.send_message.await_args_list))
+        # Each subscriber receives only 1 combined notification instead of separate messages
+        self.assertEqual(self.bot.send_message.await_count, 2)
+        sent_text = self.bot.send_message.await_args_list[0].args[1]
+        self.assertIn("Уже завтра выходят новые серии!", sent_text)
+        self.assertIn("2 сезон, 4–5 серии", sent_text)
+
+    async def test_batch_release_of_all_episodes_sends_single_notification(self):
+        # Scenario matching 'Вглубь' (Below) where all 6 episodes drop at once
+        six_episodes = [
+            {"season_number": 1, "episode_number": i, "air_date": "2026-10-09"}
+            for i in range(1, 7)
+        ]
+        self.tmdb.get_tv_details.return_value = {
+            "next_episode_to_air": six_episodes[0],
+            "seasons": [{"season_number": 1, "air_date": "2026-10-09"}],
+        }
+        self.tmdb.get_tv_season.return_value = {"episodes": six_episodes}
+        await self.run_job()
+        await self.run_job()
+        # 2 subscribers receive exactly 1 message each
+        self.assertEqual(self.bot.send_message.await_count, 2)
+        text = self.bot.send_message.await_args_list[0].args[1]
+        self.assertIn("Уже завтра выходят новые серии!", text)
+        self.assertIn("1 сезон, 1–6 серии (всего 6 серий)", text)
+        async with self.factory() as session:
+            logs = list(await session.scalars(select(NotificationLog)))
+            self.assertEqual(len(logs), 12)
 
     async def test_unknown_next_episode_uses_current_season(self):
         result = await episodes_on_date(self.tmdb, 247718,

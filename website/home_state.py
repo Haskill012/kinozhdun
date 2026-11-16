@@ -67,20 +67,9 @@ def watch_label(item):
     return state['label']
 
 
-def hero_projects(items, events=(), limit=6):
-    changed = {tuple(a.get(k) for k in ('media_type', 'tmdb_id')) for a in events}
-    def score(item):
-        event = event_state(item)['date']
-        days = (event - today()).days if event else None
-        popularity = max(0, float(item.get('popularity') or 0))
-        # Popularity leads; reliable ratings and imminent events add bounded bonuses.
-        import math
-        return (math.log1p(popularity) * 12 +
-                (float(item.get('rating') or 0) * 2 if item.get('votes', 0) >= 50 else 0) +
-                (20 * (1 - days / 120) if days is not None and 0 <= days <= 120 else 0) +
-                (5 if (item['media_type'], item['id']) in changed else 0))
-    candidates = [i for i in items if waiting(i) or (event_state(i)['date'] and 0 <= (today() - event_state(i)['date']).days <= 7)]
-    return sorted(candidates or items, key=lambda i: (-score(i), i['media_type'], i['id']))[:limit]
+def hero_projects(items, events=(), limit=6, trends=None):
+    from website.ranking import hero_selection
+    return hero_selection(items, events, limit, trends, today())
 
 
 def change_type(article):

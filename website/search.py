@@ -5,6 +5,7 @@ from difflib import SequenceMatcher
 import aiohttp
 from website.title_names import normalized as normalize, names, canonical_title, remote_query
 from website.artwork import artwork, allowed_asset
+from website.ranking import interest_score, load_trends
 
 
 def matches(item, query):
@@ -18,12 +19,12 @@ def matches(item, query):
     return False
 
 
-def rank(item, query):
+def rank(item, query, trends=None):
     labels = [normalize(name) for name in names(item)]
     return (not any(name == query for name in labels),
             not any(name.startswith(query) for name in labels),
             not any(query in name for name in labels),
-            -float(item.get("popularity") or 0), item["title"])
+            -interest_score(item, trends), item["title"])
 
 
 def result(item):
@@ -39,7 +40,8 @@ def suggestions(store, query, limit=8):
     if len(query) < 2:
         return []
     found = [item for item in store.catalog() if matches(item, query)]
-    found.sort(key=lambda item: rank(item, query))
+    trends = load_trends(store)
+    found.sort(key=lambda item: rank(item, query, trends))
     return [result(item) for item in found[:limit]]
 
 
@@ -54,9 +56,10 @@ class ProjectSearch:
         if len(query) < 2:
             return []
         published = self.store.catalog()
+        trends = load_trends(self.store)
         local = [item for item in published if matches(item, query)]
         if not self.config.get("api_key") or any(query == normalize(name) for item in local for name in names(item)):
-            return sorted(local, key=lambda item: rank(item, query))[:8]
+            return sorted(local, key=lambda item: rank(item, query, trends))[:8]
         # One external search at a time; identical overlapping requests share cache.
         async with self.lock:
             key = remote_query(query)
@@ -74,7 +77,7 @@ class ProjectSearch:
             if identity in merged:
                 merged[identity] = {**item, "remote_match": True}
         merged.update({(item["media_type"], item["id"]): item for item in local})
-        return sorted(merged.values(), key=lambda item: rank(item, query))[:8]
+        return sorted(merged.values(), key=lambda item: rank(item, query, trends))[:8]
 
     async def fetch_remote(self, query):
         from website.editor import Editor

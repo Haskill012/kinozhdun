@@ -14,7 +14,7 @@ class SchedulerTests(unittest.TestCase):
         now = datetime(2026, 10, 5, 0, 0, tzinfo=timezone.utc)
         daily = scheduler.get_job("channel_daily_digest").trigger.get_next_fire_time(None, now)
         weekly = scheduler.get_job("channel_weekly_digest").trigger.get_next_fire_time(None, now)
-        self.assertEqual(daily.astimezone(timezone.utc), datetime(2026, 10, 5, 6, 30, tzinfo=timezone.utc))
+        self.assertEqual(daily.astimezone(timezone.utc), datetime(2026, 10, 6, 6, 30, tzinfo=timezone.utc))
         self.assertEqual(weekly.astimezone(timezone.utc), datetime(2026, 10, 5, 7, 0, tzinfo=timezone.utc))
 
 

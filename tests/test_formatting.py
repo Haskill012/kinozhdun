@@ -22,6 +22,9 @@ from bot.utils.formatting import (
     format_status_change_notification,
     format_status_emoji,
     safe_html,
+    format_episodes_count_ru,
+    format_episode_numbers,
+    format_episode_tomorrow_notification,
 )
 
 
@@ -144,6 +147,58 @@ class TestFormattingTemplates(unittest.TestCase):
         self.assertEqual(len(buttons), 1)
         self.assertEqual(buttons[0].text, "🍿 Открыть в Кинождуне")
         self.assertEqual(buttons[0].callback_data, "info:42")
+
+    def test_format_episodes_count_ru(self):
+        self.assertEqual(format_episodes_count_ru(1), "1 серия")
+        self.assertEqual(format_episodes_count_ru(2), "2 серии")
+        self.assertEqual(format_episodes_count_ru(4), "4 серии")
+        self.assertEqual(format_episodes_count_ru(5), "5 серий")
+        self.assertEqual(format_episodes_count_ru(6), "6 серий")
+        self.assertEqual(format_episodes_count_ru(11), "11 серий")
+        self.assertEqual(format_episodes_count_ru(14), "14 серий")
+        self.assertEqual(format_episodes_count_ru(21), "21 серия")
+        self.assertEqual(format_episodes_count_ru(22), "22 серии")
+
+    def test_format_episode_numbers(self):
+        self.assertEqual(format_episode_numbers([1]), "1 серия")
+        self.assertEqual(format_episode_numbers([1, 2]), "1–2 серии")
+        self.assertEqual(format_episode_numbers([1, 2, 3, 4, 5, 6]), "1–6 серии (всего 6 серий)")
+        self.assertEqual(format_episode_numbers([1, 3]), "1, 3 серии (всего 2 серии)")
+        self.assertEqual(format_episode_numbers([1, 2, 4, 5]), "1–2, 4–5 серии (всего 4 серии)")
+
+    def test_format_episode_tomorrow_notification_single(self):
+        item = SimpleNamespace(title="Вглубь", network="Netflix", tmdb_id=285322, media_type="tv")
+        ep = {"season_number": 1, "episode_number": 1, "air_date": "2026-10-08"}
+        text = format_episode_tomorrow_notification(item, ep)
+        self.assertIn("Уже завтра выходит новая серия!", text)
+        self.assertIn("Вглубь", text)
+        self.assertIn("1 сезон, 1 серия", text)
+        self.assertIn("08.10.2026", text)
+        self.assertIn("Netflix", text)
+
+    def test_format_episode_tomorrow_notification_batch_six_episodes(self):
+        item = SimpleNamespace(title="Вглубь", network="Netflix", tmdb_id=285322, media_type="tv")
+        episodes = [
+            {"season_number": 1, "episode_number": i, "air_date": "2026-10-08"}
+            for i in range(1, 7)
+        ]
+        text = format_episode_tomorrow_notification(item, episodes)
+        self.assertIn("Уже завтра выходят новые серии!", text)
+        self.assertIn("Вглубь", text)
+        self.assertIn("1 сезон, 1–6 серии (всего 6 серий)", text)
+        self.assertIn("08.10.2026", text)
+        self.assertIn("Netflix", text)
+
+    def test_format_episode_tomorrow_notification_multiple_seasons(self):
+        item = SimpleNamespace(title="Спецпроект", network="Кинопоиск", tmdb_id=999, media_type="tv")
+        episodes = [
+            {"season_number": 1, "episode_number": 10, "air_date": "2026-10-08"},
+            {"season_number": 2, "episode_number": 1, "air_date": "2026-10-08"},
+        ]
+        text = format_episode_tomorrow_notification(item, episodes)
+        self.assertIn("Уже завтра выходят новые серии!", text)
+        self.assertIn("1 сезон, 10 серия", text)
+        self.assertIn("2 сезон, 1 серия", text)
 
 
 if __name__ == "__main__":

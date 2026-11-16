@@ -14,6 +14,55 @@ services:
       - "api.telegram.org=${TELEGRAM_API_IP:-149.154.167.220}"
     volumes:
       - ./data:/app/data
+      - ./output:/app/output
+
+  kinozhdun-max-bot:
+    build: .
+    container_name: kinozhdun_max_bot
+    restart: unless-stopped
+    command: ["python", "-m", "max_bot"]
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+
+  kinozhdun-max-channel:
+    build: .
+    container_name: kinozhdun_max_channel
+    restart: unless-stopped
+    dns:
+      - 9.9.9.9
+      - 149.112.112.112
+    command: ["python", "-m", "max_bot.channel_sync"]
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "from pathlib import Path; import json,time; p=Path('/app/data/max_channel_ready.json'); assert p.exists() and time.time()-p.stat().st_mtime<180 and json.loads(p.read_text())['ready']"]
+      interval: 60s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+  kinozhdun-vk-bot:
+    build: .
+    container_name: kinozhdun_vk_bot
+    restart: unless-stopped
+    dns:
+      - 9.9.9.9
+      - 149.112.112.112
+    command: ["python", "-m", "vk_bot"]
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "from pathlib import Path; import time; p=Path('/app/data/vk_bot_ready.json'); assert p.exists() and time.time()-p.stat().st_mtime<180"]
+      interval: 60s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
 
   kinozhdun-site:
     build: .

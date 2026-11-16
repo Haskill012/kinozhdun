@@ -156,7 +156,7 @@ async def process_inline_query(inline_query: InlineQuery) -> None:
             shared = None
 
         if shared:
-            items = json.loads(shared.items_json) if shared.items_json else []
+            items = json.loads(shared.items_snapshot) if shared.items_snapshot else []
             title = shared.title or "Мой Кинождун"
             text = format_shared_watchlist_message(items, title)
             deep_link = f"https://t.me/{bot_username}?start=w_{watchlist_token}"

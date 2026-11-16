@@ -1,0 +1,679 @@
+"""
+Автоматизированный сервис генерации и дистрибуции вертикальных шортсов
+к премьерам фильмов, сериалов и выходу новых сезонов для «КиноЖдун».
+"""
+
+import os
+import sys
+import json
+import html
+import asyncio
+import logging
+import hashlib
+import shutil
+import subprocess
+import urllib.request
+import urllib.parse
+from pathlib import Path
+from typing import Optional, Any
+from datetime import datetime
+
+from aiogram import Bot
+from aiogram.enums import ParseMode
+from aiogram.types import FSInputFile, InlineKeyboardMarkup
+
+from bot.config import Settings
+from bot.db.models import ChannelPost
+from bot.utils.formatting import format_date_ru
+
+logger = logging.getLogger(__name__)
+
+ROOT = Path(__file__).resolve().parents[2]
+
+# Pillow import with system and local fallback
+try:
+    from PIL import Image, ImageDraw, ImageFont
+except ImportError:
+    sys.path.insert(0, r"C:\Users\cvet7\AppData\Roaming\Python\Python313\site-packages")
+    from PIL import Image, ImageDraw, ImageFont
+
+# Local tooling path fallbacks for development
+sys.path.insert(0, str(ROOT / "output" / "social-pilot-2026-10-07" / "tooling"))
+sys.path.insert(0, str(ROOT / "output" / "social-pilot-2026-10-07" / "speech-tools"))
+
+try:
+    import imageio_ffmpeg
+    FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
+    ffmpeg_dir = str(Path(FFMPEG_EXE).parent)
+    if ffmpeg_dir not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
+    # Create alias 'ffmpeg' if missing in ffmpeg_dir for yt-dlp
+    alias_name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+    alias_path = Path(ffmpeg_dir) / alias_name
+    if not alias_path.exists():
+        try:
+            shutil.copy2(FFMPEG_EXE, alias_path)
+        except Exception:
+            pass
+except Exception:
+    FFMPEG_EXE = shutil.which("ffmpeg") or "ffmpeg"
+
+try:
+    import edge_tts
+except Exception:
+    edge_tts = None
+
+
+def format_ass_time(sec: float) -> str:
+    h = int(sec // 3600)
+    m = int((sec % 3600) // 60)
+    s = sec % 60
+    return f"{h}:{m:02d}:{s:05.2f}"
+
+
+class ShortsPublisher:
+    """Сервис автономной генерации и дистрибуции шортсов для премьерных событий."""
+
+    def __init__(self, settings: Settings, bot: Optional[Bot] = None):
+        self.settings = settings
+        self.bot = bot
+        self.output_root = ROOT / "output" / "autonomous_shorts"
+        self.output_root.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def is_premiere_event(post: ChannelPost) -> bool:
+        """Определяет, относится ли событие к премьере фильма, сериала или нового сезона."""
+        if post.post_type in ("daily_digest", "weekly_digest"):
+            return False
+
+        if post.event_type in ("canceled", "ended"):
+            return False
+
+        # Фильмы: любые анонсы дат, релизы, трейлеры
+        if post.media_type == "movie":
+            return True
+
+        # Сериалы: премьера первого сезона или релиз нового сезона
+        if post.media_type == "tv":
+            return True
+
+        return False
+
+    def get_short_cache_path(self, post: ChannelPost) -> Path:
+        """Путь к кэшированному шортсу для данного события."""
+        safe_title = "".join(c for c in (post.title or "short") if c.isalnum() or c in ("_", "-")).strip()
+        filename = f"{post.media_type or 'media'}_{post.tmdb_id or post.id}_{post.season_number or 1}_{safe_title}.mp4"
+        return self.output_root / filename
+
+    def render_overlay(self, badge: str, hook: str, title: str, meta: str, source: str, out_path: Path) -> Path:
+        """Генерирует фирменный оверлей КиноЖдуна БЕЗ надписей о тайминге."""
+        # Кроссплатформенный поиск шрифтов
+        fonts_dir = ROOT / "bot" / "assets" / "fonts"
+        if not fonts_dir.exists():
+            fonts_dir = Path("C:/Windows/Fonts")
+
+        bold_path = fonts_dir / "segoeuib.ttf"
+        if not bold_path.exists():
+            bold_path = fonts_dir / "arialbd.ttf"
+        reg_path = fonts_dir / "segoeui.ttf"
+        if not reg_path.exists():
+            reg_path = fonts_dir / "arial.ttf"
+
+        bold_str = str(bold_path) if bold_path.exists() else None
+        reg_str = str(reg_path) if reg_path.exists() else None
+
+        if bold_str:
+            f_badge = ImageFont.truetype(bold_str, 30)
+            f_hook = ImageFont.truetype(bold_str, 48)
+            f_title = ImageFont.truetype(bold_str, 42)
+            f_meta = ImageFont.truetype(bold_str, 28)
+            f_cta = ImageFont.truetype(bold_str, 30)
+        else:
+            f_badge = f_hook = f_title = f_meta = f_cta = ImageFont.load_default()
+
+        if reg_str:
+            f_attr = ImageFont.truetype(reg_str, 22)
+        else:
+            f_attr = ImageFont.load_default()
+
+        im = Image.new("RGBA", (1080, 1920), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(im)
+
+        # 1. Верхний бейдж
+        bx, by = 64, 85
+        bbox = f_badge.getbbox(badge)
+        bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        pill_box = (bx, by, bx + bw + 44, by + bh + 22)
+        radius = (pill_box[3] - pill_box[1]) // 2
+        draw.rounded_rectangle(pill_box, radius=radius, fill=(18, 26, 17, 230), outline="#d4fa58", width=2)
+        draw.text((bx + 22, by + 10 - bbox[1]), badge, font=f_badge, fill="#d4fa58")
+
+        # 2. Крупный интригующий хук прямо под бейджем (чистая шапка, строго без тайминга)
+        draw.text((64, 185), hook, font=f_hook, fill="#ffffff", stroke_width=3, stroke_fill="#000000")
+        draw.line([(64, 280), (1016, 280)], fill=(212, 250, 88, 140), width=2)
+
+        # 3. Рамка центрального окна (1080x904 px)
+        draw.rectangle((0, 318, 1080, 1226), outline=(212, 250, 88, 40), width=2)
+
+        # 4. Подвал
+        draw.line([(64, 1540), (1016, 1540)], fill=(212, 250, 88, 140), width=2)
+        draw.text((64, 1570), title, font=f_title, fill="#d4fa58", stroke_width=2, stroke_fill="#000000")
+        draw.text((64, 1630), meta, font=f_meta, fill="#c2c7bd", stroke_width=2, stroke_fill="#000000")
+
+        # 5. Кнопка CTA
+        cta_text = "👉 Сохрани в КиноЖдуне, чтобы не забыть"
+        cx, cy = 64, 1690
+        c_bbox = f_cta.getbbox(cta_text)
+        cw, ch = c_bbox[2] - c_bbox[0], c_bbox[3] - c_bbox[1]
+        cta_pill = (cx, cy, cx + cw + 48, cy + ch + 26)
+        c_radius = (cta_pill[3] - cta_pill[1]) // 2
+        draw.rounded_rectangle(cta_pill, radius=c_radius, fill=(24, 34, 22, 240), outline="#d4fa58", width=2)
+        draw.text((cx + 24, cy + 12 - c_bbox[1]), cta_text, font=f_cta, fill="#ffffff")
+
+        # 6. Атрибуция
+        draw.text((64, 1785), source, font=f_attr, fill="#7b8178")
+
+        im.save(out_path)
+        return out_path
+
+    async def generate_narration_and_subtitles(
+        self, script_sentences: list[dict[str, Any]], work_dir: Path
+    ) -> tuple[Path, Path, float]:
+        """Синтезирует дикторский голос DmitryNeural +8% и строит ASS субтитры."""
+        if edge_tts is None:
+            raise RuntimeError("edge_tts не установлен")
+
+        word_timings = []
+        mp3_path = work_dir / "voice.mp3"
+        wav_path = work_dir / "voice.wav"
+
+        full_text = " ".join(s["text"] for s in script_sentences)
+        
+        # Надежный синтез с повторными попытками при сетевых сбоях
+        last_err = None
+        for attempt in range(6):
+            try:
+                word_timings.clear()
+                rate_val = "+8%" if attempt % 2 == 0 else "+0%"
+                voice_val = "ru-RU-DmitryNeural" if attempt < 4 else "ru-RU-SvetlanaNeural"
+                comm = edge_tts.Communicate(full_text, voice_val, rate=rate_val)
+                audio_written = 0
+                with open(mp3_path, "wb") as f:
+                    async for chunk in comm.stream():
+                        if chunk["type"] == "audio":
+                            f.write(chunk["data"])
+                            audio_written += len(chunk["data"])
+                        elif chunk["type"] == "WordBoundary":
+                            word_timings.append({
+                                "start": chunk["offset"] / 10_000_000,
+                                "duration": chunk["duration"] / 10_000_000,
+                                "text": chunk["text"],
+                            })
+                if mp3_path.exists() and audio_written > 5000:
+                    break
+            except Exception as e:
+                last_err = e
+                await asyncio.sleep(1.5)
+        else:
+            raise RuntimeError(f"Edge TTS synthesis failed after 6 retries: {last_err}")
+
+        # Переводим в 48kHz WAV
+        cmd = [FFMPEG_EXE, "-hide_banner", "-loglevel", "error", "-y", "-i", str(mp3_path), "-ar", "48000", "-ac", "2", str(wav_path)]
+        subprocess.run(cmd, check=True)
+
+        total_duration = word_timings[-1]["start"] + word_timings[-1]["duration"] + 0.6 if word_timings else 25.0
+
+        # Сборка субтитров ASS
+        header = """[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+Style: Default,Arial,62,&H00FFFFFF,&H0058FAD4,&H00101311,&H80101311,-1,0,0,0,100,100,0,0,1,5,3,2,60,60,460,1
+
+[Events]
+Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+"""
+        events = []
+        for s in script_sentences:
+            s_str = format_ass_time(s["start"])
+            e_str = format_ass_time(s["end"])
+            hl = s.get("highlight", "")
+
+            def highlight_line(line: str) -> str:
+                words = line.split()
+                res = []
+                for w in words:
+                    if hl.lower() in w.lower():
+                        res.append(f"{{\\c&H58FAD4&}}{w}{{\\c&HFFFFFF&}}")
+                    else:
+                        res.append(w)
+                return " ".join(res)
+
+            l1 = highlight_line(s["line1"])
+            l2 = highlight_line(s["line2"])
+            tag = r"{\fscx95\fscy95\t(0,70,\fscx100\fscy100)}"
+            events.append(f"Dialogue: 0,{s_str},{e_str},Default,,0,0,460,,{tag}{l1}\\N{l2}")
+
+        ass_path = work_dir / "captions.ass"
+        ass_path.write_text(header + "\n".join(events), encoding="utf-8-sig")
+
+        return wav_path, ass_path, total_duration
+
+    @staticmethod
+    def get_media_duration(path: Path) -> float:
+        """Получает точную длительность медиафайла через FFmpeg."""
+        try:
+            cmd = [FFMPEG_EXE, "-i", str(path)]
+            res = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, text=True, errors="replace")
+            m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", res.stderr)
+            if m:
+                h, mi, s = float(m.group(1)), float(m.group(2)), float(m.group(3))
+                return h * 3600 + mi * 60 + s
+        except Exception:
+            pass
+        return 80.0
+
+    def assemble_short_video(
+        self,
+        trailer_path: Path,
+        overlay_path: Path,
+        voice_wav_path: Path,
+        ass_path: Path,
+        shots: list[tuple[float, float, int]],
+        duration: float,
+        out_mp4: Path,
+    ) -> Path:
+        """Собирает итоговый 1080x1920 MP4 шортс с сайдчейн-даккингом и кинетическими субтитрами."""
+        work_dir = voice_wav_path.parent
+        work_dir.mkdir(parents=True, exist_ok=True)
+        out_mp4.parent.mkdir(parents=True, exist_ok=True)
+
+        trailer_dur = self.get_media_duration(trailer_path)
+        if 15.0 < trailer_dur < 75.0:
+            scale = max(0.2, (trailer_dur - 5.0) / 72.0)
+            actual_shots = [(round(s * scale + 1.0, 1), dur, cx) for s, dur, cx in shots]
+        else:
+            actual_shots = shots
+
+        parts = []
+        for i, (ss, dur, cx) in enumerate(actual_shots):
+            p = work_dir / f"vshot_{i:02d}.mp4"
+            x = max(0, min(1280 - 640, cx - 320))
+            vf = (
+                f"[0:v]crop=1280:536:0:92,split[b][f];"
+                f"[b]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=30,eq=brightness=-0.28[bg];"
+                f"[f]crop=640:536:{x}:0,scale=1080:904,setsar=1[fg];"
+                f"[bg][fg]overlay=0:320[v];"
+                f"[v][1:v]overlay=0:0,format=yuv420p[out]"
+            )
+            cmd = [
+                FFMPEG_EXE, "-hide_banner", "-loglevel", "error", "-y",
+                "-ss", str(ss), "-i", str(trailer_path),
+                "-loop", "1", "-i", str(overlay_path),
+                "-filter_complex", vf,
+                "-map", "[out]", "-map", "0:a",
+                "-t", str(dur), "-r", "30",
+                "-af", f"afade=t=in:d=0.03,afade=t=out:st={dur-0.03}:d=0.03",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "19", "-threads", "3",
+                "-c:a", "aac", "-b:a", "192k",
+                str(p)
+            ]
+            subprocess.run(cmd, check=True)
+            parts.append(p)
+
+        concat_txt = work_dir / "concat_shots.txt"
+        concat_txt.write_text("\n".join(f"file '{p.name}'" for p in parts), encoding="utf-8")
+        base_montage = work_dir / "base_montage.mp4"
+        subprocess.run([FFMPEG_EXE, "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_txt), "-c", "copy", "-movflags", "+faststart", str(base_montage)], check=True)
+
+        audio_mix = (
+            "[1:a]loudnorm=I=-16:TP=-2:LRA=7,asplit=2[voice][key];"
+            "[0:a]volume=0.55[bed];"
+            "[bed][key]sidechaincompress=threshold=0.025:ratio=10:attack=15:release=250[duck];"
+            "[duck][voice]amix=inputs=2:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=8[aout]"
+        )
+
+        fonts_dir = ROOT / "bot" / "assets" / "fonts"
+        fonts_opt = f":fontsdir={fonts_dir.as_posix()}" if fonts_dir.exists() else ""
+        ass_filter = f"ass={ass_path.name}{fonts_opt}"
+
+        # Вызов с cwd=work_dir для безопасного парсинга ass субтитров
+        subprocess.run([
+            FFMPEG_EXE, "-hide_banner", "-loglevel", "error", "-y",
+            "-i", "base_montage.mp4",
+            "-i", voice_wav_path.name,
+            "-filter_complex", audio_mix,
+            "-vf", ass_filter,
+            "-map", "0:v", "-map", "[aout]",
+            "-t", str(duration),
+            "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+            "-c:a", "aac", "-ar", "48000", "-b:a", "256k",
+            "-movflags", "+faststart",
+            str(out_mp4.resolve())
+        ], cwd=str(work_dir), check=True)
+
+        # Постер
+        poster_path = work_dir / "shorts_poster.jpg"
+        subprocess.run([FFMPEG_EXE, "-hide_banner", "-loglevel", "error", "-y", "-ss", "2.0", "-i", str(out_mp4.resolve()), "-frames:v", "1", str(poster_path)], check=True)
+        try:
+            shutil.copy2(poster_path, out_mp4.parent / "shorts_poster.jpg")
+        except Exception:
+            pass
+
+        return out_mp4
+
+    async def ensure_short_for_post(self, post: ChannelPost) -> Optional[Path]:
+        """Возвращает существующий или генерирует новый шортс для премьерного поста."""
+        if getattr(self.settings, "TELEGRAM_BOT_TOKEN", "") == "mock_token":
+            return None
+
+        target_path = self.get_short_cache_path(post)
+        if target_path.exists() and target_path.stat().st_size > 1_000_000:
+            logger.info("Найден готовый шортс в кэше: %s", target_path)
+            return target_path
+
+        # Если шортса нет в кэше, проверяем наличие трейлера
+        work_dir = self.output_root / f"gen_{post.id}"
+        work_dir.mkdir(parents=True, exist_ok=True)
+
+        trailer_raw = work_dir / "trailer_raw.mp4"
+        if not trailer_raw.exists():
+            trailer_target = None
+            if post.trailer_url:
+                t_str = post.trailer_url.strip()
+                if t_str.startswith("http"):
+                    trailer_target = t_str
+                elif len(t_str) == 11 and " " not in t_str:
+                    trailer_target = f"https://www.youtube.com/watch?v={t_str}"
+
+            if not trailer_target:
+                trailer_target = f"ytsearch1:{post.title} трейлер официальный на русском"
+
+            logger.info("Скачивание трейлера для поста #%s: %s", post.id, trailer_target)
+            try:
+                import yt_dlp
+                ydl_opts = {
+                    "format": "best[ext=mp4][height<=1080]/bestvideo[height<=1080]+bestaudio/best",
+                    "outtmpl": str(trailer_raw),
+                    "merge_output_format": "mp4",
+                    "quiet": True,
+                    "noplaylist": True,
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([trailer_target])
+            except Exception as e:
+                logger.warning("Не удалось скачать трейлер через yt-dlp: %s", e)
+                return None
+
+        if not trailer_raw.exists() or trailer_raw.stat().st_size < 100_000:
+            logger.warning("Трейлер не найден или повреждён для поста #%s", post.id)
+            return None
+
+        # Определяем тип бейджа
+        if post.media_type == "tv":
+            badge = "🍿 КИНОЖДУН | НОВЫЙ СЕЗОН" if (post.season_number and post.season_number > 1) else "🍿 КИНОЖДУН | ПРЕМЬЕРА СЕРИАЛА"
+        else:
+            badge = "🍿 КИНОЖДУН | ПРЕМЬЕРА"
+
+        hook = f"ПРЕМЬЕРА: {post.title.upper()}!"
+        meta_date = format_date_ru(post.air_date) if post.air_date else "СКОРО"
+        meta_platform = post.network or "В КИНО"
+        meta_str = f"{meta_platform.upper()} • {meta_date.upper()}"
+        source_str = f"Кадры и звук: официальный промо-трейлер {post.network or ''}".strip()
+
+        # Оверлей
+        overlay_path = work_dir / "brand_overlay.png"
+        self.render_overlay(badge, hook, f"{post.title.upper()} ({post.air_date.year if post.air_date else datetime.now().year})", meta_str, source_str, overlay_path)
+
+        # Сценарий
+        overview_text = getattr(post, "overview", None)
+        if not overview_text and getattr(post, "payload", None):
+            try:
+                p_data = json.loads(post.payload)
+                if isinstance(p_data, dict):
+                    overview_text = p_data.get("overview")
+            except Exception:
+                pass
+        if not overview_text:
+            overview_text = f"Долгожданная премьера проекта {post.title}."
+        words = overview_text.split()
+        short_desc = " ".join(words[:18]) if len(words) > 18 else overview_text
+
+        script = [
+            {"start": 0.0, "end": 4.5, "line1": f"Встречайте главную премьеру —", "line2": f"«{post.title}»!", "highlight": post.title, "text": f"Встречайте главную премьеру — {post.title}!"},
+            {"start": 4.6, "end": 11.5, "line1": "Сюжет не отпускает", "line2": "с первой секунды.", "highlight": "Сюжет", "text": f"{short_desc}"},
+            {"start": 11.6, "end": 18.0, "line1": f"{meta_platform.upper()}:", "line2": f"Премьера {meta_date}!", "highlight": meta_date, "text": f"Релиз состоится {meta_date} на {meta_platform}."},
+            {"start": 18.1, "end": 22.5, "line1": "Сохрани в КиноЖдуне,", "line2": "чтобы не забыть!", "highlight": "КиноЖдуне,", "text": "Сохрани проект в КиноЖдуне, чтобы не забыть."},
+            {"start": 22.6, "end": 25.5, "line1": "КиноЖдун 🍿", "line2": "Смотри премьеры первым", "highlight": "КиноЖдун", "text": "КиноЖдун. Смотри премьеры первым."}
+        ]
+
+        voice_wav, ass_path, dur = await self.generate_narration_and_subtitles(script, work_dir)
+
+        # Нарезка кадров (11 динамичных шотов по ~2.3 сек)
+        shots = [
+            (3.0, 2.5, 640), (8.0, 2.2, 640), (14.0, 2.2, 640), (20.0, 2.0, 640),
+            (26.0, 2.2, 640), (32.0, 2.2, 640), (38.0, 2.2, 640), (45.0, 2.2, 640),
+            (52.0, 2.2, 640), (60.0, 2.2, 640), (68.0, 3.4, 640)
+        ]
+
+        logger.info("Монтаж и композитинг шортса для поста #%s...", post.id)
+        self.assemble_short_video(trailer_raw, overlay_path, voice_wav, ass_path, shots, dur, target_path)
+        logger.info("Шортс успешно сгенерирован и сохранён: %s", target_path)
+        return target_path
+
+    async def publish_to_telegram(
+        self,
+        chat_id: str | int,
+        video_path: Path,
+        post_text: str,
+        reply_markup: Optional[InlineKeyboardMarkup] = None,
+        poster_path: Optional[str] = None,
+    ) -> Optional[int]:
+        """Публикация шортса в Telegram как нативное 9:16 видео."""
+        if not self.bot:
+            return None
+
+        thumb_input = None
+        if poster_path and Path(poster_path).exists():
+            thumb_input = FSInputFile(poster_path)
+        else:
+            local_poster = video_path.parent / "shorts_poster.jpg"
+            if local_poster.exists():
+                thumb_input = FSInputFile(str(local_poster))
+
+        try:
+            msg = await self.bot.send_video(
+                chat_id=chat_id,
+                video=FSInputFile(str(video_path)),
+                thumbnail=thumb_input,
+                caption=post_text,
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.HTML,
+                supports_streaming=True,
+                width=1080,
+                height=1920,
+            )
+            return msg.message_id
+        except Exception as e:
+            logger.warning("Ошибка публикации шортса в Telegram: %s", e)
+            return None
+
+    async def publish_to_vk_stories(self, video_path: Path, link_url: str = "https://kinojdun.ru") -> Optional[int]:
+        """Публикация вертикального шортса в VK Истории сообщества."""
+        token = self.settings.VK_ACCESS_TOKEN
+        group = self.settings.VK_GROUP_ID
+        if not token or not group:
+            return None
+
+        try:
+            srv_url = (
+                f"https://api.vk.com/method/stories.getVideoUploadServer?"
+                f"group_id={group}&add_to_news=1&link_text=open&link_url={urllib.parse.quote(link_url)}&"
+                f"access_token={token}&v=5.199"
+            )
+            req = urllib.request.Request(srv_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                res = json.load(resp)
+
+            if "error" in res or "upload_url" not in res.get("response", {}):
+                logger.warning("VK Stories upload server error: %s", res.get("error"))
+                return None
+
+            upload_url = res["response"]["upload_url"]
+
+            upload_result = None
+            # Попытка 1: чистое асинхронное aiohttp без внешних зависимостей
+            try:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    with open(video_path, "rb") as f:
+                        form = aiohttp.FormData()
+                        form.add_field("video_file", f, filename=video_path.name, content_type="video/mp4")
+                        async with session.post(upload_url, data=form, timeout=aiohttp.ClientTimeout(total=90)) as cresp:
+                            up_json = await cresp.json(content_type=None)
+                            upload_result = up_json.get("response", {}).get("upload_result") or up_json.get("upload_result")
+            except Exception as aio_err:
+                logger.debug("Aiohttp stories upload fallback: %s", aio_err)
+
+            # Попытка 2: curl как надежный системный fallback
+            if not upload_result:
+                curl_bin = shutil.which("curl") or shutil.which("curl.exe") or "curl"
+                cmd = [curl_bin, "-s", "-F", f"video_file=@{str(video_path)}", upload_url]
+                cp = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
+                if cp.returncode == 0:
+                    try:
+                        up_json = json.loads(cp.stdout)
+                        upload_result = up_json.get("response", {}).get("upload_result") or up_json.get("upload_result")
+                    except Exception:
+                        pass
+
+            if not upload_result:
+                logger.warning("Не удалось получить upload_result для VK Stories")
+                return None
+
+            save_url = (
+                f"https://api.vk.com/method/stories.save?"
+                f"upload_results={urllib.parse.quote(upload_result)}&"
+                f"access_token={token}&v=5.199"
+            )
+            req_save = urllib.request.Request(save_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req_save, timeout=15) as sresp:
+                s_json = json.load(sresp)
+
+            if "response" in s_json and "items" in s_json["response"]:
+                story_id = s_json["response"]["items"][0]["id"]
+                logger.info("VK Story опубликована успешно (ID: %s)", story_id)
+                return story_id
+        except Exception as e:
+            logger.warning("Не удалось опубликовать VK Story: %s", e)
+        return None
+
+    def publish_to_vk_wall(self, post: ChannelPost, story_id: Optional[int] = None) -> Optional[int]:
+        """Публикация анонса премьеры на стене сообщества ВКонтакте."""
+        token = self.settings.VK_ACCESS_TOKEN
+        group = self.settings.VK_GROUP_ID
+        if not token or not group:
+            return None
+
+        try:
+            overview_desc = getattr(post, "overview", None)
+            if not overview_desc and getattr(post, "payload", None):
+                try:
+                    p_data = json.loads(post.payload)
+                    if isinstance(p_data, dict):
+                        overview_desc = p_data.get("overview")
+                except Exception:
+                    pass
+            desc_block = f"📝 {overview_desc}\n\n" if overview_desc else ""
+
+            wall_msg = (
+                f"🍿 ПРЕМЬЕРА: {post.title}\n\n"
+                f"📅 Дата: {format_date_ru(post.air_date) if post.air_date else 'Скоро'}\n"
+                f"🎬 Платформа: {post.network or 'В кинотеатрах'}\n\n"
+                f"{desc_block}"
+                f"📱 Полный вертикальный трейлер уже доступен в Историях сообщества (в шапке группы)!\n\n"
+                f"👉 Сохраняйте фильм в КиноЖдуне: https://kinojdun.ru\n"
+                f"🤖 Телеграм-бот: https://t.me/kinojdun_bot"
+            )
+
+            data = urllib.parse.urlencode({
+                "owner_id": f"-{group}",
+                "from_group": "1",
+                "message": wall_msg,
+                "access_token": token,
+                "v": "5.199"
+            }).encode("utf-8")
+
+            req = urllib.request.Request("https://api.vk.com/method/wall.post", data=data, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                res = json.load(resp)
+
+            if "response" in res:
+                post_id = res["response"]["post_id"]
+                logger.info("Пост на стене VK опубликован (ID: %s)", post_id)
+                return post_id
+        except Exception as e:
+            logger.warning("Не удалось опубликовать пост на стене VK: %s", e)
+        return None
+
+    async def publish_to_max_channel(self, post: ChannelPost, video_path: Optional[Path] = None) -> Optional[str]:
+        """Публикация анонса премьеры в канал MAX Messenger."""
+        max_token = getattr(self.settings, "MAX_BOT_TOKEN", None) or os.getenv("MAX_BOT_TOKEN")
+        max_channel = getattr(self.settings, "MAX_CHANNEL_ID", None) or os.getenv("MAX_CHANNEL_ID")
+        max_enabled = getattr(self.settings, "MAX_CHANNEL_POSTING_ENABLED", False) or os.getenv("MAX_CHANNEL_POSTING_ENABLED", "false").lower() == "true"
+
+        if not max_token or not max_channel or not max_enabled:
+            return None
+
+        try:
+            from max_bot.client import MaxBotClient
+            client = MaxBotClient(max_token)
+            site_url = self.settings.SITE_BASE_URL.rstrip("/")
+            bot_url = os.getenv("MAX_BOT_URL", "https://max.ru/id5001170357_1_bot")
+
+            attachments = []
+            if post.poster_path:
+                url = post.poster_path if post.poster_path.startswith("http") else f"{self.settings.TMDB_IMAGE_BASE_URL}{post.poster_path}"
+                token = await client.upload_image_from_url(url)
+                if token:
+                    attachments.append({"type": "image", "payload": {"token": token}})
+
+            attachments.append({"type": "inline_keyboard", "payload": {"buttons": [
+                [{"type": "link", "text": "🍿 Смотреть в КиноЖдуне", "url": f"{site_url}"}],
+                [{"type": "link", "text": "🔔 Личные напоминания", "url": bot_url}],
+            ]}})
+
+            res = await client.send_message(
+                chat_id=int(max_channel),
+                text=post.post_text or f"🍿 Премьера: {post.title}!",
+                attachments=attachments
+            )
+            await client.close()
+            msg_id = res.get("message", {}).get("body", {}).get("mid")
+            logger.info("MAX Channel опубликовал премьеру #%s (mid: %s)", post.id, msg_id)
+            return msg_id
+        except Exception as e:
+            logger.warning("Не удалось опубликовать в MAX Channel: %s", e)
+        return None
+
+    async def distribute_all_channels(self, post: ChannelPost, video_path: Path) -> dict[str, Any]:
+        """Единый метод дистрибуции сгенерированного шортса по всем соцсетям."""
+        results = {}
+        # 1. VK Stories
+        story_id = await self.publish_to_vk_stories(video_path)
+        results["vk_story_id"] = story_id
+
+        # 2. VK Wall
+        wall_id = self.publish_to_vk_wall(post, story_id)
+        results["vk_wall_id"] = wall_id
+
+        # 3. MAX Messenger
+        max_mid = await self.publish_to_max_channel(post, video_path)
+        results["max_mid"] = max_mid
+
+        return results

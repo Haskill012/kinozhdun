@@ -10,7 +10,7 @@ import aiohttp
 from aiohttp import web
 from dotenv import load_dotenv
 
-from website.content import Store
+from website.content import Store, today
 from website.editor import Editor
 from website.search import ProjectSearch, result
 from website import views
@@ -32,6 +32,8 @@ def configuration():
     return {"port": port, "host": os.getenv("SITE_HOST", "127.0.0.1"), "base_url": base,
             "public": os.getenv("SITE_PUBLIC", "false").lower() == "true",
             "bot_url": "https://t.me/" + os.getenv("BOT_USERNAME", "kinojdun_bot").lstrip("@"),
+            "max_bot_url": os.getenv("MAX_BOT_URL", "").strip() or ("https://max.ru/" + os.getenv("MAX_BOT_USERNAME", "id5001170357_1_bot").lstrip("@")),
+            "vk_bot_url": os.getenv("VK_BOT_URL", "https://vk.me/club242087163").strip(),
             "channel_url": channel_url,
             "database": os.getenv("SITE_DATABASE_PATH", str(ROOT / "data" / "website.db")),
             "bot_database": str(ROOT / database.removeprefix("sqlite+aiosqlite:///")) if database.startswith("sqlite+aiosqlite:///") else None,
@@ -39,7 +41,7 @@ def configuration():
             "api_base": os.getenv("TMDB_BASE_URL", "https://api.themoviedb.org/3").rstrip("/"),
             "sync_seconds": max(60, int(os.getenv("SITE_SYNC_INTERVAL_MINUTES", "60")) * 60),
             "catalog_size": 50,
-            "daily_cards": max(1, min(10, int(os.getenv("SITE_DAILY_CARDS", "3")))),
+            "daily_cards": max(1, min(100, int(os.getenv("SITE_DAILY_CARDS", "30")))),
             "min_rating": float(os.getenv("SITE_MIN_RATING", "6.0")),
             "min_votes": int(os.getenv("SITE_MIN_VOTES", "50")),
             "min_popularity": float(os.getenv("SITE_MIN_POPULARITY", "5")),
@@ -105,6 +107,18 @@ def create_app(config=None):
 
     async def home(request):
         return web.Response(text=views.home(store, config), content_type="text/html")
+
+    async def subscription_guide(request):
+        from website.catalog_views import subscription_demo_available, subscription_help_page
+        if not subscription_demo_available():
+            raise web.HTTPNotFound()
+        key = request.query.get('project', '')
+        item = store.catalog_item(key) if key else None
+        if key and not item:
+            raise web.HTTPNotFound()
+        return web.Response(text=subscription_help_page(config, item), content_type='text/html')
+
+    app.router.add_get('/how-to-subscribe', subscription_guide)
 
     async def listing(request):
         category = {"/movies": "movies", "/series": "series"}.get(request.path, request.query.get("category"))
@@ -187,12 +201,59 @@ def create_app(config=None):
             items.append(f'<item><title>{xml_escape(a["title"])}</title><link>{url}</link><guid isPermaLink="true">{url}</guid><description>{xml_escape(a["summary"])}</description><pubDate>{format_datetime(datetime.fromisoformat(a["published"]))}</pubDate></item>')
         return web.Response(text='<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>КиноЖдун</title><link>' + xml_escape(config["base_url"]) + '</link><description>Новости кино и сериалов</description><language>ru</language>' + ''.join(items) + '</channel></rss>', content_type="application/rss+xml")
 
+    async def dzen_feed(request):
+        from email.utils import format_datetime
+        from datetime import datetime
+        items = []
+        bot_user = config.get("bot_username", "kinojdun_bot")
+        for a in audience_articles(store, config, limit=50):
+            url = xml_escape(config["base_url"] + "/news/" + a["slug"])
+            try:
+                pub_date = format_datetime(datetime.fromisoformat(a["published"]))
+            except Exception:
+                pub_date = format_datetime(datetime.utcnow())
+            title = xml_escape(a["title"])
+            summary = xml_escape(a.get("summary") or "")
+            body = a.get("body") or a.get("summary") or ""
+            poster = a.get("image") or a.get("poster")
+            image_tag = ""
+            if poster:
+                img_url = poster if poster.startswith("http") else (config["base_url"].rstrip("/") + "/" + poster.lstrip("/"))
+                image_tag = f'<enclosure url="{xml_escape(img_url)}" type="image/jpeg"/>'
+            encoded_html = (
+                f'<p>{body}</p>'
+                f'<p>👉 <a href="{url}">Карточка проекта на КиноЖдуне</a></p>'
+                f'<p>🍿 <a href="https://t.me/{bot_user}">Добавить в отслеживание в Telegram-боте</a></p>'
+            )
+            items.append(
+                f'<item><title>{title}</title><link>{url}</link><guid isPermaLink="true">{url}</guid>'
+                f'<pubDate>{pub_date}</pubDate><author>КиноЖдун</author><category>Кино</category>'
+                f'{image_tag}<description>{summary}</description>'
+                f'<content:encoded><![CDATA[{encoded_html}]]></content:encoded></item>'
+            )
+        rss_xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" '
+            'xmlns:dc="http://purl.org/dc/elements/1.1/" '
+            'xmlns:media="http://search.yahoo.com/mrss/" '
+            'xmlns:atom="http://www.w3.org/2005/Atom">\n'
+            '<channel><title>КиноЖдун</title>'
+            f'<link>{xml_escape(config["base_url"])}</link>'
+            '<description>Официальный канал КиноЖдуна в Дзене: график премьер, трейлеры, даты выхода фильмов и новых сезонов сериалов.</description>'
+            '<language>ru</language>'
+            + ''.join(items)
+            + '</channel></rss>'
+        )
+        return web.Response(text=rss_xml, content_type="application/rss+xml", charset="utf-8")
+
     async def health(request):
         return web.json_response({
             "status": "ok",
             "version": "1.4.0",
             "cards_published": len(store.catalog()),
             "cards_queued": len(store.catalog(False)) - len(store.catalog()),
+            "daily_cards_limit": config.get("daily_cards", 30),
+            "cards_added_today": int(store.state("cards_published:" + today().isoformat()) or 0),
             "catalog_selected": store.state("catalog_selected"),
             "last_sync": store.state("last_sync"),
             "sync_error": store.state("sync_error"),
@@ -206,10 +267,15 @@ def create_app(config=None):
                                  headers={"X-Robots-Tag": "noindex", "Cache-Control": "no-store"})
 
     app.router.add_get("/api/search", search)
+    from website.vk_upload_check import upload_check_handler
+    app.router.add_post('/api/vk/poster-check', upload_check_handler(ROOT / 'website' / 'catalog_seed.json'))
 
-    for path, handler in (("/", home), ("/news", listing), ("/catalog", listing), ("/movies", listing), ("/series", listing), ("/news/{slug}", article), (r"/title/{media:movie|tv}/{id:\d+}", title_page), ("/calendar", calendar), ("/about", about), ("/help", help_page), ("/privacy", privacy), ("/robots.txt", robots), ("/sitemap.xml", sitemap), ("/feed.xml", feed), ("/health", health)):
+    for path, handler in (("/", home), ("/news", listing), ("/catalog", listing), ("/movies", listing), ("/series", listing), ("/news/{slug}", article), (r"/title/{media:movie|tv}/{id:\d+}", title_page), ("/calendar", calendar), ("/about", about), ("/help", help_page), ("/privacy", privacy), ("/robots.txt", robots), ("/sitemap.xml", sitemap), ("/feed.xml", feed), ("/dzen/rss.xml", dzen_feed), ("/dzen.xml", dzen_feed), ("/health", health)):
+
         app.router.add_get(path, handler)
     app.router.add_static("/static/", ROOT / "website" / "static", show_index=False)
+    from website.social_images import image_handler
+    app.router.add_get('/social-image/{name}', image_handler(Path(config['database']).parent / 'social_images'))
     return app
 
 

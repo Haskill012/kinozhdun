@@ -20,6 +20,7 @@ from website.__main__ import create_app
 
 def config(path):
     return {"database": str(path), "bot_database": None, "bot_url": "https://t.me/kinojdun_bot",
+            "max_bot_url": "https://max.ru/id5001170357_1_bot",
             "channel_url": "https://t.me/kinojdun_channel", "base_url": "http://127.0.0.1:8099",
             "public": False, "api_key": "", "api_base": "https://api.themoviedb.org/3",
             "sync_seconds": 3600, "batch_size": 2,
@@ -507,9 +508,11 @@ class WebsiteHTTPTests(AioHTTPTestCase):
         for path in ("/", "/news", "/movies", "/series", "/calendar", "/about", "/static/site.css", "/static/mascot.jpg", "/health"):
             response = await self.client.get(path)
             self.assertEqual(response.status, 200, path)
-        for path in ("/sitemap.xml", "/feed.xml"):
+        for path in ("/sitemap.xml", "/feed.xml", "/dzen/rss.xml", "/dzen.xml"):
             response = await self.client.get(path)
+            self.assertEqual(response.status, 200, path)
             ElementTree.fromstring(await response.text())
+
 
     async def test_article_has_server_rendered_content_and_schema(self):
         feed = await self.client.get("/feed.xml")

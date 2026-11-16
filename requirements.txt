@@ -6,3 +6,7 @@ greenlet>=3.0
 alembic>=1.13
 APScheduler>=3.10
 python-dotenv>=1.0
+edge-tts>=7.0.0
+imageio-ffmpeg>=0.5.0
+pillow>=10.0.0
+yt-dlp>=2024.0.0

@@ -6,7 +6,7 @@ from sqlalchemy import select, and_, or_, update, delete, desc, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bot.db.models import User, TrackedItem, NotificationLog, SharedWatchlist, ChannelPost, AnalyticsEvent
+from bot.db.models import User, TrackedItem, NotificationLog, SharedWatchlist, ChannelPost, AnalyticsEvent, VKPost, DzenPost
 
 class Repository:
     """Репозиторий для работы с базой данных."""
@@ -521,6 +521,25 @@ class Repository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_recent_published_premieres(self, limit: int = 5) -> List[ChannelPost]:
+        """Получить последние опубликованные премьерные посты канала."""
+        stmt = (
+            select(ChannelPost)
+            .where(and_(ChannelPost.status == "published", ChannelPost.post_type == "premiere"))
+            .order_by(desc(ChannelPost.published_at))
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_published_media_ids(self) -> set[tuple[str, int]]:
+        """Получить множество (media_type, tmdb_id) для уже опубликованных постов канала."""
+        stmt = select(ChannelPost.media_type, ChannelPost.tmdb_id).where(
+            and_(ChannelPost.status == "published", ChannelPost.tmdb_id.isnot(None), ChannelPost.media_type.isnot(None))
+        )
+        result = await self.session.execute(stmt)
+        return {(row[0], row[1]) for row in result.all()}
+
     # --- Запросы релизов для дайджестов («Что выходит сегодня» и «Главные премьеры недели») ---
 
     async def get_items_releasing_on_date(self, target_date: date) -> List[TrackedItem]:
@@ -627,3 +646,154 @@ class Repository:
         self.session.add(event)
         await self.session.flush()
         return event
+
+
+    # --- ВКонтакте публикации (VKPost) ---
+
+    async def is_vk_post_exists(self, content_hash: str) -> bool:
+        """Проверить, публиковалось ли уже данное событие в VK."""
+        stmt = select(VKPost.id).where(
+            VKPost.content_hash == content_hash,
+            VKPost.status.in_(["published", "scheduled", "verification_pending", "image_missing", "sending", "uncertain", "deleted"]),
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
+    async def record_vk_post(
+        self,
+        content_hash: str,
+        title: str,
+        event_type: str,
+        tmdb_id: Optional[int] = None,
+        media_type: Optional[str] = None,
+        vk_post_id: Optional[int] = None,
+        status: str = "published",
+    ) -> VKPost:
+        """Зафиксировать публикацию поста в сообществе VK (с поддержкой обновления)."""
+        stmt = select(VKPost).where(VKPost.content_hash == content_hash)
+        result = await self.session.execute(stmt)
+        post = result.scalar_one_or_none()
+
+        if post:
+            post.title = title
+            post.event_type = event_type
+            post.tmdb_id = tmdb_id
+            post.media_type = media_type
+            if vk_post_id is not None:
+                post.vk_post_id = vk_post_id
+            post.status = status
+            if status == "published":
+                post.published_at = datetime.utcnow()
+        else:
+            post = VKPost(
+                content_hash=content_hash,
+                title=title,
+                event_type=event_type,
+                tmdb_id=tmdb_id,
+                media_type=media_type,
+                vk_post_id=vk_post_id,
+                status=status,
+                published_at=datetime.utcnow() if status == "published" else None,
+            )
+            self.session.add(post)
+
+        await self.session.flush()
+        return post
+
+    # --- Дзен публикации (DzenPost) ---
+
+    async def is_dzen_post_exists(self, content_hash: str) -> bool:
+        """Проверить, публиковалось ли уже данное событие в Дзене."""
+        stmt = select(DzenPost.id).where(
+            DzenPost.content_hash == content_hash,
+            DzenPost.status.in_(["published", "pending", "forwarded", "submitted", "prepared", "sending", "failed", "deleted"]),
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
+    async def record_dzen_post(
+        self,
+        content_hash: str,
+        title: str,
+        event_type: str,
+        post_type: str = "news",
+        tmdb_id: Optional[int] = None,
+        media_type: Optional[str] = None,
+        post_text: Optional[str] = None,
+        poster_path: Optional[str] = None,
+        dzen_publication_id: Optional[str] = None,
+        status: str = "published",
+    ) -> DzenPost:
+        """Зафиксировать публикацию поста в канале Дзена."""
+        stmt = select(DzenPost).where(DzenPost.content_hash == content_hash)
+        result = await self.session.execute(stmt)
+        post = result.scalar_one_or_none()
+
+        if post:
+            post.title = title
+            post.event_type = event_type
+            post.post_type = post_type
+            post.tmdb_id = tmdb_id
+            post.media_type = media_type
+            if post_text is not None:
+                post.post_text = post_text
+            if poster_path is not None:
+                post.poster_path = poster_path
+            if dzen_publication_id is not None:
+                post.dzen_publication_id = dzen_publication_id
+            post.status = status
+            if status in ("published", "forwarded", "submitted", "prepared"):
+                post.published_at = datetime.utcnow()
+        else:
+            post = DzenPost(
+                content_hash=content_hash,
+                title=title,
+                event_type=event_type,
+                post_type=post_type,
+                tmdb_id=tmdb_id,
+                media_type=media_type,
+                post_text=post_text,
+                poster_path=poster_path,
+                dzen_publication_id=dzen_publication_id,
+                status=status,
+                published_at=datetime.utcnow() if status in ("published", "forwarded", "submitted", "prepared") else None,
+            )
+            self.session.add(post)
+
+        await self.session.flush()
+        return post
+
+    async def get_last_published_dzen_post(self) -> Optional[DzenPost]:
+        """Получить последний опубликованный пост в Дзене для проверки антиспам-интервала."""
+        stmt = (
+            select(DzenPost)
+            .where(DzenPost.status.in_(["published", "forwarded", "submitted", "prepared"]))
+            .order_by(desc(DzenPost.published_at))
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_pending_dzen_posts(self) -> List[DzenPost]:
+        """Получить список постов Дзена, ожидающих отправки."""
+        stmt = (
+            select(DzenPost)
+            .where(DzenPost.status == "pending")
+            .order_by(DzenPost.created_at)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def mark_dzen_post_published(self, post_id: int, dzen_publication_id: Optional[str] = None) -> None:
+        """Пометить пост в Дзене как опубликованный."""
+        stmt = (
+            update(DzenPost)
+            .where(DzenPost.id == post_id)
+            .values(
+                status="published",
+                dzen_publication_id=dzen_publication_id,
+                published_at=datetime.utcnow(),
+            )
+        )
+        await self.session.execute(stmt)
+        await self.session.flush()

@@ -1,0 +1,34 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const { chromium } = require('C:/Users/cvet7/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const out = path.resolve(__dirname, '../diagnostics/hero-demo/telegram-search');
+fs.mkdirSync(out, {recursive:true});
+for (const name of ['choice.json','subscribe.json']) fs.rmSync(path.join(out,name),{force:true});
+(async()=>{
+ const context=await chromium.launchPersistentContext(path.resolve(out,'../browser-profile'),{executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:false,viewport:{width:1280,height:800},recordVideo:{dir:out,size:{width:1280,height:800}},args:['--disable-notifications']});
+ const page=context.pages()[0]||await context.newPage();
+ const start=Date.now(); const events=[];
+ const mark=label=>{events.push({label,time:(Date.now()-start)/1000});fs.writeFileSync(path.join(out,'capture.json'),JSON.stringify({source:page.video()?._path,events}));};
+ await page.goto('https://web.telegram.org/a/',{waitUntil:'domcontentloaded'});
+ await page.getByText('КиноЖдун Бот',{exact:false}).first().click();
+ const input=page.locator('#MiddleColumn [contenteditable=true]').first();
+ await input.waitFor(); await page.waitForTimeout(1500);
+ mark('typing');await input.click();await input.pressSequentially('Дюна',{delay:220});await page.waitForTimeout(700);mark('send');await input.press('Enter');
+ await page.waitForTimeout(5000);mark('results');
+ await page.screenshot({path:path.join(out,'results.png')});
+ fs.writeFileSync(path.join(out,'results.txt'),await page.locator('#MiddleColumn').innerText());
+ // Pause for evidence-based selection via the existing command bridge file.
+ const command=path.join(out,'choice.json');
+ while(!fs.existsSync(command))await page.waitForTimeout(300);
+ const choice=JSON.parse(fs.readFileSync(command));
+ mark('select');await page.locator(choice.selector).last().click();await page.waitForTimeout(1800);mark('preview');
+ await page.screenshot({path:path.join(out,'preview.png')});
+ fs.writeFileSync(path.join(out,'preview.txt'),await page.locator('#MiddleColumn').innerText());
+ const next=path.join(out,'subscribe.json');while(!fs.existsSync(next))await page.waitForTimeout(300);
+ mark('subscribe');await page.locator(JSON.parse(fs.readFileSync(next)).selector).last().click();await page.waitForTimeout(2300);mark('success');
+ await page.screenshot({path:path.join(out,'success.png')});
+ fs.writeFileSync(path.join(out,'success.txt'),await page.locator('#MiddleColumn').innerText());
+ await page.waitForTimeout(2200);const video=page.video();await context.close();
+ fs.writeFileSync(path.join(out,'capture.json'),JSON.stringify({source:await video.path(),events},null,2));
+ console.log('Real Telegram recording saved.');
+})().catch(e=>{console.error(e);process.exitCode=1;});

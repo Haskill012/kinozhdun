@@ -290,12 +290,101 @@ def format_released_notification(item: Any) -> str:
     return "\n".join(lines)
 
 
-def format_episode_tomorrow_notification(item: Any, episode: dict) -> str:
+def format_episodes_count_ru(count: int) -> str:
+    """Склонение слова 'серия' по числительным в русском языке."""
+    if 11 <= (count % 100) <= 19:
+        return f"{count} серий"
+    last = count % 10
+    if last == 1:
+        return f"{count} серия"
+    if 2 <= last <= 4:
+        return f"{count} серии"
+    return f"{count} серий"
+
+
+def format_episode_numbers(numbers: list[int]) -> str:
+    """Форматирует номера серий (например: '1 серия', '1–2 серии', '1–6 серии (всего 6 серий)')."""
+    if not numbers:
+        return ""
+    unique_sorted = sorted(set(numbers))
+    count = len(unique_sorted)
+    if count == 1:
+        return f"{unique_sorted[0]} серия"
+
+    # Группируем последовательные номера в диапазоны
+    ranges: list[str] = []
+    start = unique_sorted[0]
+    prev = unique_sorted[0]
+    for n in unique_sorted[1:]:
+        if n == prev + 1:
+            prev = n
+        else:
+            if start == prev:
+                ranges.append(str(start))
+            else:
+                ranges.append(f"{start}–{prev}")
+            start = n
+            prev = n
+    if start == prev:
+        ranges.append(str(start))
+    else:
+        ranges.append(f"{start}–{prev}")
+
+    range_str = ", ".join(ranges)
+
+    # Если ровно две непрерывные серии: '1–2 серии'
+    if count == 2 and len(ranges) == 1:
+        return f"{range_str} серии"
+
+    # В остальных случаях указываем общее количество: '1–6 серии (всего 6 серий)'
+    total_str = format_episodes_count_ru(count)
+    return f"{range_str} серии (всего {total_str})"
+
+
+def format_episode_tomorrow_notification(item: Any, episode: dict | list[dict]) -> str:
+    """Форматирует уведомление о выходе серии или нескольких серий на следующий день."""
+    if isinstance(episode, (list, tuple)):
+        episodes = [ep for ep in episode if ep]
+    else:
+        episodes = [episode] if episode else []
+
+    if not episodes:
+        return ""
+
     title = linked_title(getattr(item, "title", "Без названия"), item)
-    lines = ["📺 <b>Уже завтра выходит новая серия!</b>\n",
-             f"🎬 <b>«{title}»</b>",
-             f"🎞 <b>{episode['season_number']} сезон, {episode['episode_number']} серия</b>",
-             f"📅 <b>Дата выхода:</b> {format_date_ru(episode['air_date'])}"]
+
+    if len(episodes) == 1:
+        ep = episodes[0]
+        season_num = ep.get("season_number", 1)
+        ep_num = ep.get("episode_number", 1)
+        lines = [
+            "📺 <b>Уже завтра выходит новая серия!</b>\n",
+            f"🎬 <b>«{title}»</b>",
+            f"🎞 <b>{season_num} сезон, {ep_num} серия</b>",
+            f"📅 <b>Дата выхода:</b> {format_date_ru(ep.get('air_date'))}",
+        ]
+    else:
+        lines = [
+            "📺 <b>Уже завтра выходят новые серии!</b>\n",
+            f"🎬 <b>«{title}»</b>",
+        ]
+        from collections import defaultdict
+        by_season = defaultdict(list)
+        for ep in episodes:
+            s = ep.get("season_number") or 1
+            num = ep.get("episode_number")
+            if num is not None:
+                by_season[s].append(num)
+
+        for s in sorted(by_season.keys()):
+            nums = by_season[s]
+            ep_text = format_episode_numbers(nums)
+            lines.append(f"🎞 <b>{s} сезон, {ep_text}</b>")
+
+        air_date = episodes[0].get("air_date")
+        if air_date:
+            lines.append(f"📅 <b>Дата выхода:</b> {format_date_ru(air_date)}")
+
     network = safe_html(getattr(item, "network", None))
     if network:
         lines.append(f"🏢 <b>Платформа:</b> {network}")

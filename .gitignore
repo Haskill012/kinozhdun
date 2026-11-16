@@ -47,3 +47,6 @@ data/
 .vscode/
 *.swp
 *.swo
+
+# Local authenticated browser used to capture the hero demonstration.
+diagnostics/hero-demo/

@@ -10,10 +10,10 @@ def telegram_text_length(text):
 
 
 def render_digest(items, date_label, weekly=False, site_url="https://kinojdun.ru"):
-    heading = "Главные премьеры недели" if weekly else "Сегодня на экране"
+    heading = "Главные премьеры недели" if weekly else "Фильмы и новые серии сегодня"
     header = f"🎬 <b>{heading} · {safe_html(date_label)}</b>"
     calendar = html.escape(site_url.rstrip('/') + '/calendar', quote=True)
-    footer = f'<a href="{calendar}">Все даты и подробности на KinoЖдун ↗</a>'
+    footer = f'<a href="{calendar}">Календарь КиноЖдуна ↗</a>\nДаты по TMDB; доступность зависит от страны и площадки.'
     blocks = []
     for item in (items or [])[:5]:
         raw_title = str(item.get("title") or "Без названия")
@@ -33,6 +33,9 @@ def render_digest(items, date_label, weekly=False, site_url="https://kinojdun.ru
         if item.get("network"):
             details.append(str(item["network"])[:35])
         block = f"<b>{title}</b>\n{score}\n{safe_html(' · '.join(details))}"
+        source = item.get('source_url')
+        if source:
+            block += f'\n<a href="{html.escape(source, quote=True)}">Источник даты: TMDB</a>'
         if telegram_text_length("\n\n".join([header, *blocks, block, footer])) > 1000:
             break
         blocks.append(block)

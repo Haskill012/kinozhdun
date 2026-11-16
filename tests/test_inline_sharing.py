@@ -1,7 +1,7 @@
 """Тесты инлайн-режима шеринга карточек фильмов, списков и клавиатур."""
 
 import unittest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from types import SimpleNamespace
 
 from bot.keyboards.inline import (
@@ -76,6 +76,33 @@ class TestInlineKeyboards(unittest.TestCase):
 
 class TestInlineQueryHandler(unittest.IsolatedAsyncioTestCase):
     """Проверка формирования инлайн-карточек ботом."""
+
+    async def test_inline_watchlist_uses_persisted_snapshot(self):
+        from bot.db.models import SharedWatchlist
+        import json
+        shared = SharedWatchlist(token='abc123', title='Мой список', items_snapshot=json.dumps([
+            {'title': 'Дюна: Часть третья', 'media_type': 'movie', 'tmdb_id': 1170608},
+            {'title': 'Укрытие', 'media_type': 'tv', 'tmdb_id': 125988},
+        ]))
+        factory = MagicMock()
+        factory.return_value.__aenter__ = AsyncMock(return_value=MagicMock())
+        factory.return_value.__aexit__ = AsyncMock(return_value=False)
+        bot = MagicMock()
+        bot.__getitem__.side_effect = lambda key: {'session_factory': factory,
+            'tmdb_client': AsyncMock(), 'settings': SimpleNamespace(BOT_USERNAME='kinojdun_bot')}[key]
+        query = AsyncMock()
+        query.query = 'list_abc123'
+        query.bot = bot
+        with patch('bot.handlers.inline.Repository') as repo:
+            repo.return_value.get_shared_watchlist_by_token = AsyncMock(return_value=shared)
+            await process_inline_query(query)
+        query.answer.assert_awaited_once()
+        results = query.answer.call_args.args[0]
+        self.assertIn('(2 тайтлов)', results[0].title)
+        self.assertIn('Дюна: Часть третья', results[0].input_message_content.message_text)
+        self.assertIn('Укрытие', results[0].input_message_content.message_text)
+        self.assertEqual(results[0].reply_markup.inline_keyboard[0][0].url,
+                         'https://t.me/kinojdun_bot?start=w_abc123')
 
     async def test_inline_query_movie_share(self):
         """Инлайн-запрос share_movie_... должен возвращать карточку с постером и кнопкой отслеживания."""

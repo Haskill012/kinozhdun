@@ -37,7 +37,8 @@ class DigestStyleTests(unittest.IsolatedAsyncioTestCase):
         text = render_digest(items, 'Date', weekly=True)
         self.assertLessEqual(telegram_text_length(text), 1000)
         self.assertEqual(text.count('<a '), text.count('</a>'))
-        self.assertTrue(text.endswith('</a>'))
+        self.assertIn('Календарь КиноЖдуна', text)
+        self.assertIn('Даты по TMDB', text)
         HTMLParser().feed(text)
 
     async def test_raw_html_over_1024_still_sends_full_valid_caption(self):

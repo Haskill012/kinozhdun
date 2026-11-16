@@ -35,6 +35,40 @@ def date_ru(value):
     return date.fromisoformat(value).strftime("%d.%m.%Y") if value else "Дата пока не объявлена"
 
 
+def ranked_discovery(entries):
+    """Alternate recent and reliably rated titles, balancing films and series."""
+    def freshness(entry):
+        media, detail = entry
+        value = valid_date(detail.get('release_date') if media == 'movie' else detail.get('first_air_date'))
+        if media == 'tv':
+            latest = valid_date((detail.get('last_episode_to_air') or {}).get('air_date'))
+            value = max(filter(None, (value, latest)), default=None)
+        if not value:
+            return -100000
+        delta = (date.fromisoformat(value) - today()).days
+        # Current releases first; future titles have a separate, lower priority.
+        return delta if delta <= 0 else -180 - delta
+    def rating(entry):
+        d = entry[1]
+        votes = int(d.get('vote_count') or 0)
+        return (float(d.get('vote_average') or 0) if votes >= 50 else -1,
+                min(votes, 10000), float(d.get('popularity') or 0))
+    lanes = []
+    for media in ('movie', 'tv'):
+        pool = [e for e in entries if e[0] == media]
+        lanes.extend([sorted(pool, key=lambda e: (freshness(e), rating(e)), reverse=True),
+                      sorted(pool, key=lambda e: (rating(e), freshness(e)), reverse=True)])
+    seen, ordered = set(), []
+    for index in range(max(map(len, lanes), default=0)):
+        for lane in lanes:
+            if index >= len(lane):
+                continue
+            entry = lane[index]; key = (entry[0], entry[1]['id'])
+            if key not in seen:
+                seen.add(key); ordered.append(entry)
+    return ordered
+
+
 class Editor:
     def __init__(self, store, config):
         self.store, self.config = store, config
@@ -267,31 +301,49 @@ class Editor:
                 connector = aiohttp.TCPConnector()
                 async with aiohttp.ClientSession(connector=connector, trust_env=True, timeout=aiohttp.ClientTimeout(total=20)) as session:
                     self.session = session
+                    # Short-window ranking refresh is independent of the large detail queue.
+                    from website.ranking import refresh_trends
+                    try:
+                        await refresh_trends(self)
+                    except Exception as exc:
+                        self.store.state('ranking_trends_error', error_text(exc))
                     details = {}
                     replenish = bool(self.store.state("initial_catalog_visible"))
                     discovery_due = not self.store.state("catalog_selected") or (replenish and self.store.state("catalog_discovery_day") != today().isoformat())
                     # Date-bounded discovery prevents old evergreen hits dominating the queue.
                     for media in (("movie", "tv") if discovery_due else ()):
                         date_field = "primary_release_date" if media == "movie" else "first_air_date"
-                        for page in range(1, 5):
-                            try:
-                                data = await self.fetch(f"/discover/{media}", **{
-                                    date_field + ".gte": (today()-timedelta(days=180)).isoformat(),
-                                    date_field + ".lte": (today()+timedelta(days=365)).isoformat(),
-                                    "include_adult": "false", "sort_by": "popularity.desc", "page": page,
-                                    **({"without_genres": "10763,10764,10767"} if media == 'tv' else {})})
-                                for row in data.get("results", []):
-                                    if not row.get("adult") and float(row.get("popularity") or 0) >= self.config.get("min_popularity", 5) and (int(row.get("vote_count") or 0) < self.config.get("min_votes", 50) or float(row.get("vote_average") or 0) >= self.config.get("min_rating", 6)):
-                                        details.setdefault((media, row["id"]), None)
-                            except Exception as exc:
-                                errors.append(error_text(exc))
+                        queries = [
+                            {"sort_by": "popularity.desc"},
+                            {"sort_by": "vote_average.desc", "vote_count.gte": max(50, self.config.get('min_votes', 50)),
+                             "vote_average.gte": max(7, self.config.get('min_rating', 6))},
+                            {"sort_by": date_field + ".desc", date_field + ".lte": today().isoformat()}]
+                        for query in queries:
+                            for page in range(1, 5):
+                                try:
+                                    data = await self.fetch(f"/discover/{media}", **{
+                                        date_field + ".gte": (today()-timedelta(days=180)).isoformat(),
+                                        date_field + ".lte": (today()+timedelta(days=365)).isoformat(),
+                                        "include_adult": "false", "page": page, **query,
+                                        **({"without_genres": "10763,10764,10767"} if media == 'tv' else {})})
+                                    for row in data.get("results", []):
+                                        if not row.get("adult") and float(row.get("popularity") or 0) >= self.config.get("min_popularity", 5) and (int(row.get("vote_count") or 0) < self.config.get("min_votes", 50) or float(row.get("vote_average") or 0) >= self.config.get("min_rating", 6)):
+                                            if not self.store.catalog_item(f"{media}:{row['id']}", False):
+                                                details.setdefault((media, row["id"]), row)
+                                except Exception as exc:
+                                    errors.append(error_text(exc))
                     # Continuing series are selected by their next episode, not first season.
                     try:
                         data = await self.fetch("/tv/on_the_air") if discovery_due else {}
                         for row in data.get("results", []):
-                            details.setdefault(("tv", row["id"]), None)
+                            if not self.store.catalog_item(f"tv:{row['id']}", False):
+                                details.setdefault(("tv", row["id"]), row)
                     except Exception as exc:
                         errors.append(error_text(exc))
+                    # Bound new detail requests, keeping a reservoir for the next day.
+                    target = max(12, self.config.get('daily_cards', 30) * 2)
+                    new = ranked_discovery([(media, row) for (media, _), row in details.items() if row])
+                    details = {(media, row['id']): None for media, row in new[:max(100, target * 2)]}
                     news_titles = set(self.store.news_titles())
                     for media, tmdb_id in news_titles:
                         details.setdefault((media, tmdb_id), None)
@@ -326,8 +378,8 @@ class Editor:
                     if replenish and discovery_due:
                         pending = len(self.store.catalog(False)) - len(self.store.catalog())
                         pool = [(m, d) for (m, ident), d in details.items() if d and self.eligible(m, d) and not self.store.catalog_item(f"{m}:{ident}", False)]
-                        pool.sort(key=lambda entry: float(entry[1].get("popularity") or 0), reverse=True)
-                        for media, detail in pool[:min(6, max(0, 12-pending))]:
+                        pool = ranked_discovery(pool)
+                        for media, detail in pool[:max(0, target-pending)]:
                             self.store.queue_title({"key": f"{media}:{detail['id']}", "id": detail["id"], "media_type": media, "title": detail.get("title") or detail.get("name")})
                         if not errors:
                             self.store.state("catalog_discovery_day", today().isoformat())
