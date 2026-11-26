@@ -552,23 +552,23 @@ def setup_scheduler(
         replace_existing=True,
     )
 
-    # Ежедневный шортс о топ-премьере (по расписанию в 12:00 МСК)
-    shorts_hour = getattr(settings, "SHORTS_DAILY_HOUR", 12)
-    shorts_minute = getattr(settings, "SHORTS_DAILY_MINUTE", 0)
-    scheduler.add_job(
-        daily_shorts_job,
-        "cron",
-        hour=shorts_hour,
-        minute=shorts_minute,
-        coalesce=True, max_instances=1, misfire_grace_time=1800,
-        kwargs={
-            "bot": bot,
-            "session_factory": session_factory,
-            "settings": settings,
-            "tmdb_client": tmdb_client,
-        },
-        id="channel_daily_shorts",
-        replace_existing=True,
-    )
+    # Контент-машина шортсов: 3 публикации в день (10:00, 14:30, 19:30 МСК)
+    shorts_slots = getattr(settings, "SHORTS_SCHEDULE_SLOTS", ((10, 0), (14, 30), (19, 30)))
+    for idx, (sh_hour, sh_min) in enumerate(shorts_slots):
+        scheduler.add_job(
+            daily_shorts_job,
+            "cron",
+            hour=sh_hour,
+            minute=sh_min,
+            coalesce=True, max_instances=1, misfire_grace_time=1800,
+            kwargs={
+                "bot": bot,
+                "session_factory": session_factory,
+                "settings": settings,
+                "tmdb_client": tmdb_client,
+            },
+            id=f"channel_daily_shorts_{idx}",
+            replace_existing=True,
+        )
 
     return scheduler

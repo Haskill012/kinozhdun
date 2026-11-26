@@ -1,6 +1,7 @@
 """Source-grounded publication. No invented release dates or LLM dependency."""
 import asyncio
 import logging
+import os
 import re
 from datetime import date, datetime, timezone, timedelta
 
@@ -395,11 +396,36 @@ class Editor:
                     if not errors:
                         self.store.state("last_sync", datetime.now(timezone.utc).isoformat())
                     self.store.state("sync_error", "; ".join(sorted(set(errors))) if errors else "")
+                    if self.config.get("public"):
+                        await self._ping_indexnow(session)
             except Exception as exc:
                 self.store.state("sync_error", error_text(exc))
             finally:
                 self.session = None
             logger.info("Website sync finished: %s titles; %s errors", len(self.store.titles()), len(errors))
+
+    async def _ping_indexnow(self, session):
+        key = os.getenv("SITE_INDEXNOW_KEY", "kinojdun2026indexnow8842").strip()
+        base = self.config["base_url"].rstrip("/")
+        if not key or not base.startswith("https://"):
+            return
+        last_ping = self.store.state("indexnow_last_date") or ""
+        today_str = today().isoformat()
+        if last_ping == today_str:
+            return
+        urls = [f"{base}/title/{t['media_type']}/{t['id']}" for t in self.store.catalog()[:15]]
+        urls.extend(f"{base}/news/{a['slug']}" for a in self.store.articles(limit=5))
+        if not urls:
+            return
+        host = base.removeprefix("https://").split("/")[0]
+        payload = {"host": host, "key": key, "keyLocation": f"{base}/{key}.txt", "urlList": urls}
+        try:
+            async with session.post("https://api.indexnow.org/indexnow", json=payload, timeout=aiohttp.ClientTimeout(total=8)) as resp:
+                logger.info("IndexNow ping: HTTP %s (%s urls)", resp.status, len(urls))
+                if resp.status in (200, 202):
+                    self.store.state("indexnow_last_date", today_str)
+        except Exception as exc:
+            logger.warning("IndexNow ping failed: %s", exc)
 
     async def run(self):
         while True:

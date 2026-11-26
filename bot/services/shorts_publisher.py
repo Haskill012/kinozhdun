@@ -775,24 +775,79 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 except Exception:
                     pass
             desc_block = f"📝 {overview_desc}\n\n" if overview_desc else ""
+            card_url = (
+                f"https://kinojdun.ru/title/{post.media_type}/{post.tmdb_id}?from=vk-wall"
+                if post.media_type and post.tmdb_id else "https://kinojdun.ru/?from=vk-wall"
+            )
+            vk_bot_url = os.getenv("VK_BOT_URL", "https://vk.me/club242087163").strip()
+            tag_title = "#" + re.sub(r"[^0-9A-Za-zА-Яа-яЁё]", "", post.title or "")[:28]
+            kind_tag = "#сериалы" if post.media_type == "tv" else "#фильмы"
 
             wall_msg = (
                 f"🍿 ПРЕМЬЕРА: {post.title}\n\n"
                 f"📅 Дата: {format_date_ru(post.air_date) if post.air_date else 'Скоро'}\n"
                 f"🎬 Платформа: {post.network or 'В кинотеатрах'}\n\n"
                 f"{desc_block}"
-                f"📱 Полный вертикальный трейлер уже доступен в Историях сообщества (в шапке группы)!\n\n"
-                f"👉 Сохраняйте фильм в КиноЖдуне: https://kinojdun.ru\n"
-                f"🤖 Телеграм-бот: https://t.me/kinojdun_bot"
+                f"💬 Ждёте премьеру? Пишите в комментариях!\n\n"
+                f"👉 Карточка и трейлер: {card_url}\n"
+                f"🔔 Напоминание в VK-боте: {vk_bot_url}\n"
+                f"🤖 Telegram-бот: https://t.me/kinojdun_bot\n\n"
+                f"{tag_title} #премьера #кино {kind_tag} #чтопосмотреть"
             )
 
-            data = urllib.parse.urlencode({
+            attachment_str = ""
+            if getattr(post, "poster_path", None):
+                try:
+                    poster_url = (
+                        post.poster_path if str(post.poster_path).startswith("http")
+                        else f"{self.settings.TMDB_IMAGE_BASE_URL}{post.poster_path}"
+                    )
+                    up_srv_url = f"https://api.vk.com/method/photos.getWallUploadServer?group_id={group}&access_token={token}&v=5.199"
+                    with urllib.request.urlopen(urllib.request.Request(up_srv_url, headers={"User-Agent": "Mozilla/5.0"}), timeout=10) as ur:
+                        up_srv = json.load(ur)
+                    up_url = up_srv.get("response", {}).get("upload_url")
+                    if up_url:
+                        with urllib.request.urlopen(urllib.request.Request(poster_url, headers={"User-Agent": "Mozilla/5.0"}), timeout=10) as pr:
+                            img_bytes = pr.read()
+                        boundary = "----KinojdunBoundary7MA4YWxkTrZu0gW"
+                        body = (
+                            f"--{boundary}\r\n"
+                            f'Content-Disposition: form-data; name="photo"; filename="poster.jpg"\r\n'
+                            f"Content-Type: image/jpeg\r\n\r\n"
+                        ).encode("utf-8") + img_bytes + f"\r\n--{boundary}--\r\n".encode("utf-8")
+                        up_req = urllib.request.Request(up_url, data=body, headers={
+                            "Content-Type": f"multipart/form-data; boundary={boundary}",
+                            "User-Agent": "Mozilla/5.0",
+                        })
+                        with urllib.request.urlopen(up_req, timeout=15) as upr:
+                            up_res = json.load(upr)
+                        if up_res.get("photo") and up_res.get("hash"):
+                            save_q = urllib.parse.urlencode({
+                                "group_id": group,
+                                "photo": up_res["photo"],
+                                "server": up_res["server"],
+                                "hash": up_res["hash"],
+                                "access_token": token,
+                                "v": "5.199",
+                            }).encode("utf-8")
+                            with urllib.request.urlopen(urllib.request.Request("https://api.vk.com/method/photos.saveWallPhoto", data=save_q), timeout=10) as svr:
+                                sv_res = json.load(svr)
+                            ph = (sv_res.get("response") or [{}])[0]
+                            if ph.get("owner_id") and ph.get("id"):
+                                attachment_str = f"photo{ph['owner_id']}_{ph['id']}"
+                except Exception as img_err:
+                    logger.warning("Не удалось прикрепить постер к посту VK: %s", img_err)
+
+            payload_dict = {
                 "owner_id": f"-{group}",
                 "from_group": "1",
                 "message": wall_msg,
                 "access_token": token,
-                "v": "5.199"
-            }).encode("utf-8")
+                "v": "5.199",
+            }
+            if attachment_str:
+                payload_dict["attachments"] = attachment_str
+            data = urllib.parse.urlencode(payload_dict).encode("utf-8")
 
             req = urllib.request.Request("https://api.vk.com/method/wall.post", data=data, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=15) as resp:
@@ -828,8 +883,12 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 if token:
                     attachments.append({"type": "image", "payload": {"token": token}})
 
+            card_url = (
+                f"{site_url}/title/{post.media_type}/{post.tmdb_id}?from=max"
+                if post.media_type and post.tmdb_id else f"{site_url}/?from=max"
+            )
             attachments.append({"type": "inline_keyboard", "payload": {"buttons": [
-                [{"type": "link", "text": "🍿 Смотреть в КиноЖдуне", "url": f"{site_url}"}],
+                [{"type": "link", "text": "🍿 Смотреть на сайте", "url": card_url}],
                 [{"type": "link", "text": "🔔 Личные напоминания", "url": bot_url}],
             ]}})
 
@@ -850,7 +909,11 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         """Единый метод дистрибуции сгенерированного шортса по всем соцсетям."""
         results = {}
         # 1. VK Stories
-        story_id = await self.publish_to_vk_stories(video_path)
+        story_url = (
+            f"https://kinojdun.ru/title/{post.media_type}/{post.tmdb_id}?from=vk-story"
+            if post.media_type and post.tmdb_id else "https://kinojdun.ru/?from=vk-story"
+        )
+        story_id = await self.publish_to_vk_stories(video_path, link_url=story_url)
         results["vk_story_id"] = story_id
 
         # 2. VK Wall

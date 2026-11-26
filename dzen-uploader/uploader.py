@@ -38,24 +38,31 @@ def final_videos():
     )
 
 
-def title_from_file(path):
+def _meta_from_file(path):
     match = re.match(r"^(movie|tv)_(\d+)_\d+_", path.stem)
     database = Path("/kino-data/kinozhdun.db")
+    info = {"media_type": match.group(1) if match else None, "tmdb_id": int(match.group(2)) if match else None, "title": "", "network": ""}
     if match and database.exists():
         try:
             connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
             row = connection.execute(
-                "SELECT title FROM channel_posts WHERE media_type=? AND tmdb_id=? ORDER BY id DESC LIMIT 1",
+                "SELECT title, network FROM channel_posts WHERE media_type=? AND tmdb_id=? ORDER BY id DESC LIMIT 1",
                 (match.group(1), int(match.group(2))),
             ).fetchone()
             connection.close()
-            if row and row[0]:
-                return row[0]
+            if row:
+                info["title"] = row[0] or ""
+                info["network"] = row[1] or ""
         except sqlite3.Error:
             pass
-    stem = path.stem
-    stem = re.sub(r"^(movie|tv)_\d+_\d+_", "", stem)
-    return stem or "Новая премьера"
+    if not info["title"]:
+        stem = re.sub(r"^(movie|tv)_\d+_\d+_", "", path.stem)
+        info["title"] = stem or "Новая премьера"
+    return info
+
+
+def title_from_file(path):
+    return _meta_from_file(path)["title"]
 
 
 def browser_context(playwright):
@@ -190,11 +197,18 @@ def upload_video(path):
 
 
 def roll_description(path):
-    title = title_from_file(path)
-    return (
-        f"Премьера: {title}. Не пропускайте новые фильмы и сериалы — "
-        "сайт проекта: https://kinojdun.ru/?from=dzen"
-    )
+    info = _meta_from_file(path)
+    title = info["title"]
+    if info["media_type"] and info["tmdb_id"]:
+        url = f"https://kinojdun.ru/title/{info['media_type']}/{info['tmdb_id']}?from=dzen"
+    else:
+        url = "https://kinojdun.ru/?from=dzen"
+    tag_title = "#" + re.sub(r"[^0-9A-Za-zА-Яа-яЁё]", "", title)[:24]
+    kind_tag = "#сериалы" if info["media_type"] == "tv" else "#кино"
+    text = f"Премьера: {title}. Ждёте выход? Пишите в комментариях!\nТрекер: {url}\n{tag_title} #премьера {kind_tag}"
+    if len(text) > 200:
+        text = f"Премьера: {title}.\nТрекер выхода: {url}\n#премьера {kind_tag}"
+    return text[:200]
 
 
 def publish_open_roll(page, path):

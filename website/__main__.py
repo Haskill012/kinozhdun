@@ -179,6 +179,14 @@ def create_app(config=None):
         from website.stats import stats_handler
         return await stats_handler(request, config)
 
+    indexnow_key = os.getenv("SITE_INDEXNOW_KEY", "kinojdun2026indexnow8842").strip()
+
+    async def indexnow_txt(request):
+        return web.Response(text=indexnow_key, content_type="text/plain")
+
+    if indexnow_key:
+        app.router.add_get(f"/{indexnow_key}.txt", indexnow_txt)
+
     async def help_page(request):
         return web.Response(text=views.help_page(config), content_type="text/html")
 

@@ -946,16 +946,17 @@ class ChannelPublisher:
         async with self.session_factory() as session:
             repo = Repository(session)
 
-            # 1. Проверяем, не был ли уже опубликован шортс сегодня
+            # 1. Проверяем дневной лимит шортсов (по умолчанию 3 ролика в день)
+            daily_limit = max(1, int(getattr(self.settings, "SHORTS_DAILY_LIMIT", 3)))
             if not force:
-                recent_premieres = await repo.get_recent_published_premieres(limit=5)
-                for p in recent_premieres:
-                    if p.published_at and p.published_at.date() == target_date:
-                        logger.info(
-                            "Премьерный шортс на сегодня (%s) уже был опубликован: #%s «%s».",
-                            target_date, p.id, p.title,
-                        )
-                        return p
+                recent_premieres = await repo.get_recent_published_premieres(limit=10)
+                today_premieres = [p for p in recent_premieres if p.published_at and p.published_at.date() == target_date]
+                if len(today_premieres) >= daily_limit:
+                    logger.info(
+                        "Дневной лимит шортсов на %s (%s/%s) уже выполнен.",
+                        target_date, len(today_premieres), daily_limit,
+                    )
+                    return today_premieres[0]
 
             # 2. Сбор кандидатов (СТРОГО актуальные премьеры: сегодня или в ближайшие 45 дней)
             candidates = []

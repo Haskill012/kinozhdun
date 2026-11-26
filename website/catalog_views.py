@@ -82,6 +82,13 @@ def project_page(store, config, item, news_page=1):
     trailer = f'<div id="trailer" class="theater">{trailer_player(item.get("trailer"), item.get("trailer_language"), item.get("trailer_season"))}</div>' if item.get("trailer") else '<div class="trailer-unavailable"><span>Трейлер пока не опубликован</span><p>Добавим официальный ролик, когда он появится.</p></div>'
     content = f'''<div class="project-shell"><div class="page-shell"><div class="breadcrumbs"><a href="/catalog">Каталог</a><span> / </span><a href="{catalog_url}">{'Фильмы' if movie else 'Сериалы'}</a><span> / </span>{esc(item['title'])}</div></div><section class="project-hero">{image(item.get('image'), item['title'], 'project-backdrop', eager=True)}<div class="project-gradient"></div><div class="page-shell project-grid"><div class="project-poster">{image(item.get('poster'), item['title'], eager=True)}</div><div class="project-copy"><span class="eyebrow lime">{state}</span><h1>{esc(item['title'])}</h1>{other_names}<div class="project-meta">{meta}</div><p class="project-genres">{esc(genres)}</p><p class="project-overview">{esc(item.get('overview'))}</p><div class="project-actions">{bot_dropdown(watch_label(item), tracker, max_tracker, btn_class='button', wrapper_class='project-hero-dropdown', config=config)}{watch}<a class="button outline" href="#news-history">История новостей</a></div><p class="tracking-note">{esc(action['note'])}</p></div></div></section><div class="page-shell"><dl class="project-facts">{dates}</dl>{trailer}{news}{collection(other[:6], 'Вам может понравиться', catalog_url, 'ЕЩЁ НЕМНОГО КИНО')}</div></div>'''
     schema = {"@context": "https://schema.org", "@type": "Movie" if movie else "TVSeries", "name": item["title"], "description": item.get("overview"), "url": config["base_url"] + title_path(item)}
+    if item.get("image"):
+        img = item["image"]
+        schema["image"] = img if str(img).startswith("http") else config["base_url"].rstrip("/") + "/" + str(img).lstrip("/")
+    if item.get("genres"):
+        schema["genre"] = [g.capitalize() for g in item["genres"]]
+    if release:
+        schema["datePublished"] = release
     if alternatives:
         schema['alternateName'] = alternatives
     original = item.get('original_title') or ''
@@ -91,7 +98,12 @@ def project_page(store, config, item, news_page=1):
     if year:
         qualifier.append(year)
     seo_title = item['title'] + (' (' + ', '.join(qualifier) + ')' if qualifier else '')
-    seo_title += ' — дата выхода' if movie else ' — дата выхода серий'
+    if movie:
+        seo_title += ' — дата выхода, трейлер, где смотреть'
+    elif item.get("premiere_season"):
+        seo_title += f' — дата выхода {item["premiere_season"]} сезона и серий'
+    else:
+        seo_title += ' — дата выхода серий, когда выйдет'
     release_info = f"{date_label}: {date_ru(release)}." if release else f"{date_label}: дата пока не объявлена."
     display_names = item['title'] + (' (' + ', '.join(alternatives) + ')' if alternatives else '')
     description = f"{display_names}. {release_info} Описание, трейлер и новости {'фильма' if movie else 'сериала'} на КиноЖдуне."

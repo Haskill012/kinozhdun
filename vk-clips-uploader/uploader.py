@@ -171,19 +171,27 @@ def videos():
     return sorted((p for p in SHORTS.glob("*.mp4") if p.stat().st_size > 100_000), key=lambda p: p.stat().st_mtime)
 
 
-def title_for(path):
+def _meta_for(path):
     match = re.match(r"^(movie|tv)_(\d+)_\d+_", path.stem)
     db = Path("/kino-data/kinozhdun.db")
+    info = {"media_type": match.group(1) if match else None, "tmdb_id": int(match.group(2)) if match else None, "title": "", "network": ""}
     if match and db.exists():
         try:
             con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-            row = con.execute("SELECT title FROM channel_posts WHERE media_type=? AND tmdb_id=? ORDER BY id DESC LIMIT 1", (match.group(1), int(match.group(2)))).fetchone()
+            row = con.execute("SELECT title, network FROM channel_posts WHERE media_type=? AND tmdb_id=? ORDER BY id DESC LIMIT 1", (match.group(1), int(match.group(2)))).fetchone()
             con.close()
-            if row and row[0]:
-                return row[0]
+            if row:
+                info["title"] = row[0] or ""
+                info["network"] = row[1] or ""
         except sqlite3.Error:
             pass
-    return re.sub(r"^(movie|tv)_\d+_\d+_", "", path.stem) or "Новая премьера"
+    if not info["title"]:
+        info["title"] = re.sub(r"^(movie|tv)_\d+_\d+_", "", path.stem) or "Новая премьера"
+    return info
+
+
+def title_for(path):
+    return _meta_for(path)["title"]
 
 
 def upload_clip(path):
@@ -201,12 +209,20 @@ def upload_clip(path):
 
         description = page.locator('textarea[placeholder="О чём ваш клип?"]')
         description.wait_for(state="visible", timeout=120_000)
-        title = title_for(path)
+        info = _meta_for(path)
+        title = info["title"]
+        if info["media_type"] and info["tmdb_id"]:
+            card_url = f"https://kinojdun.ru/title/{info['media_type']}/{info['tmdb_id']}?from=vk-clips"
+        else:
+            card_url = "https://kinojdun.ru/?from=vk-clips"
+        tag_title = "#" + re.sub(r"[^0-9A-Za-zА-Яа-яЁё]", "", title)[:28]
+        kind_tag = "#сериалы" if info["media_type"] == "tv" else "#фильмы"
+        net_tag = (" #" + re.sub(r"[^0-9A-Za-zА-Яа-яЁё]", "", info["network"])[:20]) if info["network"] else ""
         description.fill(
             f"Премьера: {title} 🍿\n"
-            "Смотрите короткий обзор и подписывайтесь, чтобы не пропустить новые фильмы и сериалы.\n"
-            "Сайт проекта: https://kinojdun.ru/?from=vk-clips\n"
-            "#премьера #кино #сериалы"
+            "Будете смотреть или пропустите? Пишите в комментариях!\n"
+            f"Дата выхода, трейлер и напоминания в боте: {card_url}\n"
+            f"{tag_title} #премьера #кино {kind_tag} #чтопосмотреть{net_tag}"
         )
 
         # Keep the clip on the community's main page, but do not duplicate the
