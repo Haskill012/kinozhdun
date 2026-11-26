@@ -175,6 +175,10 @@ def create_app(config=None):
             content_type="text/html",
         )
 
+    async def stats_page(request):
+        from website.stats import stats_handler
+        return await stats_handler(request, config)
+
     async def help_page(request):
         return web.Response(text=views.help_page(config), content_type="text/html")
 
@@ -278,7 +282,7 @@ def create_app(config=None):
     from website.vk_upload_check import upload_check_handler
     app.router.add_post('/api/vk/poster-check', upload_check_handler(ROOT / 'website' / 'catalog_seed.json'))
 
-    for path, handler in (("/", home), ("/news", listing), ("/catalog", listing), ("/movies", listing), ("/series", listing), ("/news/{slug}", article), (r"/title/{media:movie|tv}/{id:\d+}", title_page), ("/calendar", calendar), ("/bots", bots), ("/about", about), ("/help", help_page), ("/privacy", privacy), ("/robots.txt", robots), ("/sitemap.xml", sitemap), ("/feed.xml", feed), ("/dzen/rss.xml", dzen_feed), ("/dzen.xml", dzen_feed), ("/health", health)):
+    for path, handler in (("/", home), ("/news", listing), ("/catalog", listing), ("/movies", listing), ("/series", listing), ("/news/{slug}", article), (r"/title/{media:movie|tv}/{id:\d+}", title_page), ("/calendar", calendar), ("/bots", bots), ("/stats", stats_page), ("/about", about), ("/help", help_page), ("/privacy", privacy), ("/robots.txt", robots), ("/sitemap.xml", sitemap), ("/feed.xml", feed), ("/dzen/rss.xml", dzen_feed), ("/dzen.xml", dzen_feed), ("/health", health)):
 
         app.router.add_get(path, handler)
     app.router.add_static("/static/", ROOT / "website" / "static", show_index=False)
