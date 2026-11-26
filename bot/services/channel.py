@@ -21,7 +21,7 @@ from bot.config import Settings
 from bot.db.models import ChannelPost
 from bot.db.repositories import Repository
 from bot.utils.formatting import format_date_ru, safe_html, linked_title
-from shared.audience import audience_metadata, exclusion_reason
+from shared.audience import audience_metadata, exclusion_reason, is_readable_title
 from bot.services.social_editorial import moscow_today
 
 logger = logging.getLogger(__name__)
@@ -1074,6 +1074,11 @@ class ChannelPublisher:
                                 continue
 
                             pop = float(m.get("popularity") or 0)
+                            m_title = m.get("title") or ""
+                            if not is_readable_title(m_title) or pop < 10.0:
+                                continue
+                            if m.get("original_language") not in ("ru", "en") and not re.search(r"[А-Яа-яЁё]", m_title):
+                                continue
                             window_prio = 0 if delta <= 7 else 1 if delta <= 21 else 2
                             prio = (window_prio, 1, delta, -pop)
 
@@ -1113,6 +1118,11 @@ class ChannelPublisher:
                                 continue
 
                             pop = float(tv.get("popularity") or 0)
+                            tv_title = tv.get("name") or ""
+                            if not is_readable_title(tv_title) or pop < 10.0:
+                                continue
+                            if tv.get("original_language") not in ("ru", "en") and not re.search(r"[А-Яа-яЁё]", tv_title):
+                                continue
                             window_prio = 0 if delta <= 7 else 1 if delta <= 21 else 2
                             prio = (window_prio, 1, delta, -pop)
 
@@ -1136,10 +1146,10 @@ class ChannelPublisher:
                 # Предварительная сортировка кандидатов
                 candidates.sort(key=lambda x: x["priority"])
 
-                # Обогащаем трейлерами и проверяем аудиторию для топ-10 кандидатов
+                # Обогащаем трейлерами и проверяем аудиторию для топ-15 кандидатов
                 if self.tmdb_client and candidates:
-                    top_candidates = candidates[:10]
-                    for cand in top_candidates:
+                    filtered_candidates = []
+                    for cand in candidates[:15]:
                         try:
                             m_type = cand["media_type"]
                             t_id = cand["tmdb_id"]
@@ -1152,6 +1162,17 @@ class ChannelPublisher:
                                     cand["poster_path"] = details.get("poster_path")
                                 if not cand.get("network"):
                                     cand["network"] = details.get("network")
+                                meta = audience_metadata(m_type, details)
+                                reason = exclusion_reason({
+                                    **details,
+                                    **meta,
+                                    "media_type": m_type,
+                                    "title": cand.get("title") or details.get("title") or details.get("name"),
+                                    "overview": cand.get("overview") or details.get("overview"),
+                                })
+                                if reason:
+                                    logger.info("Кандидат «%s» отсеян фильтром (%s)", cand.get("title"), reason)
+                                    continue
                                 if not cand.get("trailer_url"):
                                     tr = await self.tmdb_client.get_official_trailer(m_type, t_id)
                                     if tr:
@@ -1162,10 +1183,12 @@ class ChannelPublisher:
                                 window_prio = 0 if delta <= 7 else 1 if delta <= 21 else 2
                                 has_tr = 0 if cand.get("trailer_url") else 1
                                 cand["priority"] = (window_prio, has_tr, delta, -cand.get("popularity", 0.0))
+                            if is_readable_title(cand.get("title")):
+                                filtered_candidates.append(cand)
                         except Exception as enrich_err:
                             logger.warning("Ошибка обогащения кандидата #%s: %s", cand.get("tmdb_id"), enrich_err)
 
-                    candidates.sort(key=lambda x: x["priority"])
+                    candidates = sorted(filtered_candidates, key=lambda x: x["priority"])
 
             if not candidates:
                 logger.info("Нет доступных кандидатов для премьерного шортса.")

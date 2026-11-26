@@ -468,6 +468,11 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         if getattr(self.settings, "TELEGRAM_BOT_TOKEN", "") == "mock_token":
             return None
 
+        from shared.audience import is_readable_title
+        if not is_readable_title(getattr(post, "title", None)):
+            logger.warning("Пропуск генерации шортса для поста #%s: нечитаемое название «%s»", post.id, post.title)
+            return None
+
         target_path = self.get_short_cache_path(post)
         if target_path.exists() and target_path.stat().st_size > 100_000:
             logger.info("Найден готовый шортс в кэше: %s", target_path)
