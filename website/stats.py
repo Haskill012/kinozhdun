@@ -318,8 +318,23 @@ def _render_html(config: dict, data: dict) -> str:
     vk_ch = str(soc["vk_members"]) if soc["vk_members"] is not None else "—"
     max_ch = str(soc["max_members"]) if soc["max_members"] is not None else "—"
 
+    traffic_type_ru = {
+        "Direct traffic": "Прямые заходы",
+        "Search engine traffic": "Поиск",
+        "Recommendation system traffic": "Рекомендации",
+        "Link traffic": "По ссылкам с сайтов",
+        "Social network traffic": "Соцсети",
+        "Messenger traffic": "Мессенджеры",
+        "Internal traffic": "Внутренние переходы",
+        "Advertising traffic": "Реклама",
+        "Cached page traffic": "Сохранённые страницы",
+    }
+    engine_ru = {
+        "Yandex Zen": "Дзен",
+    }
+
     sources_rows = "".join(
-        f"<tr><td>{escape(s)}</td><td>{escape(e)}</td><td>{v}</td><td>{u}</td></tr>"
+        f"<tr><td>{escape(traffic_type_ru.get(s, s))}</td><td>{escape(engine_ru.get(e, e))}</td><td>{v}</td><td>{u}</td></tr>"
         for s, e, v, u in met["sources"]
     ) or "<tr><td colspan='4'>Нет данных за 30 дней</td></tr>"
 
@@ -329,17 +344,41 @@ def _render_html(config: dict, data: dict) -> str:
     ) or "<tr><td colspan='3'>Нет данных</td></tr>"
 
     goals_rows = "".join(
-        f"<tr><td>{escape(name)}</td><td>{gid}</td><td>{reaches}</td><td>{users}</td></tr>"
-        for name, gid, reaches, users in met["goals"]
-    ) or "<tr><td colspan='4'>Цели в Метрике не найдены или ещё нет достижений</td></tr>"
+        f"<tr><td>{escape(name)}</td><td>{reaches}</td><td>{users}</td></tr>"
+        for name, _gid, reaches, users in met["goals"]
+    ) or "<tr><td colspan='3'>Цели в Метрике не найдены или ещё нет достижений</td></tr>"
+
+    def _human_ref(src: str) -> str:
+        s = (src or "").strip()
+        if not s or s == "organic":
+            return "Прямой запуск / поиск в Telegram"
+        if s.startswith("unknown:ref_") or s.startswith("ref_"):
+            return "По приглашению друга"
+        if "channel" in s:
+            return "Из Telegram-канала"
+        if "site" in s or "kinojdun" in s:
+            return "С сайта kinojdun.ru"
+        return s
+
+    event_ru = {
+        "channel_link_opened": "Открыли ссылку из Telegram-канала",
+        "content_followed_from_channel": "Подписались на релиз из канала",
+        "share_link_opened": "Открыли ссылку «Поделиться»",
+        "content_followed_from_share": "Подписались на релиз по ссылке друга",
+        "content_shared": "Поделились фильмом/сериалом",
+        "watchlist_shared": "Поделились списком ожидания",
+        "watchlist_link_opened": "Открыли чужой список ожидания",
+        "watchlist_item_followed": "Подписались на релиз из списка",
+        "watchlist_follow_all": "Подписались на весь список",
+    }
 
     ref_rows = "".join(
-        f"<tr><td>{escape(str(src))}</td><td>{cnt}</td></tr>"
+        f"<tr><td>{escape(_human_ref(str(src)))}</td><td>{cnt}</td></tr>"
         for src, cnt in loc["tg_bot"]["referrals"]
     ) or "<tr><td colspan='2'>Нет данных</td></tr>"
 
     ev_rows = "".join(
-        f"<tr><td><code>{escape(name)}</code></td><td>{cnt}</td></tr>"
+        f"<tr><td>{escape(event_ru.get(name, name))}</td><td>{cnt}</td></tr>"
         for name, cnt in loc["tg_bot"]["events"]
     ) or "<tr><td colspan='2'>Событий пока нет</td></tr>"
 
@@ -438,27 +477,27 @@ def _render_html(config: dict, data: dict) -> str:
             </table>
           </div>
         </div>
-        <h3>Цели сайта (клики в ботов и канал)</h3>
+        <h3>Действия на сайте (куда кликают посетители за 30 дней)</h3>
         <table class="st-table">
-          <thead><tr><th>Цель</th><th>ID</th><th>Достижений</th><th>Уникальных</th></tr></thead>
+          <thead><tr><th>Действие</th><th>Кликов (всего)</th><th>Уникальных людей</th></tr></thead>
           <tbody>{goals_rows}</tbody>
         </table>
       </section>
 
       <section class="st-sec">
-        <h2>Боты: рефералы, события и топ отслеживаний</h2>
+        <h2>Боты: откуда приходят люди и что делают</h2>
         <div class="st-cols">
           <div>
-            <h3>Источники в Telegram-боте</h3>
+            <h3>Откуда пришли в Telegram-бот</h3>
             <table class="st-table">
               <thead><tr><th>Источник</th><th>Пользователей</th></tr></thead>
               <tbody>{ref_rows}</tbody>
             </table>
           </div>
           <div>
-            <h3>Воронка событий (analytics_events)</h3>
+            <h3>Активность внутри Telegram-бота</h3>
             <table class="st-table">
-              <thead><tr><th>Событие</th><th>Кол-во</th></tr></thead>
+              <thead><tr><th>Действие</th><th>Кол-во</th></tr></thead>
               <tbody>{ev_rows}</tbody>
             </table>
           </div>
