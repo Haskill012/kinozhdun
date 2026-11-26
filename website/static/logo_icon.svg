@@ -1,53 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <defs>
-    <filter id="lime-glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#d4fa58" flood-opacity="0.4"/>
-    </filter>
+    <radialGradient id="spot" cx="50%" cy="48%" r="55%">
+      <stop offset="0%" stop-color="#2c591d"/>
+      <stop offset="48%" stop-color="#132212"/>
+      <stop offset="100%" stop-color="#0b0e0c"/>
+    </radialGradient>
+    <linearGradient id="pearl" x1="15%" y1="10%" x2="85%" y2="90%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#e5f7e3"/>
+      <stop offset="100%" stop-color="#c3e6c3"/>
+    </linearGradient>
+    <linearGradient id="extrude" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3a523c"/>
+      <stop offset="100%" stop-color="#1f2d21"/>
+    </linearGradient>
+    <radialGradient id="starGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#a6ff2e" stop-opacity="0.75"/>
+      <stop offset="50%" stop-color="#7ce614" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#7ce614" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="starCore" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#faffca"/>
+      <stop offset="55%" stop-color="#b8ff2e"/>
+      <stop offset="100%" stop-color="#6dd40a"/>
+    </radialGradient>
   </defs>
-
-  <!-- Background Squircle -->
-  <rect width="128" height="128" rx="28" fill="#111312"/>
-  <rect x="2" y="2" width="124" height="124" rx="26" fill="none" stroke="#30342f" stroke-width="1.5"/>
-  <rect x="4" y="4" width="120" height="120" rx="24" fill="none" stroke="#d4fa58" stroke-width="1.5" stroke-opacity="0.35"/>
-
-  <!-- Brand Asterisk Star -->
-  <g transform="translate(98, 26)" filter="url(#lime-glow)">
-    <path d="M0 -10 L0 10 M-10 0 L10 0 M-7 -7 L7 7 M-7 7 L7 -7" stroke="#d4fa58" stroke-width="2.5" stroke-linecap="round"/>
-    <circle cx="0" cy="0" r="1.5" fill="#d4fa58"/>
-  </g>
-
-  <!-- Zhdun Silhouette / Minimalist Cinema Mascot -->
-  <g fill="none" stroke="#d4fa58" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-    <!-- Head and Snout -->
-    <!-- Dome of head -->
-    <path d="M 46 44 C 46 24 82 24 82 44 C 82 50 80 54 78 57 C 78 65 74 72 64 72 C 54 72 50 65 50 57 C 48 54 46 50 46 44 Z" fill="#1a1d1b" stroke="#d4fa58" stroke-width="3.5"/>
-    
-    <!-- Proboscis / Nose folds -->
-    <path d="M 58 57 Q 64 63 70 57" stroke="#d4fa58" stroke-width="2"/>
-    <path d="M 60 62 Q 64 66 68 62" stroke="#d4fa58" stroke-width="2"/>
-
-    <!-- Neck rolls / folds -->
-    <path d="M 45 66 Q 64 73 83 66" stroke="#d4fa58" stroke-width="2.5"/>
-    <path d="M 40 75 Q 64 82 88 75" stroke="#d4fa58" stroke-width="2.5"/>
-
-    <!-- Body Outline -->
-    <path d="M 40 75 C 32 84 26 98 26 112 C 26 115 28 116 32 116 L 96 116 C 100 116 102 115 102 112 C 102 98 96 84 88 75" fill="#181c19" stroke="#d4fa58" stroke-width="3.5"/>
-
-    <!-- Clasped Hands (Waiting Pose) -->
-    <!-- Left Arm -->
-    <path d="M 32 94 C 36 104 46 106 58 103" stroke="#d4fa58" stroke-width="3"/>
-    <!-- Right Arm -->
-    <path d="M 96 94 C 92 104 82 106 70 103" stroke="#d4fa58" stroke-width="3"/>
-    <!-- Interlocked fingers -->
-    <path d="M 54 100 Q 64 94 74 100 Q 64 108 54 100 Z" fill="#d4fa58" stroke="#d4fa58" stroke-width="1.5"/>
-    <path d="M 58 103 Q 64 99 70 103" stroke="#111312" stroke-width="2"/>
-
-    <!-- 3D Cinema Glasses -->
-    <!-- Frame -->
-    <rect x="42" y="36" width="44" height="16" rx="4" fill="#111312" stroke="#d4fa58" stroke-width="3"/>
-    <line x1="64" y1="36" x2="64" y2="44" stroke="#d4fa58" stroke-width="2.5"/>
-    <!-- Lenses -->
-    <rect x="46" y="39" width="15" height="10" rx="2" fill="#d4fa58" fill-opacity="0.85" stroke="none"/>
-    <rect x="67" y="39" width="15" height="10" rx="2" fill="#f4f4ec" fill-opacity="0.9" stroke="none"/>
+  <rect width="1024" height="1024" rx="224" fill="url(#spot)"/>
+  <circle cx="410" cy="518" r="260" fill="url(#starGlow)"/>
+  <g transform="translate(512,512) scale(0.92) translate(-512,-512)">
+    <path d="M903,268L906,268L909,281L920,297L885,395L872,421L854,448L826,478L811,490L848,514L883,550L939,638L960,678L864,688L816,609L786,576L759,559L722,550L737,702L653,710L641,686L637,685L625,564L599,580L572,614L556,648L531,723L359,741L331,696L309,660L276,628L244,611L208,604L224,755L140,764L128,740L124,739L123,732L84,354L170,346L175,360L184,373L196,493L229,476L260,443L278,410L307,331L474,313L477,314L523,391L554,426L580,443L601,450L613,451L598,300L683,292L698,323L709,438L712,438L742,419L764,392L781,358L808,278Z M527,512L495,490L464,460L443,432L409,376L388,437L370,475L354,499L334,520L335,522L332,522L312,541L339,559L371,590L397,624L429,677L450,616L466,582L492,545Z" fill="url(#extrude)" fill-rule="evenodd"/>
+    <path d="M899,269L906,270L874,361L859,393L828,436L805,458L780,476L810,489L834,504L874,540L898,572L945,649L945,653L849,663L802,585L774,553L743,533L725,527L707,525L723,676L638,684L623,539L622,534L620,534L600,543L585,554L559,586L541,624L516,698L344,716L325,684L295,636L267,607L248,594L228,585L209,580L194,579L210,730L125,738L85,355L170,346L185,496L187,497L209,489L230,476L260,444L279,409L307,332L392,322L476,314L515,380L538,411L552,425L573,440L598,450L613,452L598,301L683,292L698,441L700,443L722,434L737,424L754,407L764,393L782,357L809,279Z M543,501L514,487L490,472L451,437L427,405L394,351L369,423L351,457L331,484L307,508L280,527L279,529L298,535L330,553L365,584L395,622L429,678L455,605L472,573L498,539L519,519Z" fill="url(#pearl)" fill-rule="evenodd"/>
+    <path d="M403,437L415,465L430,483L453,497L473,504L485,506L464,516L442,533L433,545L427,557L423,569L420,592L416,585L416,582L404,561L386,542L359,528L334,523L363,507L382,490L391,477L397,464Z" fill="url(#starCore)" fill-rule="evenodd"/>
   </g>
 </svg>

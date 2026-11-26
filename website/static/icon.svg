@@ -1,1 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#d4fa58"/><path d="M32 10v44M10 32h44M16 16l32 32M16 48l32-32" stroke="#111312" stroke-width="8"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="spot" cx="50%" cy="48%" r="55%">
+      <stop offset="0%" stop-color="#2c591d"/>
+      <stop offset="48%" stop-color="#132212"/>
+      <stop offset="100%" stop-color="#0b0e0c"/>
+    </radialGradient>
+    <linearGradient id="pearl" x1="15%" y1="10%" x2="85%" y2="90%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#e5f7e3"/>
+      <stop offset="100%" stop-color="#c3e6c3"/>
+    </linearGradient>
+    <linearGradient id="extrude" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3a523c"/>
+      <stop offset="100%" stop-color="#1f2d21"/>
+    </linearGradient>
+    <radialGradient id="starGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#a6ff2e" stop-opacity="0.75"/>
+      <stop offset="50%" stop-color="#7ce614" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#7ce614" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="starCore" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#faffca"/>
+      <stop offset="55%" stop-color="#b8ff2e"/>
+      <stop offset="100%" stop-color="#6dd40a"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#spot)"/>
+  <circle cx="410" cy="518" r="260" fill="url(#starGlow)"/>
+  <g transform="translate(512,512) scale(0.92) translate(-512,-512)">
+    <path d="M903,268L906,268L909,281L920,297L885,395L872,421L854,448L826,478L811,490L848,514L883,550L939,638L960,678L864,688L816,609L786,576L759,559L722,550L737,702L653,710L641,686L637,685L625,564L599,580L572,614L556,648L531,723L359,741L331,696L309,660L276,628L244,611L208,604L224,755L140,764L128,740L124,739L123,732L84,354L170,346L175,360L184,373L196,493L229,476L260,443L278,410L307,331L474,313L477,314L523,391L554,426L580,443L601,450L613,451L598,300L683,292L698,323L709,438L712,438L742,419L764,392L781,358L808,278Z M527,512L495,490L464,460L443,432L409,376L388,437L370,475L354,499L334,520L335,522L332,522L312,541L339,559L371,590L397,624L429,677L450,616L466,582L492,545Z" fill="url(#extrude)" fill-rule="evenodd"/>
+    <path d="M899,269L906,270L874,361L859,393L828,436L805,458L780,476L810,489L834,504L874,540L898,572L945,649L945,653L849,663L802,585L774,553L743,533L725,527L707,525L723,676L638,684L623,539L622,534L620,534L600,543L585,554L559,586L541,624L516,698L344,716L325,684L295,636L267,607L248,594L228,585L209,580L194,579L210,730L125,738L85,355L170,346L185,496L187,497L209,489L230,476L260,444L279,409L307,332L392,322L476,314L515,380L538,411L552,425L573,440L598,450L613,452L598,301L683,292L698,441L700,443L722,434L737,424L754,407L764,393L782,357L809,279Z M543,501L514,487L490,472L451,437L427,405L394,351L369,423L351,457L331,484L307,508L280,527L279,529L298,535L330,553L365,584L395,622L429,678L455,605L472,573L498,539L519,519Z" fill="url(#pearl)" fill-rule="evenodd"/>
+    <path d="M403,437L415,465L430,483L453,497L473,504L485,506L464,516L442,533L433,545L427,557L423,569L420,592L416,585L416,582L404,561L386,542L359,528L334,523L363,507L382,490L391,477L397,464Z" fill="url(#starCore)" fill-rule="evenodd"/>
+  </g>
+</svg>
