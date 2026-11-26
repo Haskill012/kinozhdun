@@ -167,6 +167,14 @@ def create_app(config=None):
     async def about(request):
         return web.Response(text=views.about(config), content_type="text/html")
 
+    async def bots(request):
+        from website.bots_page import bots_page
+
+        return web.Response(
+            text=bots_page(config, request.query.get("from", "")),
+            content_type="text/html",
+        )
+
     async def help_page(request):
         return web.Response(text=views.help_page(config), content_type="text/html")
 
@@ -181,7 +189,7 @@ def create_app(config=None):
 
     async def sitemap(request):
         pages = [(p, None, "1.0" if p == "/" else "0.9" if p == "/calendar" else "0.8", "daily")
-                 for p in ("/", "/catalog", "/news", "/movies", "/series", "/calendar", "/about", "/help", "/privacy")]
+                 for p in ("/", "/catalog", "/news", "/movies", "/series", "/calendar", "/bots", "/about", "/help", "/privacy")]
         pages.extend((views.title_path(t), None, "0.8", "daily") for t in store.catalog())
         pages.extend(("/news/" + a["slug"], a["updated"], "0.7", "weekly") for a in store.articles(limit=50000))
         body = ''.join(
@@ -270,7 +278,7 @@ def create_app(config=None):
     from website.vk_upload_check import upload_check_handler
     app.router.add_post('/api/vk/poster-check', upload_check_handler(ROOT / 'website' / 'catalog_seed.json'))
 
-    for path, handler in (("/", home), ("/news", listing), ("/catalog", listing), ("/movies", listing), ("/series", listing), ("/news/{slug}", article), (r"/title/{media:movie|tv}/{id:\d+}", title_page), ("/calendar", calendar), ("/about", about), ("/help", help_page), ("/privacy", privacy), ("/robots.txt", robots), ("/sitemap.xml", sitemap), ("/feed.xml", feed), ("/dzen/rss.xml", dzen_feed), ("/dzen.xml", dzen_feed), ("/health", health)):
+    for path, handler in (("/", home), ("/news", listing), ("/catalog", listing), ("/movies", listing), ("/series", listing), ("/news/{slug}", article), (r"/title/{media:movie|tv}/{id:\d+}", title_page), ("/calendar", calendar), ("/bots", bots), ("/about", about), ("/help", help_page), ("/privacy", privacy), ("/robots.txt", robots), ("/sitemap.xml", sitemap), ("/feed.xml", feed), ("/dzen/rss.xml", dzen_feed), ("/dzen.xml", dzen_feed), ("/health", health)):
 
         app.router.add_get(path, handler)
     app.router.add_static("/static/", ROOT / "website" / "static", show_index=False)

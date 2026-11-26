@@ -1,0 +1,17 @@
+services:
+  dzen-uploader:
+    build: .
+    container_name: kinojdun_dzen_uploader
+    restart: unless-stopped
+    init: true
+    shm_size: 512mb
+    mem_limit: 700m
+    cpus: 1.0
+    environment:
+      DZEN_STUDIO_URL: https://dzen.ru/profile/editor/kinojdun
+      DZEN_SCAN_SECONDS: "180"
+    volumes:
+      - ./uploader.py:/app/uploader.py:ro
+      - ./data:/data
+      - /srv/apps/kinozhdun-c909279/output/autonomous_shorts:/shorts:ro
+      - /srv/apps/kinozhdun/data:/kino-data:ro

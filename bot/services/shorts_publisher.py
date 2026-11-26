@@ -305,7 +305,8 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             p = work_dir / f"vshot_{i:02d}.mp4"
             x = max(0, min(1280 - 640, cx - 320))
             vf = (
-                f"[0:v]crop=1280:536:0:92,split[b][f];"
+                "[0:v]scale=1280:720:force_original_aspect_ratio=increase,"
+                "crop=1280:720,setsar=1,crop=1280:536:0:92,split[b][f];"
                 f"[b]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=30,eq=brightness=-0.28[bg];"
                 f"[f]crop=640:536:{x}:0,scale=1080:904,setsar=1[fg];"
                 f"[bg][fg]overlay=0:320[v];"
@@ -367,13 +368,36 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 
         return out_mp4
 
+    def assemble_artwork_short(self, artwork, overlay, voice, captions, duration, target):
+        """Render a vertical premiere card when the trailer is unavailable."""
+        work_dir = voice.parent
+        frames = max(1, round(duration * 30))
+        filters = (
+            "[0:v]scale=1800:3200:force_original_aspect_ratio=increase,"
+            "crop=1800:3200,zoompan=z='min(1+on*0.00016,1.12)':"
+            "x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':"
+            f"d={frames}:s=1080x1920:fps=30[art];"
+            f"[art][1:v]overlay,ass={captions.name}:fontsdir=/app/bot/assets/fonts[out]"
+        )
+        rendering = target.with_suffix(".rendering.mp4")
+        subprocess.run([
+            FFMPEG_EXE, "-hide_banner", "-loglevel", "error", "-y",
+            "-filter_complex_threads", "2", "-i", artwork.name,
+            "-i", overlay.name, "-i", voice.name, "-filter_complex", filters,
+            "-map", "[out]", "-map", "2:a", "-t", str(duration),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-threads", "2",
+            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
+            "-movflags", "+faststart", str(rendering.resolve()),
+        ], cwd=work_dir, check=True, timeout=180)
+        rendering.replace(target)
+
     async def ensure_short_for_post(self, post: ChannelPost) -> Optional[Path]:
         """Возвращает существующий или генерирует новый шортс для премьерного поста."""
         if getattr(self.settings, "TELEGRAM_BOT_TOKEN", "") == "mock_token":
             return None
 
         target_path = self.get_short_cache_path(post)
-        if target_path.exists() and target_path.stat().st_size > 1_000_000:
+        if target_path.exists() and target_path.stat().st_size > 100_000:
             logger.info("Найден готовый шортс в кэше: %s", target_path)
             return target_path
 
@@ -398,21 +422,52 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             try:
                 import yt_dlp
                 ydl_opts = {
-                    "format": "best[ext=mp4][height<=1080]/bestvideo[height<=1080]+bestaudio/best",
+                    "format": "best[ext=mp4][height<=720]/bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[height<=720]",
+                    "ffmpeg_location": FFMPEG_EXE,
+                    "noprogress": True,
                     "outtmpl": str(trailer_raw),
                     "merge_output_format": "mp4",
                     "quiet": True,
                     "noplaylist": True,
+                    "socket_timeout": 6,
+                    "retries": 0,
+                    "extractor_retries": 0,
                 }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([trailer_target])
-            except Exception as e:
-                logger.warning("Не удалось скачать трейлер через yt-dlp: %s", e)
-                return None
+                hostname = (urllib.parse.urlsplit(trailer_target).hostname or "").lower()
+                is_youtube = (
+                    trailer_target.startswith("ytsearch")
+                    or hostname in {"youtube.com", "youtu.be", "youtube-nocookie.com"}
+                    or hostname.endswith((".youtube.com", ".youtu.be", ".youtube-nocookie.com"))
+                )
+                if is_youtube:
+                    vpn_source = os.getenv("SHORTS_YOUTUBE_SOURCE")
+                    if vpn_source:
+                        ydl_opts["source_address"] = vpn_source
+                    if shutil.which("node"):
+                        ydl_opts["js_runtimes"] = {"node": {}}
 
+                def download():
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([trailer_target])
+
+                await asyncio.to_thread(download)
+            except Exception as e:
+                logger.warning("Не удалось скачать трейлер через yt-dlp (%s)", type(e).__name__)
+
+        artwork = None
         if not trailer_raw.exists() or trailer_raw.stat().st_size < 100_000:
-            logger.warning("Трейлер не найден или повреждён для поста #%s", post.id)
-            return None
+            poster = post.poster_path or ""
+            url = poster if poster.startswith("https://") else f"{self.settings.TMDB_IMAGE_BASE_URL.rstrip('/')}/{poster.lstrip('/')}"
+            if not poster or urllib.parse.urlsplit(url).hostname != "image.tmdb.org":
+                logger.warning("Для поста #%s нет доступного трейлера или постера TMDB", post.id)
+                return None
+            artwork = work_dir / "premiere_artwork.jpg"
+            with urllib.request.urlopen(url, timeout=12) as response:
+                with artwork.open("wb") as image_file:
+                    shutil.copyfileobj(response, image_file)
+            with Image.open(artwork) as image:
+                image.verify()
+            logger.info("Для поста #%s используем постер TMDB", post.id)
 
         # Определяем тип бейджа
         if post.media_type == "tv":
@@ -424,7 +479,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         meta_date = format_date_ru(post.air_date) if post.air_date else "СКОРО"
         meta_platform = post.network or "В КИНО"
         meta_str = f"{meta_platform.upper()} • {meta_date.upper()}"
-        source_str = f"Кадры и звук: официальный промо-трейлер {post.network or ''}".strip()
+        source_str = "Изображение: TMDB" if artwork else f"Кадры и звук: официальный промо-трейлер {post.network or ''}".strip()
 
         # Оверлей
         overlay_path = work_dir / "brand_overlay.png"
@@ -462,7 +517,10 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         ]
 
         logger.info("Монтаж и композитинг шортса для поста #%s...", post.id)
-        self.assemble_short_video(trailer_raw, overlay_path, voice_wav, ass_path, shots, dur, target_path)
+        if artwork:
+            await asyncio.to_thread(self.assemble_artwork_short, artwork, overlay_path, voice_wav, ass_path, dur, target_path)
+        else:
+            await asyncio.to_thread(self.assemble_short_video, trailer_raw, overlay_path, voice_wav, ass_path, shots, dur, target_path)
         logger.info("Шортс успешно сгенерирован и сохранён: %s", target_path)
         return target_path
 
@@ -521,7 +579,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 res = json.load(resp)
 
             if "error" in res or "upload_url" not in res.get("response", {}):
-                logger.warning("VK Stories upload server error: %s", res.get("error"))
+                logger.warning("VK Stories upload server error: %s", res.get("error", {}).get("error_code"))
                 return None
 
             upload_url = res["response"]["upload_url"]

@@ -1,0 +1,18 @@
+services:
+  vk-clips-uploader:
+    build: .
+    container_name: kinojdun_vk_clips_uploader
+    restart: unless-stopped
+    init: true
+    shm_size: 512mb
+    mem_limit: 700m
+    cpus: 1.0
+    environment:
+      VK_GROUP_ID: "242087163"
+      VK_SCAN_SECONDS: "180"
+      VK_START_DELAY_SECONDS: "90"
+    volumes:
+      - ./uploader.py:/app/uploader.py:ro
+      - ./data:/data
+      - /srv/apps/kinozhdun-c909279/output/autonomous_shorts:/shorts:ro
+      - /srv/apps/kinozhdun/data:/kino-data:ro
