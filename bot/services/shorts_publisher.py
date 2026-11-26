@@ -4,9 +4,11 @@
 """
 
 import os
+import re
 import sys
 import json
 import html
+import wave
 import asyncio
 import logging
 import hashlib
@@ -123,13 +125,11 @@ class ShortsPublisher:
         reg_str = str(reg_path) if reg_path.exists() else None
 
         if bold_str:
-            f_badge = ImageFont.truetype(bold_str, 30)
             f_hook = ImageFont.truetype(bold_str, 48)
             f_title = ImageFont.truetype(bold_str, 42)
             f_meta = ImageFont.truetype(bold_str, 28)
-            f_cta = ImageFont.truetype(bold_str, 30)
         else:
-            f_badge = f_hook = f_title = f_meta = f_cta = ImageFont.load_default()
+            f_hook = f_title = f_meta = ImageFont.load_default()
 
         if reg_str:
             f_attr = ImageFont.truetype(reg_str, 22)
@@ -139,39 +139,38 @@ class ShortsPublisher:
         im = Image.new("RGBA", (1080, 1920), (0, 0, 0, 0))
         draw = ImageDraw.Draw(im)
 
-        # 1. Верхний бейдж
-        bx, by = 64, 85
-        bbox = f_badge.getbbox(badge)
-        bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        pill_box = (bx, by, bx + bw + 44, by + bh + 22)
-        radius = (pill_box[3] - pill_box[1]) // 2
-        draw.rounded_rectangle(pill_box, radius=radius, fill=(18, 26, 17, 230), outline="#d4fa58", width=2)
-        draw.text((bx + 22, by + 10 - bbox[1]), badge, font=f_badge, fill="#d4fa58")
+        # 1. Крупный интригующий хук в шапке (перенос до 2 строк, если заголовок длинный)
+        hook_words = hook.split()
+        hook_lines = []
+        curr = ""
+        for w in hook_words:
+            cand = f"{curr} {w}".strip()
+            if f_hook.getbbox(cand)[2] <= 950:
+                curr = cand
+            else:
+                if curr:
+                    hook_lines.append(curr)
+                curr = w
+        if curr:
+            hook_lines.append(curr)
+        hook_lines = hook_lines[:2]
+        hy = 120 if len(hook_lines) == 1 else 100
+        for idx, hline in enumerate(hook_lines):
+            draw.text((64, hy + idx * 58), hline, font=f_hook, fill="#ffffff", stroke_width=3, stroke_fill="#000000")
+        line_y = hy + len(hook_lines) * 58 + 26
+        draw.line([(64, line_y), (1016, line_y)], fill=(212, 250, 88, 160), width=2)
 
-        # 2. Крупный интригующий хук прямо под бейджем (чистая шапка, строго без тайминга)
-        draw.text((64, 185), hook, font=f_hook, fill="#ffffff", stroke_width=3, stroke_fill="#000000")
-        draw.line([(64, 280), (1016, 280)], fill=(212, 250, 88, 140), width=2)
+        # 2. Рамка центрального окна (1080x904 px)
+        draw.rectangle((0, 318, 1080, 1226), outline=(212, 250, 88, 55), width=2)
 
-        # 3. Рамка центрального окна (1080x904 px)
-        draw.rectangle((0, 318, 1080, 1226), outline=(212, 250, 88, 40), width=2)
+        # 3. Подвал: название, платформа/дата и чистый CTA для перехода
+        draw.line([(64, 1525), (1016, 1525)], fill=(212, 250, 88, 160), width=2)
+        draw.text((64, 1552), title, font=f_title, fill="#d4fa58", stroke_width=2, stroke_fill="#000000")
+        draw.text((64, 1612), meta, font=f_meta, fill="#d8ddd3", stroke_width=2, stroke_fill="#000000")
+        draw.text((64, 1670), "КиноЖдун  •  kinojdun.ru  —  уведомления в TG, VK и MAX", font=f_attr, fill="#a7ef46")
 
-        # 4. Подвал
-        draw.line([(64, 1540), (1016, 1540)], fill=(212, 250, 88, 140), width=2)
-        draw.text((64, 1570), title, font=f_title, fill="#d4fa58", stroke_width=2, stroke_fill="#000000")
-        draw.text((64, 1630), meta, font=f_meta, fill="#c2c7bd", stroke_width=2, stroke_fill="#000000")
-
-        # 5. Кнопка CTA
-        cta_text = "👉 Сохрани в КиноЖдуне, чтобы не забыть"
-        cx, cy = 64, 1690
-        c_bbox = f_cta.getbbox(cta_text)
-        cw, ch = c_bbox[2] - c_bbox[0], c_bbox[3] - c_bbox[1]
-        cta_pill = (cx, cy, cx + cw + 48, cy + ch + 26)
-        c_radius = (cta_pill[3] - cta_pill[1]) // 2
-        draw.rounded_rectangle(cta_pill, radius=c_radius, fill=(24, 34, 22, 240), outline="#d4fa58", width=2)
-        draw.text((cx + 24, cy + 12 - c_bbox[1]), cta_text, font=f_cta, fill="#ffffff")
-
-        # 6. Атрибуция
-        draw.text((64, 1785), source, font=f_attr, fill="#7b8178")
+        # 4. Атрибуция
+        draw.text((64, 1712), source, font=f_attr, fill="#7b8178")
 
         im.save(out_path)
         return out_path
@@ -221,43 +220,57 @@ class ShortsPublisher:
         cmd = [FFMPEG_EXE, "-hide_banner", "-loglevel", "error", "-y", "-i", str(mp3_path), "-ar", "48000", "-ac", "2", str(wav_path)]
         subprocess.run(cmd, check=True)
 
-        total_duration = word_timings[-1]["start"] + word_timings[-1]["duration"] + 0.6 if word_timings else 25.0
+        actual_voice_dur = self.get_media_duration(wav_path)
+        if actual_voice_dur > 1.0:
+            total_duration = actual_voice_dur + 0.6
+        elif word_timings:
+            total_duration = word_timings[-1]["start"] + word_timings[-1]["duration"] + 0.6
+        else:
+            total_duration = 21.0
 
-        # Сборка субтитров ASS
+        speech_dur = max(1.0, total_duration - 0.6)
         header = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
 PlayResY: 1920
-WrapStyle: 2
+WrapStyle: 0
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: Default,Arial,62,&H00FFFFFF,&H0058FAD4,&H00101311,&H80101311,-1,0,0,0,100,100,0,0,1,5,3,2,60,60,460,1
+Style: Default,Arial,52,&H00FFFFFF,&H0058FAD4,&H00101311,&H80101311,-1,0,0,0,100,100,0,0,1,4,2,2,80,80,460,1
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 """
+        weights = [max(1, len(s.get("text", ""))) for s in script_sentences]
+        total_w = sum(weights) or 1
+        cursor = 0.0
         events = []
-        for s in script_sentences:
-            s_str = format_ass_time(s["start"])
-            e_str = format_ass_time(s["end"])
+        for s, w in zip(script_sentences, weights):
+            seg_dur = speech_dur * (w / total_w)
+            s_str = format_ass_time(cursor)
+            e_str = format_ass_time(cursor + seg_dur)
+            cursor += seg_dur
             hl = s.get("highlight", "")
 
             def highlight_line(line: str) -> str:
+                if not hl:
+                    return line
                 words = line.split()
                 res = []
-                for w in words:
-                    if hl.lower() in w.lower():
-                        res.append(f"{{\\c&H58FAD4&}}{w}{{\\c&HFFFFFF&}}")
+                for wd in words:
+                    if hl.lower() in wd.lower():
+                        res.append(f"{{\\c&H58FAD4&}}{wd}{{\\c&HFFFFFF&}}")
                     else:
-                        res.append(w)
+                        res.append(wd)
                 return " ".join(res)
 
             l1 = highlight_line(s["line1"])
-            l2 = highlight_line(s["line2"])
+            l2 = highlight_line(s.get("line2", ""))
             tag = r"{\fscx95\fscy95\t(0,70,\fscx100\fscy100)}"
-            events.append(f"Dialogue: 0,{s_str},{e_str},Default,,0,0,460,,{tag}{l1}\\N{l2}")
+            full_ass = f"{l1} {l2}".strip() if (len(s["line1"]) > 24 or len(s.get("line2", "")) > 24) else (f"{l1}\\N{l2}" if l2 else l1)
+            events.append(f"Dialogue: 0,{s_str},{e_str},Default,,0,0,460,,{tag}{full_ass}")
 
         ass_path = work_dir / "captions.ass"
         ass_path.write_text(header + "\n".join(events), encoding="utf-8-sig")
@@ -266,7 +279,16 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 
     @staticmethod
     def get_media_duration(path: Path) -> float:
-        """Получает точную длительность медиафайла через FFmpeg."""
+        """Получает точную длительность медиафайла через wave/FFmpeg."""
+        if path.suffix.lower() == ".wav":
+            try:
+                with wave.open(str(path), "rb") as w:
+                    frames = w.getnframes()
+                    rate = w.getframerate()
+                    if rate > 0:
+                        return frames / float(rate)
+            except Exception:
+                pass
         try:
             cmd = [FFMPEG_EXE, "-i", str(path)]
             res = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, text=True, errors="replace")
@@ -277,6 +299,51 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         except Exception:
             pass
         return 80.0
+
+    def _select_dynamic_shots(
+        self, trailer_path: Path, trailer_dur: float, target_dur: float
+    ) -> list[tuple[float, float, int]]:
+        """Подбирает динамичные шоты по склейкам сцен без логотипов и чёрных экранов."""
+        left = max(3.5, trailer_dur * 0.10)
+        right = max(left + 6.0, trailer_dur * 0.86)
+        shot_len = 1.7
+        needed = max(6, int((target_dur + 2.0) / shot_len) + 1)
+
+        cuts: list[float] = []
+        dark: list[tuple[float, float]] = []
+        try:
+            res = subprocess.run(
+                [
+                    FFMPEG_EXE, "-hide_banner", "-i", str(trailer_path),
+                    "-vf", "scale=256:-2,scdet=t=9,blackdetect=d=0.12:pix_th=0.12",
+                    "-an", "-f", "null", "-",
+                ],
+                stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, text=True, errors="replace", timeout=25,
+            )
+            cuts = [float(x) for x in re.findall(r"lavfi\.scd\.time:\s*([\d.]+)", res.stderr)]
+            dark = [(float(a), float(b)) for a, b in re.findall(r"black_start:([\d.]+)\s+black_end:([\d.]+)", res.stderr)]
+        except Exception:
+            pass
+
+        def is_dark(st: float, en: float) -> bool:
+            return any(min(en, y) - max(st, x) > 0.10 for x, y in dark)
+
+        valid_cuts = sorted(c for c in cuts if left <= c <= right - shot_len and not is_dark(c, c + shot_len))
+        chosen: list[tuple[float, float, int]] = []
+        span = (right - left) / needed
+        for i in range(needed):
+            win_a = left + i * span
+            win_b = left + (i + 1) * span
+            win_mid = (win_a + win_b) / 2
+            cands = [c for c in valid_cuts if win_a <= c <= win_b]
+            if cands:
+                start = min(cands, key=lambda c: abs(c - win_mid))
+            else:
+                start = min(max(left, win_a), right - shot_len)
+            if chosen and start < chosen[-1][0] + 0.8:
+                start = min(right - shot_len, chosen[-1][0] + 1.2)
+            chosen.append((round(start, 2), shot_len, 640))
+        return chosen
 
     def assemble_short_video(
         self,
@@ -294,11 +361,12 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         out_mp4.parent.mkdir(parents=True, exist_ok=True)
 
         trailer_dur = self.get_media_duration(trailer_path)
-        if 15.0 < trailer_dur < 75.0:
+        actual_shots = shots
+        if not shots and trailer_dur > 6.0:
+            actual_shots = self._select_dynamic_shots(trailer_path, trailer_dur, duration)
+        elif 15.0 < trailer_dur < 75.0:
             scale = max(0.2, (trailer_dur - 5.0) / 72.0)
             actual_shots = [(round(s * scale + 1.0, 1), dur, cx) for s, dur, cx in shots]
-        else:
-            actual_shots = shots
 
         parts = []
         for i, (ss, dur, cx) in enumerate(actual_shots):
@@ -332,11 +400,15 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         base_montage = work_dir / "base_montage.mp4"
         subprocess.run([FFMPEG_EXE, "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_txt), "-c", "copy", "-movflags", "+faststart", str(base_montage)], check=True)
 
+        montage_dur = self.get_media_duration(base_montage)
+        final_dur = min(duration, montage_dur) if montage_dur > 1.0 else duration
+        fade_start = max(0.1, final_dur - 0.6)
+
         audio_mix = (
             "[1:a]loudnorm=I=-16:TP=-2:LRA=7,asplit=2[voice][key];"
             "[0:a]volume=0.55[bed];"
             "[bed][key]sidechaincompress=threshold=0.025:ratio=10:attack=15:release=250[duck];"
-            "[duck][voice]amix=inputs=2:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=8[aout]"
+            f"[duck][voice]amix=inputs=2:duration=first:normalize=0,afade=t=out:st={fade_start:.2f}:d=0.6,loudnorm=I=-14:TP=-1.5:LRA=8[aout]"
         )
 
         fonts_dir = ROOT / "bot" / "assets" / "fonts"
@@ -351,7 +423,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             "-filter_complex", audio_mix,
             "-vf", ass_filter,
             "-map", "0:v", "-map", "[aout]",
-            "-t", str(duration),
+            "-t", str(final_dur),
             "-c:v", "libx264", "-preset", "medium", "-crf", "18",
             "-c:a", "aac", "-ar", "48000", "-b:a", "256k",
             "-movflags", "+faststart",
@@ -485,7 +557,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         overlay_path = work_dir / "brand_overlay.png"
         self.render_overlay(badge, hook, f"{post.title.upper()} ({post.air_date.year if post.air_date else datetime.now().year})", meta_str, source_str, overlay_path)
 
-        # Сценарий
+        # Сценарий: законченные предложения + синхронные субтитры
         overview_text = getattr(post, "overview", None)
         if not overview_text and getattr(post, "payload", None):
             try:
@@ -496,25 +568,80 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 pass
         if not overview_text:
             overview_text = f"Долгожданная премьера проекта {post.title}."
-        words = overview_text.split()
-        short_desc = " ".join(words[:18]) if len(words) > 18 else overview_text
+
+        raw_sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", overview_text.strip()) if s.strip()]
+        chosen_story = []
+        word_budget = 0
+        for sent in raw_sentences:
+            w_cnt = len(sent.split())
+            if chosen_story and word_budget + w_cnt > 24:
+                break
+            chosen_story.append(sent)
+            word_budget += w_cnt
+            if word_budget >= 14:
+                break
+        if not chosen_story:
+            words = overview_text.split()
+            chosen_story = [" ".join(words[:18]).rstrip(",;:") + "."]
+        story_text = " ".join(chosen_story)
+
+        # Разбиваем сюжет на 2-строчные субтитры, точно совпадающие с речью
+        story_words = story_text.split()
+        story_chunks = [story_words[i:i + 7] for i in range(0, len(story_words), 7)]
+        story_entries = []
+        for chunk in story_chunks:
+            half = max(1, (len(chunk) + 1) // 2)
+            l1 = " ".join(chunk[:half])
+            l2 = " ".join(chunk[half:])
+            story_entries.append({
+                "line1": l1,
+                "line2": l2,
+                "highlight": "",
+                "text": " ".join(chunk),
+            })
+
+        selector = abs(int(getattr(post, "id", 0) or getattr(post, "tmdb_id", 0) or 0))
+
+        if post.media_type == "tv":
+            if post.season_number and post.season_number > 1:
+                openings = [
+                    ("Возвращение, которого ждали —", f"новый сезон «{post.title}»!", f"Возвращение, которого ждали — новый сезон {post.title}!"),
+                    ("Продолжение истории", f"уже близко — «{post.title}»!", f"Продолжение истории уже близко — {post.title}!"),
+                    ("Новый сезон любимого", f"сериала — «{post.title}»!", f"Новый сезон любимого сериала — {post.title}!"),
+                ]
+            else:
+                openings = [
+                    ("Новый сериал, который", f"стоит увидеть — «{post.title}»!", f"Новый сериал, который стоит увидеть — {post.title}!"),
+                    ("Свежая сериальная", f"новинка — «{post.title}»!", f"Свежая сериальная новинка — {post.title}!"),
+                    ("Ищете новый сериал?", f"Присмотритесь к «{post.title}»!", f"Ищете новый сериал на вечер? Присмотритесь к {post.title}!"),
+                ]
+        else:
+            openings = [
+                ("Главная кинопремьера,", f"которую ждут — «{post.title}»!", f"Главная кинопремьера, которую ждут — {post.title}!"),
+                ("Что посмотреть скоро?", f"Обратите внимание на «{post.title}»!", f"Что посмотреть скоро? Обратите внимание на {post.title}!"),
+                ("Этот фильм стоит добавить", f"в список ожидания — «{post.title}»!", f"Этот фильм стоит добавить в список ожидания — {post.title}!"),
+                ("Новая громкая история", f"на подходе — «{post.title}»!", f"Новая громкая история на подходе — {post.title}!"),
+            ]
+
+        endings = [
+            ("Добавьте в КиноЖдун —", "бот напомнит о выходе!", "Добавьте в КиноЖдун — бот напомнит в день выхода."),
+            ("Сохраните на kinojdun.ru,", "чтобы не пропустить!", "Чтобы не пропустить релиз, сохраните его на КиноЖдуне."),
+            ("Включите уведомление", "в боте КиноЖдун!", "Уведомление о выходе можно включить в боте КиноЖдун."),
+            ("Отслеживайте премьеру", "в боте КиноЖдун!", "Отслеживайте премьеру в боте КиноЖдун — ссылка в описании."),
+        ]
+
+        open_l1, open_l2, open_text = openings[selector % len(openings)]
+        end_l1, end_l2, end_text = endings[selector % len(endings)]
 
         script = [
-            {"start": 0.0, "end": 4.5, "line1": f"Встречайте главную премьеру —", "line2": f"«{post.title}»!", "highlight": post.title, "text": f"Встречайте главную премьеру — {post.title}!"},
-            {"start": 4.6, "end": 11.5, "line1": "Сюжет не отпускает", "line2": "с первой секунды.", "highlight": "Сюжет", "text": f"{short_desc}"},
-            {"start": 11.6, "end": 18.0, "line1": f"{meta_platform.upper()}:", "line2": f"Премьера {meta_date}!", "highlight": meta_date, "text": f"Релиз состоится {meta_date} на {meta_platform}."},
-            {"start": 18.1, "end": 22.5, "line1": "Сохрани в КиноЖдуне,", "line2": "чтобы не забыть!", "highlight": "КиноЖдуне,", "text": "Сохрани проект в КиноЖдуне, чтобы не забыть."},
-            {"start": 22.6, "end": 25.5, "line1": "КиноЖдун 🍿", "line2": "Смотри премьеры первым", "highlight": "КиноЖдун", "text": "КиноЖдун. Смотри премьеры первым."}
+            {"line1": open_l1, "line2": open_l2, "highlight": post.title, "text": open_text},
+            *story_entries,
+            {"line1": f"{meta_platform.upper()}:", "line2": f"Премьера {meta_date}!", "highlight": meta_date, "text": f"Релиз состоится {meta_date} на {meta_platform}."},
+            {"line1": end_l1, "line2": end_l2, "highlight": "КиноЖдун", "text": end_text},
         ]
 
         voice_wav, ass_path, dur = await self.generate_narration_and_subtitles(script, work_dir)
-
-        # Нарезка кадров (11 динамичных шотов по ~2.3 сек)
-        shots = [
-            (3.0, 2.5, 640), (8.0, 2.2, 640), (14.0, 2.2, 640), (20.0, 2.0, 640),
-            (26.0, 2.2, 640), (32.0, 2.2, 640), (38.0, 2.2, 640), (45.0, 2.2, 640),
-            (52.0, 2.2, 640), (60.0, 2.2, 640), (68.0, 3.4, 640)
-        ]
+        shots = []
 
         logger.info("Монтаж и композитинг шортса для поста #%s...", post.id)
         if artwork:
