@@ -1,7 +1,7 @@
 """
-Публикация вертикальных роликов в Instagram Reels через официальный Instagram API
-с Instagram Login (https://graph.instagram.com), маршрутизацией через AWG VPN
-и временной HTTPS-раздачей видео на kinojdun.ru/media/reels/.
+Публикация вертикальных роликов в Instagram Reels через официальный Meta/Instagram Graph API
+с маршрутизацией через AWG VPN (включая DoH-резолвинг зарубежных IP Meta через dns.google)
+и прямой бинарной загрузкой (resumable upload) на rupload.facebook.com.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import os
 import re
 import secrets
 import shutil
+import socket
 import sqlite3
 import time
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import aiohttp
+from aiohttp.abc import AbstractResolver
 
 from bot.config import Settings
 from bot.db.models import ChannelPost
@@ -182,8 +184,59 @@ def _build_caption(post: ChannelPost, settings: Settings) -> str:
     return "\n".join(parts)[:2150]
 
 
+class _VpnMetaResolver(AbstractResolver):
+    """Резолвит домены Meta через dns.google по AWG VPN, чтобы не получать локальные РФ-узлы CDN."""
+
+    _META_HOSTS = {"graph.facebook.com", "rupload.facebook.com", "graph.instagram.com"}
+
+    def __init__(self, vpn_source: str):
+        self.vpn_source = vpn_source
+        self.default = aiohttp.ThreadedResolver()
+        self._cache: dict[str, list[str]] = {}
+
+    async def resolve(self, host: str, port: int = 0, family: int = socket.AF_INET):
+        if host in self._META_HOSTS:
+            ips = self._cache.get(host)
+            if not ips:
+                ips = await self._resolve_doh(host)
+                if ips:
+                    self._cache[host] = ips
+            if ips:
+                return [
+                    {
+                        "hostname": host,
+                        "host": ip,
+                        "port": port,
+                        "family": socket.AF_INET,
+                        "proto": 0,
+                        "flags": socket.AI_NUMERICHOST,
+                    }
+                    for ip in ips
+                ]
+        return await self.default.resolve(host, port, family)
+
+    async def _resolve_doh(self, host: str) -> list[str]:
+        try:
+            conn = aiohttp.TCPConnector(local_addr=(self.vpn_source, 0), family=socket.AF_INET)
+            async with aiohttp.ClientSession(connector=conn) as sess:
+                async with sess.get(
+                    "https://dns.google/resolve",
+                    params={"name": host, "type": "A"},
+                    timeout=aiohttp.ClientTimeout(total=8),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        return [str(a["data"]) for a in data.get("Answer", []) if a.get("type") == 1 and a.get("data")]
+        except Exception as e:
+            logger.debug("DoH fallback for %s failed: %s", host, e)
+        return []
+
+    async def close(self) -> None:
+        await self.default.close()
+
+
 class InstagramPublisher:
-    """Публикатор Instagram Reels через graph.instagram.com."""
+    """Публикатор Instagram Reels через Meta/Instagram Graph API."""
 
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -202,7 +255,11 @@ class InstagramPublisher:
         use_vpn = os.getenv("INSTAGRAM_USE_VPN", "true").lower() in ("true", "1", "yes")
         vpn_source = os.getenv("SHORTS_YOUTUBE_SOURCE", "").strip()
         if use_vpn and vpn_source:
-            return aiohttp.TCPConnector(local_addr=(vpn_source, 0))
+            return aiohttp.TCPConnector(
+                local_addr=(vpn_source, 0),
+                family=socket.AF_INET,
+                resolver=_VpnMetaResolver(vpn_source),
+            )
         return aiohttp.TCPConnector()
 
     def _api_host(self, token: str) -> str:
@@ -247,39 +304,74 @@ class InstagramPublisher:
                 logger.info("Instagram skip: пост #%s уже опубликован (media_id=%s)", post_id, existing)
                 return existing
 
-        reels_dir = _data_dir() / "reels_tmp"
-        reels_dir.mkdir(parents=True, exist_ok=True)
-        _cleanup_old_reels(reels_dir)
-
-        tmp_name = f"{secrets.token_hex(12)}_{post_id or int(time.time())}.mp4"
-        tmp_path = reels_dir / tmp_name
-        shutil.copy2(video_path, tmp_path)
-
-        site_url = (getattr(self.settings, "SITE_BASE_URL", None) or "https://kinojdun.ru").rstrip("/")
-        video_url = f"{site_url}/media/reels/{tmp_name}"
         caption = _build_caption(post, self.settings)
+        tmp_path: Optional[Path] = None
 
         try:
             token = _load_effective_token(self.env_token)
             host = self._api_host(token)
             base = f"{host}/{self.api_version}"
+            use_resumable = host == "https://graph.facebook.com"
+
             async with aiohttp.ClientSession(connector=self._connector()) as session:
                 token = await self._maybe_refresh_token(session, token)
-
-                # 1. Создание контейнера REELS
                 create_url = f"{base}/{self.ig_user_id}/media"
-                payload = {
-                    "media_type": "REELS",
-                    "video_url": video_url,
-                    "caption": caption,
-                    "share_to_feed": "true",
-                    "access_token": token,
-                }
-                async with session.post(create_url, data=payload, timeout=aiohttp.ClientTimeout(total=40)) as resp:
-                    c_data = await resp.json(content_type=None)
-                    if resp.status not in (200, 201) or not c_data.get("id"):
-                        raise RuntimeError(f"Instagram container create failed ({resp.status}): {c_data}")
-                    creation_id = str(c_data["id"])
+
+                if use_resumable:
+                    # 1a. Прямая бинарная загрузка через rupload.facebook.com
+                    payload = {
+                        "media_type": "REELS",
+                        "upload_type": "resumable",
+                        "caption": caption,
+                        "share_to_feed": "true",
+                        "access_token": token,
+                    }
+                    async with session.post(create_url, data=payload, timeout=aiohttp.ClientTimeout(total=40)) as resp:
+                        c_data = await resp.json(content_type=None)
+                        if resp.status not in (200, 201) or not c_data.get("id"):
+                            raise RuntimeError(f"Instagram container create failed ({resp.status}): {c_data}")
+                        creation_id = str(c_data["id"])
+                        upload_uri = str(c_data.get("uri") or f"https://rupload.facebook.com/ig-api-upload/{self.api_version}/{creation_id}")
+
+                    raw_bytes = video_path.read_bytes()
+                    async with session.post(
+                        upload_uri,
+                        data=raw_bytes,
+                        headers={
+                            "Authorization": f"OAuth {token}",
+                            "offset": "0",
+                            "file_size": str(len(raw_bytes)),
+                            "Content-Type": "application/octet-stream",
+                        },
+                        timeout=aiohttp.ClientTimeout(total=240),
+                    ) as up_resp:
+                        up_text = await up_resp.text()
+                        if up_resp.status not in (200, 201):
+                            raise RuntimeError(f"Instagram rupload failed ({up_resp.status}): {up_text}")
+                else:
+                    # 1b. Режим Instagram Login с временной URL-раздачей на сайте
+                    reels_dir = _data_dir() / "reels_tmp"
+                    reels_dir.mkdir(parents=True, exist_ok=True)
+                    _cleanup_old_reels(reels_dir)
+
+                    tmp_name = f"{secrets.token_hex(12)}_{post_id or int(time.time())}.mp4"
+                    tmp_path = reels_dir / tmp_name
+                    shutil.copy2(video_path, tmp_path)
+
+                    site_url = (getattr(self.settings, "SITE_BASE_URL", None) or "https://kinojdun.ru").rstrip("/")
+                    video_url = f"{site_url}/media/reels/{tmp_name}"
+                    payload = {
+                        "media_type": "REELS",
+                        "video_url": video_url,
+                        "caption": caption,
+                        "share_to_feed": "true",
+                        "access_token": token,
+                    }
+                    async with session.post(create_url, data=payload, timeout=aiohttp.ClientTimeout(total=40)) as resp:
+                        c_data = await resp.json(content_type=None)
+                        if resp.status not in (200, 201) or not c_data.get("id"):
+                            raise RuntimeError(f"Instagram container create failed ({resp.status}): {c_data}")
+                        creation_id = str(c_data["id"])
 
                 # 2. Ожидание обработки видео на стороне Meta
                 status_url = f"{base}/{creation_id}"
@@ -319,4 +411,5 @@ class InstagramPublisher:
             logger.info("Instagram Reels опубликован для поста #%s (media_id=%s)", post_id, media_id)
             return media_id
         finally:
-            tmp_path.unlink(missing_ok=True)
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
