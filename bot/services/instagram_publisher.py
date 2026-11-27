@@ -205,8 +205,18 @@ class InstagramPublisher:
             return aiohttp.TCPConnector(local_addr=(vpn_source, 0))
         return aiohttp.TCPConnector()
 
+    def _api_host(self, token: str) -> str:
+        override = (os.getenv("INSTAGRAM_API_HOST") or "").strip().rstrip("/")
+        if override:
+            return override
+        # System User / Facebook Login токены начинаются с 'EAA' -> graph.facebook.com
+        if token.startswith("EAA"):
+            return "https://graph.facebook.com"
+        return "https://graph.instagram.com"
+
     async def _maybe_refresh_token(self, session: aiohttp.ClientSession, token: str) -> str:
-        if not _should_refresh_token():
+        # System User токен (EAA...) вечный и не обновляется через ig_refresh_token
+        if token.startswith("EAA") or not _should_refresh_token():
             return token
         try:
             url = "https://graph.instagram.com/refresh_access_token"
@@ -251,7 +261,8 @@ class InstagramPublisher:
 
         try:
             token = _load_effective_token(self.env_token)
-            base = f"https://graph.instagram.com/{self.api_version}"
+            host = self._api_host(token)
+            base = f"{host}/{self.api_version}"
             async with aiohttp.ClientSession(connector=self._connector()) as session:
                 token = await self._maybe_refresh_token(session, token)
 
