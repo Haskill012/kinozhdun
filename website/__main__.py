@@ -310,6 +310,34 @@ def create_app(config=None):
         return web.FileResponse(target, headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 
     app.router.add_get('/media/reels/{name}', reels_media)
+
+    async def tiktok_callback(request):
+        import html as _html
+        code = request.query.get("code", "")
+        err = request.query.get("error", "")
+        desc = request.query.get("error_description", "")
+        if err:
+            body = (
+                "<!doctype html><meta charset=utf-8><title>TikTok Auth Error</title>"
+                "<body style='font-family:sans-serif;max-width:680px;margin:40px auto;padding:20px'>"
+                f"<h2>Ошибка авторизации TikTok: {_html.escape(err)}</h2>"
+                f"<p>{_html.escape(desc)}</p></body>"
+            )
+            return web.Response(text=body, content_type="text/html", headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"}, status=400)
+        escaped_code = _html.escape(code)
+        escaped_url = _html.escape(str(request.url))
+        body = (
+            "<!doctype html><meta charset=utf-8><title>TikTok OAuth Callback — КиноЖдун</title>"
+            "<body style='font-family:sans-serif;max-width:720px;margin:40px auto;padding:20px;line-height:1.5'>"
+            "<h2>Авторизация TikTok завершена</h2>"
+            "<p>Скопируйте код ниже или всю адресную строку и вставьте в чат / скрипт <code>get_tiktok_token.py</code>:</p>"
+            f"<textarea readonly onclick='this.select()' style='width:100%;height:70px;font-family:monospace;padding:8px'>{escaped_code}</textarea>"
+            f"<p style='color:#666;font-size:13px;word-break:break-all'>URL: {escaped_url}</p>"
+            "</body>"
+        )
+        return web.Response(text=body, content_type="text/html", headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+
+    app.router.add_get('/tiktok/callback', tiktok_callback)
     return app
 
 

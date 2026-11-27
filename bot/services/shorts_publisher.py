@@ -1018,4 +1018,14 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         except Exception as ig_err:
             logger.warning("Не удалось опубликовать шортс в Instagram: %s", ig_err)
 
+        # 6. TikTok (Inbox Drafts)
+        try:
+            from bot.services.tiktok_publisher import TiktokPublisher
+            tt_pub = TiktokPublisher(self.settings)
+            if tt_pub.is_configured():
+                tt_id = await tt_pub.publish_short(post, video_path)
+                results["tiktok_publish_id"] = tt_id
+        except Exception as tt_err:
+            logger.warning("Не удалось отправить шортс в TikTok Inbox: %s", tt_err)
+
         return results
