@@ -1,0 +1,67 @@
+services:
+  kinozhdun-site:
+    image: kinozhdun:c909279
+    container_name: kinozhdun_site_live
+    environment:
+      SITE_BASE_URL: https://kinojdun.ru
+      SITE_PUBLIC: 'true'
+    ports:
+      - '127.0.0.1:8099:8099'
+    volumes:
+      - /srv/apps/kinozhdun/data:/app/data
+      - /srv/apps/kinozhdun-dzen-uploader/data:/app/dzen-data:ro
+  kinozhdun-max-bot:
+    image: kinozhdun:c909279
+    dns:
+      - 9.9.9.9
+      - 149.112.112.112
+    environment:
+      SITE_BASE_URL: https://kinojdun.ru
+    volumes:
+      - /srv/apps/kinozhdun/data:/app/data
+  kinozhdun-vk-bot:
+    image: kinozhdun:c909279
+    environment:
+      SITE_BASE_URL: https://kinojdun.ru
+    volumes:
+      - /srv/apps/kinozhdun/data:/app/data
+  kinozhdun-awg:
+    image: kinozhdun-awg:1
+    container_name: kinozhdun_awg
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    dns:
+      - 9.9.9.9
+      - 149.112.112.112
+    extra_hosts:
+      - "api.telegram.org=${TELEGRAM_API_IP:-149.154.166.110}"
+    volumes:
+      - ./deploy/telegram-awg/awg0.conf:/etc/amneziawg/awg0.conf:ro
+      - ./deploy/telegram-awg/entrypoint.sh:/entrypoint.sh:ro
+    healthcheck:
+      test: ["CMD", "curl", "-4", "-sS", "-o", "/dev/null", "--connect-timeout", "5", "-m", "8", "https://api.telegram.org/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+  kinozhdun-bot:
+    image: kinozhdun:c909279-shorts-youtube
+    network_mode: "service:kinozhdun-awg"
+    dns: !reset null
+    extra_hosts: !reset null
+    environment:
+      VK_ACCESS_TOKEN: ${VK_BOT_TOKEN:?VK bot token required}
+      SHORTS_YOUTUBE_SOURCE: 100.109.169.46
+      SITE_BASE_URL: https://kinojdun.ru
+    volumes:
+      - /srv/apps/kinozhdun/data:/app/data
+    depends_on:
+      kinozhdun-awg:
+        condition: service_healthy
+  kinozhdun-max-channel:
+    image: kinozhdun:c909279
+    volumes:
+      - /srv/apps/kinozhdun/data:/app/data

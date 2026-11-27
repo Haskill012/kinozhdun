@@ -114,16 +114,19 @@ def _collect_local_dbs(data_dir: Path) -> dict:
         finally:
             wc.close()
 
-    for key, fname in (("instagram_cache", "instagram_stats.json"), ("dzen_cache", "dzen_video_stats.json")):
-        fpath = data_dir / fname
-        if fpath.is_file():
-            try:
-                stats[key] = json.loads(fpath.read_text(encoding="utf-8"))
-            except Exception as exc:
-                logger.warning("stats: %s read error: %s", fname, exc)
-                stats[key] = {}
-        else:
-            stats[key] = {}
+    for key, candidates in (
+        ("instagram_cache", [data_dir / "instagram_stats.json"]),
+        ("dzen_cache", [Path("/app/dzen-data/dzen_video_stats.json"), data_dir / "dzen_video_stats.json"]),
+    ):
+        loaded = {}
+        for fpath in candidates:
+            if fpath.is_file():
+                try:
+                    loaded = json.loads(fpath.read_text(encoding="utf-8"))
+                    break
+                except Exception as exc:
+                    logger.warning("stats: %s read error: %s", fpath, exc)
+        stats[key] = loaded
 
     return stats
 
