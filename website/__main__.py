@@ -296,6 +296,20 @@ def create_app(config=None):
     app.router.add_static("/static/", ROOT / "website" / "static", show_index=False)
     from website.social_images import image_handler
     app.router.add_get('/social-image/{name}', image_handler(Path(config['database']).parent / 'social_images'))
+
+    reels_dir = Path(config['database']).parent / 'reels_tmp'
+
+    async def reels_media(request):
+        import re as _re
+        name = request.match_info.get("name", "")
+        if not _re.fullmatch(r"[a-f0-9]{16,32}_\d+\.mp4", name):
+            raise web.HTTPNotFound()
+        target = reels_dir / name
+        if not target.is_file():
+            raise web.HTTPNotFound()
+        return web.FileResponse(target, headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+
+    app.router.add_get('/media/reels/{name}', reels_media)
     return app
 
 

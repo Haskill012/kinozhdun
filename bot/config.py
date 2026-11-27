@@ -71,6 +71,10 @@ class Settings:
     YOUTUBE_REFRESH_TOKEN: str | None = None
     YOUTUBE_PRIVACY_STATUS: str = "private"
     YOUTUBE_CATEGORY_ID: str = "1"
+    INSTAGRAM_POSTING_ENABLED: bool = False
+    INSTAGRAM_USER_ID: str | None = None
+    INSTAGRAM_ACCESS_TOKEN: str | None = None
+    INSTAGRAM_API_VERSION: str = "v21.0"
     MAX_BOT_TOKEN: str | None = None
     MAX_CHANNEL_ID: int | None = None
     MAX_CHANNEL_POSTING_ENABLED: bool = False
@@ -182,6 +186,10 @@ class Settings:
             YOUTUBE_REFRESH_TOKEN=os.getenv("YOUTUBE_REFRESH_TOKEN") or None,
             YOUTUBE_PRIVACY_STATUS=(os.getenv("YOUTUBE_PRIVACY_STATUS") or "private").strip().lower(),
             YOUTUBE_CATEGORY_ID=(os.getenv("YOUTUBE_CATEGORY_ID") or "1").strip(),
+            INSTAGRAM_POSTING_ENABLED=os.getenv("INSTAGRAM_POSTING_ENABLED", "false").lower() in ("true", "1", "yes"),
+            INSTAGRAM_USER_ID=os.getenv("INSTAGRAM_USER_ID") or None,
+            INSTAGRAM_ACCESS_TOKEN=os.getenv("INSTAGRAM_ACCESS_TOKEN") or None,
+            INSTAGRAM_API_VERSION=(os.getenv("INSTAGRAM_API_VERSION") or "v21.0").strip(),
             MAX_BOT_TOKEN=os.getenv("MAX_BOT_TOKEN") or None,
             MAX_CHANNEL_ID=int(os.getenv("MAX_CHANNEL_ID", "").strip()) if os.getenv("MAX_CHANNEL_ID", "").strip().lstrip("-").isdigit() else None,
             MAX_CHANNEL_POSTING_ENABLED=os.getenv("MAX_CHANNEL_POSTING_ENABLED", "false").lower() in ("true", "1", "yes"),

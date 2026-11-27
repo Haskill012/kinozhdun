@@ -1008,4 +1008,14 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         except Exception as yt_err:
             logger.warning("Не удалось опубликовать шортс на YouTube: %s", yt_err)
 
+        # 5. Instagram Reels
+        try:
+            from bot.services.instagram_publisher import InstagramPublisher
+            ig_pub = InstagramPublisher(self.settings)
+            if ig_pub.is_configured():
+                ig_id = await ig_pub.publish_short(post, video_path)
+                results["instagram_media_id"] = ig_id
+        except Exception as ig_err:
+            logger.warning("Не удалось опубликовать шортс в Instagram: %s", ig_err)
+
         return results
