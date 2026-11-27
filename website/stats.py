@@ -373,22 +373,21 @@ def _render_html(config: dict, data: dict) -> str:
         tot_reposts += v_rep or 0
 
         plat_rows.append(
-            f"<tr><td><strong>{escape(pname)}</strong></td>"
-            f"<td>{escape(psubs)}</td>"
-            f"<td>{len(plist)}</td>"
-            f"<td><strong>{_fmt_num(v_views)}</strong></td>"
-            f"<td>{_fmt_num(v_likes)}</td>"
-            f"<td>{_fmt_num(v_comm)}</td>"
-            f"<td>{_fmt_num(v_rep)}</td>"
-            f"<td class='st-note'>{escape(pnote)}</td></tr>"
+            f"<tr><td><span class='st-badge st-b-{escape(pkey)}'>{escape(pname)}</span></td>"
+            f"<td class='num'>{escape(psubs)}</td>"
+            f"<td class='num'>{len(plist)}</td>"
+            f"<td class='num'><strong>{_fmt_num(v_views)}</strong></td>"
+            f"<td class='num'>{_fmt_num(v_likes)}</td>"
+            f"<td class='num'>{_fmt_num(v_comm)}</td>"
+            f"<td class='num'>{_fmt_num(v_rep)}</td></tr>"
         )
         for item in plist:
             all_video_rows.append({"pkey": pkey, "pname": pname, **item})
 
     plat_rows.append(
-        f"<tr class='st-total'><td><strong>Итого по видео</strong></td><td>—</td><td><strong>{tot_vids}</strong></td>"
-        f"<td><strong>{_fmt_num(tot_views)}</strong></td><td><strong>{_fmt_num(tot_likes)}</strong></td>"
-        f"<td><strong>{_fmt_num(tot_comments)}</strong></td><td><strong>{_fmt_num(tot_reposts)}</strong></td><td></td></tr>"
+        f"<tr class='st-total'><td><strong>Итого</strong></td><td class='num'>—</td><td class='num'><strong>{tot_vids}</strong></td>"
+        f"<td class='num'><strong>{_fmt_num(tot_views)}</strong></td><td class='num'><strong>{_fmt_num(tot_likes)}</strong></td>"
+        f"<td class='num'><strong>{_fmt_num(tot_comments)}</strong></td><td class='num'><strong>{_fmt_num(tot_reposts)}</strong></td></tr>"
     )
     platform_summary_rows = "".join(plat_rows)
 
@@ -399,22 +398,24 @@ def _render_html(config: dict, data: dict) -> str:
             return f"<a href='{escape(url)}' target='_blank' rel='noopener' class='st-link'>{t}</a>"
         return t
 
+    all_video_rows.sort(key=lambda x: int(x.get("ts") or 0), reverse=True)
+
     video_detail_rows = []
     for it in all_video_rows:
         extra = ""
         if it["pkey"] == "dz" and it.get("impressions") is not None:
-            extra = f" <span class='st-note'>(показов: {_fmt_num(it.get('impressions'))})</span>"
+            extra = f"<br><span class='st-note'>показов: {_fmt_num(it.get('impressions'))}</span>"
         elif it["pkey"] == "ig" and it.get("saved") is not None:
-            extra = f" <span class='st-note'>(сохр: {_fmt_num(it.get('saved'))})</span>"
+            extra = f"<br><span class='st-note'>сохр: {_fmt_num(it.get('saved'))}</span>"
         video_detail_rows.append(
             f"<tr data-plat='{escape(it['pkey'])}'>"
             f"<td><span class='st-badge st-b-{escape(it['pkey'])}'>{escape(it['pname'])}</span></td>"
             f"<td>{_video_link(it)}</td>"
             f"<td>{escape(str(it.get('date') or '—'))}<br><span class='st-note'>{escape(str(it.get('status') or ''))}</span></td>"
-            f"<td><strong>{_fmt_num(it.get('views'))}</strong>{extra}</td>"
-            f"<td>{_fmt_num(it.get('likes'))}</td>"
-            f"<td>{_fmt_num(it.get('comments'))}</td>"
-            f"<td>{_fmt_num(it.get('reposts'))}</td>"
+            f"<td class='num'><strong>{_fmt_num(it.get('views'))}</strong>{extra}</td>"
+            f"<td class='num'>{_fmt_num(it.get('likes'))}</td>"
+            f"<td class='num'>{_fmt_num(it.get('comments'))}</td>"
+            f"<td class='num'>{_fmt_num(it.get('reposts'))}</td>"
             f"</tr>"
         )
     video_table_html = "".join(video_detail_rows) or "<tr><td colspan='7'>Видео пока не найдены</td></tr>"
@@ -474,17 +475,17 @@ def _render_html(config: dict, data: dict) -> str:
     }
 
     sources_rows = "".join(
-        f"<tr><td>{escape(traffic_type_ru.get(s, s))}</td><td>{escape(engine_ru.get(e, e))}</td><td>{v}</td><td>{u}</td></tr>"
+        f"<tr><td>{escape(traffic_type_ru.get(s, s))}</td><td>{escape(engine_ru.get(e, e))}</td><td class='num'>{v}</td><td class='num'>{u}</td></tr>"
         for s, e, v, u in met["sources"]
     ) or "<tr><td colspan='4'>Нет данных за 30 дней</td></tr>"
 
     land_rows = "".join(
-        f"<tr><td style='word-break:break-all'>{escape(u)}</td><td>{v}</td><td>{usr}</td></tr>"
+        f"<tr><td style='word-break:break-all'>{escape(u)}</td><td class='num'>{v}</td><td class='num'>{usr}</td></tr>"
         for u, v, usr in met["landing_pages"]
     ) or "<tr><td colspan='3'>Нет данных</td></tr>"
 
     goals_rows = "".join(
-        f"<tr><td>{escape(name)}</td><td>{reaches}</td><td>{users}</td></tr>"
+        f"<tr><td>{escape(name)}</td><td class='num'>{reaches}</td><td class='num'>{users}</td></tr>"
         for name, _gid, reaches, users in met["goals"]
     ) or "<tr><td colspan='3'>Цели в Метрике не найдены или ещё нет достижений</td></tr>"
 
@@ -513,17 +514,17 @@ def _render_html(config: dict, data: dict) -> str:
     }
 
     ref_rows = "".join(
-        f"<tr><td>{escape(_human_ref(str(src)))}</td><td>{cnt}</td></tr>"
+        f"<tr><td>{escape(_human_ref(str(src)))}</td><td class='num'>{cnt}</td></tr>"
         for src, cnt in loc["tg_bot"]["referrals"]
     ) or "<tr><td colspan='2'>Нет данных</td></tr>"
 
     ev_rows = "".join(
-        f"<tr><td>{escape(event_ru.get(name, name))}</td><td>{cnt}</td></tr>"
+        f"<tr><td>{escape(event_ru.get(name, name))}</td><td class='num'>{cnt}</td></tr>"
         for name, cnt in loc["tg_bot"]["events"]
     ) or "<tr><td colspan='2'>Событий пока нет</td></tr>"
 
     top_rows = "".join(
-        f"<tr><td>{escape(title)}</td><td>{escape(mtype)}</td><td>{cnt}</td></tr>"
+        f"<tr><td>{escape(title)}</td><td>{escape(mtype)}</td><td class='num'>{cnt}</td></tr>"
         for title, mtype, cnt in loc["tg_bot"]["top_titles"]
     ) or "<tr><td colspan='3'>Отслеживаний пока нет</td></tr>"
 
@@ -535,64 +536,76 @@ def _render_html(config: dict, data: dict) -> str:
     vk_wall_html = ""
     if soc["vk_wall"]:
         wrows = "".join(
-            f"<tr><td>{escape(w['date'])}</td><td>{escape(w['text'])}</td><td>{w['views']}</td><td>{w['likes']}</td><td>{w['comments']}</td><td>{w['reposts']}</td></tr>"
+            f"<tr><td>{escape(w['date'])}</td><td>{escape(w['text'])}</td><td class='num'>{w['views']}</td><td class='num'>{w['likes']}</td><td class='num'>{w['comments']}</td><td class='num'>{w['reposts']}</td></tr>"
             for w in soc["vk_wall"]
         )
-        vk_wall_html = f"<h3>Последние посты на стене ВК</h3><table class='st-table'><thead><tr><th>Дата</th><th>Текст</th><th>Просмотры</th><th>Лайки</th><th>Комменты</th><th>Репосты</th></tr></thead><tbody>{wrows}</tbody></table>"
+        vk_wall_html = f"<h3>Последние посты на стене ВК</h3><div class='st-table-wrap'><table class='st-table'><thead><tr><th>Дата</th><th>Текст</th><th class='num'>Просмотры</th><th class='num'>Лайки</th><th class='num'>Комменты</th><th class='num'>Репосты</th></tr></thead><tbody>{wrows}</tbody></table></div>"
     elif soc["vk_service_missing"]:
         vk_wall_html = "<p class='st-note'>Для просмотров, лайков и комментариев постов/клипов ВК добавьте <code>VK_SERVICE_TOKEN</code> в <code>.env</code>.</p>"
 
     max_posts_html = ""
     if soc.get("max_posts"):
         mrows = "".join(
-            f"<tr><td>{escape(m['date'])}</td><td>{escape(m['text'])}</td><td>{m['views']}</td></tr>"
+            f"<tr><td>{escape(m['date'])}</td><td>{escape(m['text'])}</td><td class='num'>{m['views']}</td></tr>"
             for m in soc["max_posts"]
         )
-        max_posts_html = f"<h3>Последние публикации в канале MAX</h3><table class='st-table'><thead><tr><th>Дата</th><th>Текст</th><th>Просмотры</th></tr></thead><tbody>{mrows}</tbody></table>"
+        max_posts_html = f"<h3 style='margin-top:18px'>Последние публикации в канале MAX</h3><div class='st-table-wrap'><table class='st-table'><thead><tr><th>Дата</th><th>Текст</th><th class='num'>Просмотры</th></tr></thead><tbody>{mrows}</tbody></table></div>"
 
     metrika_err = f"<p class='st-warn'>Ошибка Яндекс.Метрики: {escape(met['error'])}</p>" if not met["ok"] else ""
 
+    tot_subs = sum(
+        int(x) for x in (soc["tg_members"], soc["vk_members"], soc["max_members"], yt.get("followers"), ig.get("followers"), dz.get("subscribers"))
+        if x is not None
+    )
+    tot_bot_users = loc["tg_bot"]["users"] + loc["vk_bot"]["users"] + loc["max_bot"]["users"]
+    tot_tracked = loc["tg_bot"]["tracked"] + loc["vk_bot"]["tracked"] + loc["max_bot"]["tracked"]
+
     content = f"""
     <style>
-      .st-wrap{{max-width:1160px;margin:0 auto;padding:36px 20px 80px}}
-      .st-head{{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;margin-bottom:24px}}
-      .st-head h1{{margin:0;font-size:clamp(26px,4vw,36px)}}
-      .st-btn{{display:inline-block;padding:10px 16px;border-radius:10px;background:#a7ef46;color:#111;font-weight:700;text-decoration:none}}
-      .st-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:28px}}
-      .st-card{{padding:18px;border:1px solid rgba(255,255,255,.12);border-radius:16px;background:rgba(255,255,255,.03)}}
-      .st-card small{{display:block;color:var(--muted,#9aa39d);margin-bottom:6px;font-size:13px}}
-      .st-card strong{{font-size:26px;color:#a7ef46;display:block;line-height:1.2}}
-      .st-card span{{font-size:13px;color:var(--muted,#9aa39d)}}
-      .st-sec{{margin-bottom:32px}}
-      .st-sec h2{{font-size:20px;margin:0 0 12px;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:8px}}
-      .st-sec h3{{font-size:16px;margin:18px 0 8px}}
-      .st-cols{{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}}
+      .st-wrap{{max-width:1140px;margin:0 auto;padding:28px 18px 72px}}
+      .st-head{{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;margin-bottom:20px}}
+      .st-head h1{{margin:0;font-size:clamp(24px,3.6vw,34px)}}
+      .st-btn{{display:inline-block;padding:9px 15px;border-radius:10px;background:#a7ef46;color:#111;font-weight:700;text-decoration:none;font-size:14px}}
+      .st-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:22px}}
+      .st-card{{padding:16px 18px;border:1px solid rgba(255,255,255,.1);border-radius:14px;background:rgba(255,255,255,.03)}}
+      .st-card small{{display:block;color:var(--muted,#9aa39d);margin-bottom:5px;font-size:12px;text-transform:uppercase;letter-spacing:.03em}}
+      .st-card strong{{font-size:26px;color:#a7ef46;display:block;line-height:1.15;font-variant-numeric:tabular-nums}}
+      .st-card span{{font-size:12.5px;color:var(--muted,#9aa39d);display:block;margin-top:4px}}
+      .st-tabs{{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:12px}}
+      .st-tab{{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.03);color:#dce4dc;padding:8px 14px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600}}
+      .st-tab.active{{background:#a7ef46;color:#111;border-color:#a7ef46}}
+      .st-panel{{display:none}}
+      .st-panel.active{{display:block}}
+      .st-box{{padding:18px;border:1px solid rgba(255,255,255,.1);border-radius:14px;background:rgba(255,255,255,.02);margin-bottom:18px}}
+      .st-box h2{{font-size:17px;margin:0 0 12px}}
+      .st-box h3{{font-size:15px;margin:0 0 10px;color:#dce4dc}}
+      .st-cols{{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:18px}}
       .st-table-wrap{{overflow-x:auto}}
-      .st-table{{width:100%;border-collapse:collapse;font-size:14px}}
-      .st-table th,.st-table td{{text-align:left;padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.08);vertical-align:top}}
-      .st-table th{{color:var(--muted,#9aa39d);font-weight:600;white-space:nowrap}}
+      .st-table{{width:100%;border-collapse:collapse;font-size:13.5px}}
+      .st-table th,.st-table td{{text-align:left;padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.07);vertical-align:top}}
+      .st-table th{{color:var(--muted,#9aa39d);font-weight:600;white-space:nowrap;font-size:12.5px}}
+      .st-table th.num,.st-table td.num{{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}}
       .st-total td{{border-top:2px solid rgba(167,239,70,.35);background:rgba(167,239,70,.05)}}
-      .st-note{{color:var(--muted,#9aa39d);font-size:13px}}
-      .st-warn{{padding:12px 14px;border-radius:10px;background:rgba(255,100,100,.14);border:1px solid rgba(255,100,100,.4)}}
-      .st-link{{color:#e7f6d5;text-decoration:underline;text-underline-offset:3px}}
-      .st-link:hover{{color:#a7ef46}}
-      .st-filters{{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}}
-      .st-pill{{border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.04);color:#e9eee9;padding:6px 12px;border-radius:999px;cursor:pointer;font-size:13px}}
+      .st-note{{color:var(--muted,#9aa39d);font-size:12.5px}}
+      .st-warn{{padding:12px 14px;border-radius:10px;background:rgba(255,100,100,.14);border:1px solid rgba(255,100,100,.4);margin-bottom:16px}}
+      .st-link{{color:#eaf7da;text-decoration:none;border-bottom:1px solid rgba(234,247,218,.28)}}
+      .st-link:hover{{color:#a7ef46;border-color:#a7ef46}}
+      .st-filters{{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}}
+      .st-pill{{border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.04);color:#e9eee9;padding:5px 11px;border-radius:999px;cursor:pointer;font-size:12.5px}}
       .st-pill.active{{background:#a7ef46;color:#111;border-color:#a7ef46;font-weight:700}}
-      .st-badge{{display:inline-block;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}}
+      .st-badge{{display:inline-block;padding:3px 8px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}}
       .st-b-yt{{background:rgba(255,68,68,.18);color:#ff8a8a}}
       .st-b-vk{{background:rgba(68,138,255,.18);color:#8ab4ff}}
       .st-b-ig{{background:rgba(225,48,108,.18);color:#ff85b3}}
       .st-b-dz{{background:rgba(167,239,70,.16);color:#b7f468}}
-      .st-chart-box{{margin:18px 0 22px;padding:18px;border:1px solid rgba(255,255,255,.12);border-radius:16px;background:rgba(255,255,255,.025)}}
-      .st-chart-ctrl{{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;margin-bottom:12px}}
-      .st-chart-grp{{display:flex;flex-wrap:wrap;gap:6px;align-items:center}}
-      .st-chart-lbl{{font-size:12px;color:var(--muted,#9aa39d);margin-right:4px}}
-      .st-date{{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);color:#e9eee9;border-radius:8px;padding:5px 8px;font-size:13px}}
-      .st-chart-meta{{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:13px}}
-      .st-legend{{display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:13px}}
-      .st-dot{{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}}
-      .st-canvas-wrap{{position:relative;width:100%;height:300px}}
+      .st-chart-ctrl{{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;margin-bottom:10px}}
+      .st-chart-grp{{display:flex;flex-wrap:wrap;gap:5px;align-items:center}}
+      .st-chart-lbl{{font-size:12px;color:var(--muted,#9aa39d);margin-right:3px}}
+      .st-date{{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);color:#e9eee9;border-radius:8px;padding:4px 7px;font-size:12.5px}}
+      .st-chart-meta{{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin:8px 0}}
+      .st-legend{{display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:12.5px}}
+      .st-dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}}
+      .st-canvas-wrap{{position:relative;width:100%;height:280px}}
       .st-canvas-wrap canvas{{width:100%;height:100%;display:block}}
       .st-tip{{position:absolute;pointer-events:none;display:none;z-index:5;background:rgba(16,20,18,.96);border:1px solid rgba(167,239,70,.45);border-radius:10px;padding:8px 11px;font-size:12px;line-height:1.45;color:#f3f7f3;box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:280px}}
     </style>
@@ -600,7 +613,7 @@ def _render_html(config: dict, data: dict) -> str:
       <div class="st-head">
         <div>
           <h1>Статистика КиноЖдуна</h1>
-          <span class="st-note">Обновлено: {escape(data['generated_at'])} (кэш 10 мин)</span>
+          <span class="st-note">Обновлено {escape(data['generated_at'])} · кэш 10 мин</span>
         </div>
         <a class="st-btn" href="/stats?refresh=1">Обновить сейчас</a>
       </div>
@@ -609,45 +622,54 @@ def _render_html(config: dict, data: dict) -> str:
 
       <div class="st-grid">
         <div class="st-card">
-          <small>Сайт (Яндекс.Метрика)</small>
-          <strong>{p30.get('visits', 0)} визитов</strong>
-          <span>Сегодня: {ptod.get('visits', 0)} · 7 дн: {p7.get('visits', 0)} · Просмотров (30д): {p30.get('pageviews', 0)}</span>
-        </div>
-        <div class="st-card">
-          <small>Каналы и видеопрофили</small>
-          <strong>VK: {vk_ch} · YT: {yt_ch} · IG: {ig_ch}</strong>
-          <span>TG: {tg_ch} · MAX: {max_ch} · Дзен: {dz_ch}</span>
-        </div>
-        <div class="st-card">
-          <small>Видео (просмотры / лайки)</small>
+          <small>Видео (все площадки)</small>
           <strong>{_fmt_num(tot_views)} просм.</strong>
-          <span>Роликов: {tot_vids} · Лайков: {_fmt_num(tot_likes)} · Комментов: {_fmt_num(tot_comments)} · Репостов: {_fmt_num(tot_reposts)}</span>
+          <span>{tot_vids} рол. · {_fmt_num(tot_likes)} лайков · {_fmt_num(tot_comments)} комм. · {_fmt_num(tot_reposts)} реп.</span>
         </div>
         <div class="st-card">
-          <small>Боты и база</small>
-          <strong>{loc['tg_bot']['users'] + loc['vk_bot']['users'] + loc['max_bot']['users']} юзеров</strong>
-          <span>TG: {loc['tg_bot']['users']} (+{loc['tg_bot']['users_7d']} за 7д) · Подписок: {loc['tg_bot']['tracked'] + loc['vk_bot']['tracked'] + loc['max_bot']['tracked']} · TMDB: {loc['site']['titles']}</span>
+          <small>Сайт (30 дней)</small>
+          <strong>{_fmt_num(p30.get('visits', 0))} визитов</strong>
+          <span>Сегодня: {ptod.get('visits', 0)} · 7 дн: {p7.get('visits', 0)} · Просмотров: {_fmt_num(p30.get('pageviews', 0))}</span>
+        </div>
+        <div class="st-card">
+          <small>Каналы и профили</small>
+          <strong>{_fmt_num(tot_subs)} подп.</strong>
+          <span>TG {tg_ch} · VK {vk_ch} · MAX {max_ch} · YT {yt_ch} · IG {ig_ch} · Дзен {dz_ch}</span>
+        </div>
+        <div class="st-card">
+          <small>Боты (TG · VK · MAX)</small>
+          <strong>{_fmt_num(tot_bot_users)} юзеров</strong>
+          <span>TG {loc['tg_bot']['users']} (+{loc['tg_bot']['users_7d']} за 7д) · Подписок на релизы: {_fmt_num(tot_tracked)}</span>
         </div>
       </div>
 
-      <section class="st-sec">
-        <h2>Видео по платформам (YouTube Shorts · VK Клипы · Instagram Reels · Дзен)</h2>
-        <div class="st-table-wrap">
-          <table class="st-table">
-            <thead><tr><th>Платформа</th><th>Подписчики</th><th>Роликов</th><th>Просмотры</th><th>Лайки</th><th>Комменты</th><th>Репосты</th><th>Примечание</th></tr></thead>
-            <tbody>{platform_summary_rows}</tbody>
-          </table>
+      <nav class="st-tabs" id="st-tabs">
+        <button type="button" class="st-tab active" data-tab="video" onclick="setTab('video')">Видео и охваты</button>
+        <button type="button" class="st-tab" data-tab="site" onclick="setTab('site')">Сайт и Метрика</button>
+        <button type="button" class="st-tab" data-tab="bots" onclick="setTab('bots')">Боты и подписки</button>
+        <button type="button" class="st-tab" data-tab="posts" onclick="setTab('posts')">Посты каналов</button>
+      </nav>
+
+      <section class="st-panel active" id="tab-video">
+        <div class="st-box">
+          <h2>Сводка по видеоплатформам</h2>
+          <div class="st-table-wrap">
+            <table class="st-table">
+              <thead><tr><th>Платформа</th><th class="num">Подписчики</th><th class="num">Роликов</th><th class="num">Просмотры</th><th class="num">Лайки</th><th class="num">Комменты</th><th class="num">Репосты</th></tr></thead>
+              <tbody>{platform_summary_rows}</tbody>
+            </table>
+          </div>
+          {ig_insights_note}
         </div>
-        {ig_insights_note}
-        <div class="st-chart-box">
+
+        <div class="st-box">
+          <h2>График динамики</h2>
           <div class="st-chart-ctrl">
             <div class="st-chart-grp" id="st-mode-grp">
-              <span class="st-chart-lbl">Режим:</span>
               <button type="button" class="st-pill active" data-mode="history" onclick="setChartOpt('mode','history',this)">Рост во времени</button>
               <button type="button" class="st-pill" data-mode="videos" onclick="setChartOpt('mode','videos',this)">По датам роликов</button>
             </div>
             <div class="st-chart-grp" id="st-metric-grp">
-              <span class="st-chart-lbl">Параметр:</span>
               <button type="button" class="st-pill active" data-metric="views" onclick="setChartOpt('metric','views',this)">Просмотры</button>
               <button type="button" class="st-pill" data-metric="likes" onclick="setChartOpt('metric','likes',this)">Лайки</button>
               <button type="button" class="st-pill" data-metric="comments" onclick="setChartOpt('metric','comments',this)">Комменты</button>
@@ -657,57 +679,142 @@ def _render_html(config: dict, data: dict) -> str:
           </div>
           <div class="st-chart-ctrl">
             <div class="st-chart-grp" id="st-range-grp">
-              <span class="st-chart-lbl">Период:</span>
               <button type="button" class="st-pill" data-range="6h" onclick="setRange('6h',this)">6 ч</button>
               <button type="button" class="st-pill" data-range="24h" onclick="setRange('24h',this)">24 ч</button>
-              <button type="button" class="st-pill active" data-range="7d" onclick="setRange('7d',this)">7 дней</button>
-              <button type="button" class="st-pill" data-range="30d" onclick="setRange('30d',this)">30 дней</button>
-              <button type="button" class="st-pill" data-range="all" onclick="setRange('all',this)">Всё время</button>
-            </div>
-            <div class="st-chart-grp">
-              <span class="st-chart-lbl">С</span>
+              <button type="button" class="st-pill active" data-range="7d" onclick="setRange('7d',this)">7 дн</button>
+              <button type="button" class="st-pill" data-range="30d" onclick="setRange('30d',this)">30 дн</button>
+              <button type="button" class="st-pill" data-range="all" onclick="setRange('all',this)">Всё</button>
+              <span class="st-chart-lbl" style="margin-left:6px">С</span>
               <input type="date" id="st-from-date" class="st-date" onchange="applyCustomDates()">
               <span class="st-chart-lbl">по</span>
               <input type="date" id="st-to-date" class="st-date" onchange="applyCustomDates()">
             </div>
-          </div>
-          <div class="st-chart-ctrl">
             <div class="st-chart-grp" id="st-plat-grp">
-              <span class="st-chart-lbl">Платформа:</span>
-              <button type="button" class="st-pill active" data-plat="all" onclick="setChartOpt('plat','all',this)">Все платформы</button>
+              <button type="button" class="st-pill active" data-plat="all" onclick="setChartOpt('plat','all',this)">Все</button>
               <button type="button" class="st-pill" data-plat="yt" onclick="setChartOpt('plat','yt',this)">YouTube</button>
-              <button type="button" class="st-pill" data-plat="vk" onclick="setChartOpt('plat','vk',this)">VK Клипы</button>
+              <button type="button" class="st-pill" data-plat="vk" onclick="setChartOpt('plat','vk',this)">VK</button>
               <button type="button" class="st-pill" data-plat="ig" onclick="setChartOpt('plat','ig',this)">Instagram</button>
               <button type="button" class="st-pill" data-plat="dz" onclick="setChartOpt('plat','dz',this)">Дзен</button>
             </div>
-            <div id="st-chart-stat" class="st-note"></div>
           </div>
           <div class="st-chart-meta">
             <div class="st-legend" id="st-chart-legend"></div>
-            <div class="st-note" id="st-chart-hint"></div>
+            <div class="st-note"><span id="st-chart-stat"></span> · <span id="st-chart-hint"></span></div>
           </div>
           <div class="st-canvas-wrap">
             <canvas id="st-chart"></canvas>
             <div class="st-tip" id="st-chart-tip"></div>
           </div>
         </div>
-        <h3>Статистика по каждому ролику</h3>
-        <div class="st-filters">
-          <button type="button" class="st-pill active" onclick="filterVideos('all', this)">Все ({len(all_video_rows)})</button>
-          <button type="button" class="st-pill" onclick="filterVideos('yt', this)">YouTube Shorts ({len(yt_videos)})</button>
-          <button type="button" class="st-pill" onclick="filterVideos('vk', this)">VK Клипы ({len(vk_clips)})</button>
-          <button type="button" class="st-pill" onclick="filterVideos('ig', this)">Instagram Reels ({len(ig_videos)})</button>
-          <button type="button" class="st-pill" onclick="filterVideos('dz', this)">Дзен ({len(dz_videos)})</button>
+
+        <div class="st-box">
+          <h2>Ролики</h2>
+          <div class="st-filters">
+            <button type="button" class="st-pill active" onclick="filterVideos('all', this)">Все ({len(all_video_rows)})</button>
+            <button type="button" class="st-pill" onclick="filterVideos('yt', this)">YouTube ({len(yt_videos)})</button>
+            <button type="button" class="st-pill" onclick="filterVideos('vk', this)">VK Клипы ({len(vk_clips)})</button>
+            <button type="button" class="st-pill" onclick="filterVideos('ig', this)">Instagram ({len(ig_videos)})</button>
+            <button type="button" class="st-pill" onclick="filterVideos('dz', this)">Дзен ({len(dz_videos)})</button>
+          </div>
+          <div class="st-table-wrap">
+            <table class="st-table" id="st-videos-table">
+              <thead><tr><th>Платформа</th><th>Ролик</th><th>Дата</th><th class="num">Просмотры</th><th class="num">Лайки</th><th class="num">Комменты</th><th class="num">Репосты</th></tr></thead>
+              <tbody>{video_table_html}</tbody>
+            </table>
+          </div>
         </div>
-        <div class="st-table-wrap">
-          <table class="st-table" id="st-videos-table">
-            <thead><tr><th>Платформа</th><th>Ролик</th><th>Дата / статус</th><th>Просмотры</th><th>Лайки</th><th>Комменты</th><th>Репосты</th></tr></thead>
-            <tbody>{video_table_html}</tbody>
+      </section>
+
+      <section class="st-panel" id="tab-site">
+        <div class="st-box">
+          <h2>Трафик сайта за 30 дней (Яндекс.Метрика)</h2>
+          <p class="st-note" style="margin:0 0 14px">База сайта: {loc['site']['titles']} фильмов/сериалов · {loc['site']['articles']} новостей · последний синк TMDB: {escape(loc['site']['last_sync'])}</p>
+          <div class="st-cols">
+            <div>
+              <h3>Источники трафика</h3>
+              <div class="st-table-wrap">
+                <table class="st-table">
+                  <thead><tr><th>Тип</th><th>Источник</th><th class="num">Визиты</th><th class="num">Люди</th></tr></thead>
+                  <tbody>{sources_rows}</tbody>
+                </table>
+              </div>
+            </div>
+            <div>
+              <h3>Точки входа (включая ?from=...)</h3>
+              <div class="st-table-wrap">
+                <table class="st-table">
+                  <thead><tr><th>Страница</th><th class="num">Визиты</th><th class="num">Люди</th></tr></thead>
+                  <tbody>{land_rows}</tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="st-box">
+          <h2>Действия на сайте (цели за 30 дней)</h2>
+          <div class="st-table-wrap">
+            <table class="st-table">
+              <thead><tr><th>Действие</th><th class="num">Кликов</th><th class="num">Уникальных людей</th></tr></thead>
+              <tbody>{goals_rows}</tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="st-panel" id="tab-bots">
+        <div class="st-box">
+          <h2>Аудитория ботов</h2>
+          <p class="st-note" style="margin:0 0 14px">Telegram: {loc['tg_bot']['users']} юзеров / {loc['tg_bot']['tracked']} подписок · VK: {loc['vk_bot']['users']} / {loc['vk_bot']['tracked']} · MAX: {loc['max_bot']['users']} / {loc['max_bot']['tracked']} · Отправлено уведомлений: {loc['tg_bot']['notifications']}</p>
+          <div class="st-cols">
+            <div>
+              <h3>Источники в Telegram-бот</h3>
+              <table class="st-table">
+                <thead><tr><th>Источник</th><th class="num">Юзеров</th></tr></thead>
+                <tbody>{ref_rows}</tbody>
+              </table>
+            </div>
+            <div>
+              <h3>Действия в Telegram-боте</h3>
+              <table class="st-table">
+                <thead><tr><th>Действие</th><th class="num">Кол-во</th></tr></thead>
+                <tbody>{ev_rows}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="st-box">
+          <h2>Топ отслеживаемых релизов</h2>
+          <table class="st-table">
+            <thead><tr><th>Название</th><th>Тип</th><th class="num">Подписок</th></tr></thead>
+            <tbody>{top_rows}</tbody>
           </table>
         </div>
       </section>
+
+      <section class="st-panel" id="tab-posts">
+        <div class="st-box">
+          <h2>Лента публикаций</h2>
+          <p class="st-note" style="margin:0 0 12px">Постов VK в БД: {loc['vk_bot']['vk_posts']} · Отправок в канал MAX: {loc['max_bot']['channel_deliveries']}</p>
+          {vk_wall_html}
+          {max_posts_html}
+          <h3 style="margin-top:18px">Последние посты Telegram-канала</h3>
+          <div class="st-table-wrap">
+            <table class="st-table">
+              <thead><tr><th>ID</th><th>Тип</th><th>Заголовок</th><th>Статус</th><th>Дата</th></tr></thead>
+              <tbody>{posts_rows}</tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <script id="st-chart-data" type="application/json">{chart_payload_json}</script>
       <script>
+        function setTab(tab) {{
+          document.querySelectorAll('#st-tabs .st-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+          document.querySelectorAll('.st-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab));
+          if (location.hash !== '#' + tab) history.replaceState(null, '', '#' + tab);
+          if (tab === 'video' && window.redrawStatsChart) requestAnimationFrame(window.redrawStatsChart);
+        }}
         function filterVideos(plat, btn) {{
           document.querySelectorAll('.st-filters .st-pill').forEach(b => b.classList.remove('active'));
           if (btn) btn.classList.add('active');
@@ -719,9 +826,9 @@ def _render_html(config: dict, data: dict) -> str:
           const raw = JSON.parse(document.getElementById('st-chart-data').textContent || '{{}}');
           const PAL = {{
             total: {{ name: 'Итого', color: '#a7ef46' }},
-            yt: {{ name: 'YouTube Shorts', color: '#ff6b6b' }},
+            yt: {{ name: 'YouTube', color: '#ff6b6b' }},
             vk: {{ name: 'VK Клипы', color: '#5c9eff' }},
-            ig: {{ name: 'Instagram Reels', color: '#ff65a3' }},
+            ig: {{ name: 'Instagram', color: '#ff65a3' }},
             dz: {{ name: 'Дзен', color: '#ffd166' }}
           }};
           const METRIC_NAMES = {{ views: 'Просмотры', likes: 'Лайки', comments: 'Комментарии', reposts: 'Репосты', subscribers: 'Подписчики' }};
@@ -814,7 +921,7 @@ def _render_html(config: dict, data: dict) -> str:
                 xLabels: pts.map(p => fmtTs(p.ts, state.range === '6h' || state.range === '24h' || pts.length <= 16)),
                 titles: pts.map(p => fmtTs(p.ts, true) + ' MSK'),
                 series,
-                hint: pts.length < 2 ? 'Снимки пишутся каждые 10 мин — по мере накопления появится подробная кривая' : ('Точек снимков: ' + pts.length)
+                hint: pts.length < 2 ? 'Снимки пишутся каждые 10 мин' : ('Точек: ' + pts.length)
               }};
             }} else {{
               const metricKey = m === 'subscribers' ? 'views' : m;
@@ -825,13 +932,13 @@ def _render_html(config: dict, data: dict) -> str:
                 titles: vids.map(v => v.pname + ': ' + v.title + ' (' + v.date + ')'),
                 series: [{{
                   key: state.plat === 'all' ? 'total' : state.plat,
-                  name: METRIC_NAMES[metricKey] + ' по роликам',
+                  name: METRIC_NAMES[metricKey],
                   color: (PAL[state.plat] || PAL.total).color,
                   fill: true,
                   vals: vids.map(v => v[metricKey] != null ? v[metricKey] : 0),
                   vids
                 }}],
-                hint: m === 'subscribers' ? 'Для роликов показаны просмотры (подписчики доступны в режиме «Рост во времени»)' : ('Роликов в периоде: ' + vids.length)
+                hint: m === 'subscribers' ? 'Показаны просмотры (подписчики — в «Рост во времени»)' : ('Роликов: ' + vids.length)
               }};
             }}
           }}
@@ -839,9 +946,10 @@ def _render_html(config: dict, data: dict) -> str:
           function drawChart() {{
             const canvas = document.getElementById('st-chart');
             const wrap = canvas.parentElement;
+            if (!wrap || wrap.offsetParent === null) return;
             const dpr = window.devicePixelRatio || 1;
             const W = Math.max(300, wrap.clientWidth);
-            const H = wrap.clientHeight || 300;
+            const H = wrap.clientHeight || 280;
             canvas.width = W * dpr;
             canvas.height = H * dpr;
             const ctx = canvas.getContext('2d');
@@ -865,28 +973,28 @@ def _render_html(config: dict, data: dict) -> str:
               const clean = activeSeries[0].vals.filter(v => v !== null);
               if (state.mode === 'history' && clean.length >= 2) {{
                 const diff = clean[clean.length - 1] - clean[0];
-                statEl.innerHTML = 'Прирост за период: <b style="color:#a7ef46">' + (diff >= 0 ? '+' : '') + fmtVal(diff) + '</b>';
+                statEl.innerHTML = 'Прирост: <b style="color:#a7ef46">' + (diff >= 0 ? '+' : '') + fmtVal(diff) + '</b>';
               }} else if (state.mode === 'videos') {{
                 const sum = clean.reduce((a, b) => a + b, 0);
-                statEl.innerHTML = 'Сумма за период: <b style="color:#a7ef46">' + fmtVal(sum) + '</b>';
+                statEl.innerHTML = 'Сумма: <b style="color:#a7ef46">' + fmtVal(sum) + '</b>';
               }} else {{
-                statEl.innerHTML = clean.length ? 'Текущее значение: <b style="color:#a7ef46">' + fmtVal(clean[0]) + '</b>' : '';
+                statEl.innerHTML = clean.length ? 'Сейчас: <b style="color:#a7ef46">' + fmtVal(clean[0]) + '</b>' : '';
               }}
             }} else {{
-              statEl.textContent = 'Нет данных за выбранный промежуток';
+              statEl.textContent = 'Нет данных';
             }}
 
             const allNums = [];
             activeSeries.forEach(s => s.vals.forEach(v => {{ if (v !== null) allNums.push(v); }}));
             if (!allNums.length || !renderPoints.length) {{
               ctx.fillStyle = '#9aa39d';
-              ctx.font = '14px sans-serif';
+              ctx.font = '13px sans-serif';
               ctx.textAlign = 'center';
-              ctx.fillText('Нет точек за выбранный период — попробуйте «Всё время» или «По датам роликов»', W / 2, H / 2);
+              ctx.fillText('Нет точек за выбранный период — переключитесь на «По датам роликов»', W / 2, H / 2);
               return;
             }}
 
-            const padL = 54, padR = 18, padT = 18, padB = 34;
+            const padL = 52, padR = 16, padT = 16, padB = 30;
             const cw = W - padL - padR;
             const ch = H - padT - padB;
             let maxV = Math.max(...allNums, 1);
@@ -917,7 +1025,7 @@ def _render_html(config: dict, data: dict) -> str:
             const labelStep = Math.max(1, Math.ceil(n / 7));
             renderPoints.forEach((pt, i) => {{
               if (i % labelStep === 0 || i === n - 1) {{
-                ctx.fillText(pt.label, pt.x, H - 10);
+                ctx.fillText(pt.label, pt.x, H - 8);
               }}
             }});
 
@@ -956,6 +1064,7 @@ def _render_html(config: dict, data: dict) -> str:
             }});
           }}
 
+          window.redrawStatsChart = drawChart;
           const canvas = document.getElementById('st-chart');
           const tip = document.getElementById('st-chart-tip');
           function showTip(clientX) {{
@@ -984,73 +1093,11 @@ def _render_html(config: dict, data: dict) -> str:
           canvas.addEventListener('touchstart', e => {{ if (e.touches[0]) showTip(e.touches[0].clientX); }}, {{ passive: true }});
           canvas.addEventListener('mouseleave', () => {{ tip.style.display = 'none'; }});
           window.addEventListener('resize', drawChart);
+          const initTab = (location.hash || '').replace('#', '');
+          if (['video', 'site', 'bots', 'posts'].includes(initTab)) setTab(initTab);
           drawChart();
         }})();
       </script>
-
-      <section class="st-sec">
-        <h2>Яндекс.Метрика: откуда приходят и куда переходят (30 дней)</h2>
-        <div class="st-cols">
-          <div>
-            <h3>Источники трафика</h3>
-            <table class="st-table">
-              <thead><tr><th>Тип</th><th>Источник</th><th>Визиты</th><th>Люди</th></tr></thead>
-              <tbody>{sources_rows}</tbody>
-            </table>
-          </div>
-          <div>
-            <h3>Точки входа (включая ?from=...)</h3>
-            <table class="st-table">
-              <thead><tr><th>Страница входа</th><th>Визиты</th><th>Люди</th></tr></thead>
-              <tbody>{land_rows}</tbody>
-            </table>
-          </div>
-        </div>
-        <h3>Действия на сайте (куда кликают посетители за 30 дней)</h3>
-        <table class="st-table">
-          <thead><tr><th>Действие</th><th>Кликов (всего)</th><th>Уникальных людей</th></tr></thead>
-          <tbody>{goals_rows}</tbody>
-        </table>
-      </section>
-
-      <section class="st-sec">
-        <h2>Боты: откуда приходят люди и что делают</h2>
-        <div class="st-cols">
-          <div>
-            <h3>Откуда пришли в Telegram-бот</h3>
-            <table class="st-table">
-              <thead><tr><th>Источник</th><th>Пользователей</th></tr></thead>
-              <tbody>{ref_rows}</tbody>
-            </table>
-          </div>
-          <div>
-            <h3>Активность внутри Telegram-бота</h3>
-            <table class="st-table">
-              <thead><tr><th>Действие</th><th>Кол-во</th></tr></thead>
-              <tbody>{ev_rows}</tbody>
-            </table>
-          </div>
-          <div>
-            <h3>Топ отслеживаемых проектов</h3>
-            <table class="st-table">
-              <thead><tr><th>Название</th><th>Тип</th><th>Подписок</th></tr></thead>
-              <tbody>{top_rows}</tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <section class="st-sec">
-        <h2>Публикации и соцсети</h2>
-        <p class="st-note">Постов VK в БД: {loc['vk_bot']['vk_posts']} · Отправок в канал MAX: {loc['max_bot']['channel_deliveries']} · Последний синк TMDB: {escape(loc['site']['last_sync'])}</p>
-        {vk_wall_html}
-        {max_posts_html}
-        <h3>Последние посты в Telegram-канале / шортсы</h3>
-        <table class="st-table">
-          <thead><tr><th>ID</th><th>Тип</th><th>Заголовок</th><th>Статус</th><th>Дата</th></tr></thead>
-          <tbody>{posts_rows}</tbody>
-        </table>
-      </section>
     </main>
     """
     return views.layout(config, "Статистика КиноЖдуна", "Закрытая статистика проекта.", content, noindex=True)
