@@ -571,4 +571,21 @@ def setup_scheduler(
             replace_existing=True,
         )
 
+    # Синхронизация статистики Instagram Reels через AWG VPN (каждые 10 мин)
+    async def sync_instagram_stats_job(settings: Settings) -> None:
+        from bot.services.social_stats_sync import sync_instagram_stats
+        await sync_instagram_stats(settings)
+
+    scheduler.add_job(
+        sync_instagram_stats_job,
+        "interval",
+        minutes=10,
+        next_run_time=now_utc + timedelta(seconds=8),
+        coalesce=True,
+        max_instances=1,
+        kwargs={"settings": settings},
+        id="sync_instagram_stats",
+        replace_existing=True,
+    )
+
     return scheduler
