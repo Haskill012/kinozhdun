@@ -13,6 +13,14 @@ from pathlib import Path
 import aiohttp
 from aiohttp import web
 
+from shared.video_stats import (
+    fetch_json as _fetch_json,
+    fetch_vk_group_stats,
+    fetch_youtube_stats,
+    load_history,
+    read_json_first,
+    record_snapshots,
+)
 from website import views
 
 logger = logging.getLogger(__name__)
@@ -114,31 +122,9 @@ def _collect_local_dbs(data_dir: Path) -> dict:
         finally:
             wc.close()
 
-    for key, candidates in (
-        ("instagram_cache", [data_dir / "instagram_stats.json"]),
-        ("dzen_cache", [Path("/app/dzen-data/dzen_video_stats.json"), data_dir / "dzen_video_stats.json"]),
-    ):
-        loaded = {}
-        for fpath in candidates:
-            if fpath.is_file():
-                try:
-                    loaded = json.loads(fpath.read_text(encoding="utf-8"))
-                    break
-                except Exception as exc:
-                    logger.warning("stats: %s read error: %s", fpath, exc)
-        stats[key] = loaded
-
+    stats["instagram_cache"] = read_json_first([data_dir / "instagram_stats.json"])
+    stats["dzen_cache"] = read_json_first([Path("/app/dzen-data/dzen_video_stats.json"), data_dir / "dzen_video_stats.json"])
     return stats
-
-
-async def _fetch_json(session: aiohttp.ClientSession, url: str, headers: dict | None = None, params: dict | None = None, timeout_s: float = 6.0):
-    try:
-        async with session.get(url, headers=headers, params=params, timeout=aiohttp.ClientTimeout(total=timeout_s)) as resp:
-            if resp.status >= 400:
-                return {"_http_error": resp.status, "_body": (await resp.text())[:200]}
-            return await resp.json(content_type=None)
-    except Exception as exc:
-        return {"_exc": str(exc)}
 
 
 async def _fetch_metrika(session: aiohttp.ClientSession, counter_id: str, token: str) -> dict:
@@ -224,163 +210,17 @@ async def _fetch_metrika(session: aiohttp.ClientSession, counter_id: str, token:
     return out
 
 
-async def _fetch_youtube(session: aiohttp.ClientSession) -> dict:
-    out = {"ok": False, "enabled": False, "followers": None, "channel_views": None, "videos": [], "error": ""}
-    cid = os.getenv("YOUTUBE_CLIENT_ID", "").strip()
-    csec = os.getenv("YOUTUBE_CLIENT_SECRET", "").strip()
-    rtok = os.getenv("YOUTUBE_REFRESH_TOKEN", "").strip()
-    if not (cid and csec and rtok):
-        return out
-    out["enabled"] = True
-
-    try:
-        async with session.post(
-            "https://oauth2.googleapis.com/token",
-            data={
-                "client_id": cid,
-                "client_secret": csec,
-                "refresh_token": rtok,
-                "grant_type": "refresh_token",
-            },
-            timeout=aiohttp.ClientTimeout(total=10),
-        ) as resp:
-            tok_data = await resp.json(content_type=None)
-            access_tok = tok_data.get("access_token")
-            if resp.status >= 400 or not access_tok:
-                out["error"] = str(tok_data.get("error_description") or tok_data.get("error") or resp.status)
-                return out
-
-        hdrs = {"Authorization": f"Bearer {access_tok}"}
-        ch = await _fetch_json(
-            session,
-            "https://www.googleapis.com/youtube/v3/channels",
-            headers=hdrs,
-            params={"part": "statistics,contentDetails", "mine": "true"},
-        )
-        items = ch.get("items") or []
-        if not items:
-            out["ok"] = True
-            return out
-
-        ch_stat = items[0].get("statistics") or {}
-        out["followers"] = int(ch_stat.get("subscriberCount") or 0)
-        out["channel_views"] = int(ch_stat.get("viewCount") or 0)
-        uploads_pl = ((items[0].get("contentDetails") or {}).get("relatedPlaylists") or {}).get("uploads")
-        if not uploads_pl:
-            out["ok"] = True
-            return out
-
-        pl = await _fetch_json(
-            session,
-            "https://www.googleapis.com/youtube/v3/playlistItems",
-            headers=hdrs,
-            params={"part": "contentDetails", "playlistId": uploads_pl, "maxResults": "25"},
-        )
-        vid_ids = [
-            str((it.get("contentDetails") or {}).get("videoId") or "")
-            for it in (pl.get("items") or [])
-            if (it.get("contentDetails") or {}).get("videoId")
-        ]
-        if vid_ids:
-            vdata = await _fetch_json(
-                session,
-                "https://www.googleapis.com/youtube/v3/videos",
-                headers=hdrs,
-                params={"part": "snippet,statistics,status", "id": ",".join(vid_ids[:25])},
-            )
-            for v in (vdata.get("items") or []):
-                vid = str(v.get("id") or "")
-                sn = v.get("snippet") or {}
-                st = v.get("statistics") or {}
-                priv = str((v.get("status") or {}).get("privacyStatus") or "")
-                pub_at = str(sn.get("publishedAt") or "")[:16].replace("T", " ")
-                out["videos"].append({
-                    "id": vid,
-                    "title": str(sn.get("title") or "YouTube Short")[:90],
-                    "url": f"https://youtube.com/shorts/{vid}" if vid else "",
-                    "date": pub_at,
-                    "status": "Открыт" if priv == "public" else ("По ссылке" if priv == "unlisted" else "Приватный"),
-                    "views": int(st.get("viewCount") or 0),
-                    "likes": int(st.get("likeCount") or 0),
-                    "comments": int(st.get("commentCount") or 0),
-                    "reposts": None,
-                })
-        out["ok"] = True
-    except Exception as exc:
-        out["error"] = str(exc)
-    return out
-
-
 async def _fetch_socials(session: aiohttp.ClientSession) -> dict:
+    vk_data = await fetch_vk_group_stats(session)
     res = {
-        "vk_members": None,
-        "vk_wall": [],
-        "vk_clips": [],
-        "vk_service_missing": False,
+        "vk_members": vk_data["vk_members"],
+        "vk_wall": vk_data["vk_wall"],
+        "vk_clips": vk_data["vk_clips"],
+        "vk_service_missing": vk_data["vk_service_missing"],
         "max_members": None,
         "max_posts": [],
         "tg_members": None,
     }
-
-    vk_token = os.getenv("VK_BOT_TOKEN", "").strip()
-    vk_service = os.getenv("VK_SERVICE_TOKEN", "").strip()
-    vk_gid = os.getenv("VK_GROUP_ID", "242087163").strip()
-
-    if vk_token and vk_gid:
-        d = await _fetch_json(session, "https://api.vk.com/method/groups.getById", params={
-            "access_token": vk_token, "v": "5.199", "group_id": vk_gid, "fields": "members_count",
-        })
-        groups = (d.get("response") or {}).get("groups") or []
-        if groups:
-            res["vk_members"] = groups[0].get("members_count")
-
-    if vk_service and vk_gid:
-        wall = await _fetch_json(session, "https://api.vk.com/method/wall.get", params={
-            "access_token": vk_service, "v": "5.199", "owner_id": f"-{vk_gid}", "count": "40",
-        })
-        clip_ids: list[str] = []
-        for idx, item in enumerate((wall.get("response") or {}).get("items") or []):
-            if idx < 10:
-                res["vk_wall"].append({
-                    "id": item.get("id"),
-                    "date": datetime.fromtimestamp(item.get("date", 0), tz=timezone.utc).strftime("%d.%m %H:%M"),
-                    "text": (item.get("text") or "").replace("\n", " ")[:70],
-                    "views": (item.get("views") or {}).get("count", 0),
-                    "likes": (item.get("likes") or {}).get("count", 0),
-                    "comments": (item.get("comments") or {}).get("count", 0),
-                    "reposts": (item.get("reposts") or {}).get("count", 0),
-                })
-            for att in (item.get("attachments") or []):
-                if att.get("type") == "video":
-                    vid = att.get("video") or {}
-                    oid, vid_id = vid.get("owner_id"), vid.get("id")
-                    if oid is not None and vid_id is not None:
-                        pair = f"{oid}_{vid_id}"
-                        if pair not in clip_ids:
-                            clip_ids.append(pair)
-
-        if clip_ids:
-            clips = await _fetch_json(session, "https://api.vk.com/method/video.get", params={
-                "access_token": vk_service, "v": "5.199", "videos": ",".join(clip_ids[:25]), "extended": "1",
-            })
-            for v in (clips.get("response") or {}).get("items") or []:
-                desc_line = ((v.get("description") or "").splitlines()[0] if v.get("description") else "").strip()
-                raw_title = str(v.get("title") or "")
-                clean_title = desc_line if (not raw_title or raw_title.startswith("Clip by")) and desc_line else raw_title
-                oid, vid_id = v.get("owner_id"), v.get("id")
-                res["vk_clips"].append({
-                    "id": str(vid_id or ""),
-                    "title": (clean_title or "VK Клип")[:90],
-                    "url": f"https://vk.ru/clip{oid}_{vid_id}" if (oid is not None and vid_id is not None) else "",
-                    "date": datetime.fromtimestamp(v.get("date", 0), tz=timezone.utc).strftime("%d.%m %H:%M") if v.get("date") else "—",
-                    "status": f"{v.get('duration', 0)}с" if v.get("duration") else "Опубликован",
-                    "views": int(v.get("views") or 0),
-                    "likes": int((v.get("likes") or {}).get("count") or 0),
-                    "comments": int(v.get("comments") or 0),
-                    "reposts": int((v.get("reposts") or {}).get("count") or 0),
-                })
-    else:
-        res["vk_service_missing"] = True
 
     max_tok = os.getenv("MAX_BOT_TOKEN", "").strip()
     max_cid = os.getenv("MAX_CHANNEL_ID", "").strip()
@@ -431,8 +271,23 @@ async def collect_stats(config: dict, force: bool = False) -> dict:
     async with aiohttp.ClientSession() as session:
         metrika_task = _fetch_metrika(session, config.get("yandex_metrika_id", ""), os.getenv("YANDEX_METRIKA_TOKEN", "").strip())
         socials_task = _fetch_socials(session)
-        youtube_task = _fetch_youtube(session)
+        youtube_task = fetch_youtube_stats(session)
         local_stats, metrika, socials, youtube = await asyncio.gather(local_task, metrika_task, socials_task, youtube_task)
+
+    def _sync_history():
+        record_snapshots(
+            data_dir,
+            yt=youtube,
+            vk_members=socials.get("vk_members"),
+            vk_clips=socials.get("vk_clips"),
+            ig=local_stats.get("instagram_cache"),
+            dz=local_stats.get("dzen_cache"),
+            min_interval_sec=540,
+            force=force,
+        )
+        return load_history(data_dir)
+
+    video_history = await asyncio.to_thread(_sync_history)
 
     payload = {
         "generated_at": datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
@@ -440,6 +295,7 @@ async def collect_stats(config: dict, force: bool = False) -> dict:
         "metrika": metrika,
         "socials": socials,
         "youtube": youtube,
+        "video_history": video_history,
     }
     _CACHE["ts"] = now
     _CACHE["data"] = payload
@@ -562,6 +418,40 @@ def _render_html(config: dict, data: dict) -> str:
             f"</tr>"
         )
     video_table_html = "".join(video_detail_rows) or "<tr><td colspan='7'>Видео пока не найдены</td></tr>"
+    def _parse_ru_video_ts(item: dict) -> int:
+        if item.get("ts"):
+            return int(item["ts"])
+        raw_d = str(item.get("date") or "").strip().lower()
+        months = {"янв": 1, "фев": 2, "мар": 3, "апр": 4, "май": 5, "мая": 5, "июн": 6, "июл": 7, "авг": 8, "сен": 9, "окт": 10, "ноя": 11, "нояб": 11, "дек": 12}
+        parts = raw_d.split()
+        if len(parts) >= 2 and parts[0].isdigit():
+            for mk, mv in months.items():
+                if parts[1].startswith(mk):
+                    try:
+                        return int(datetime(datetime.now().year, mv, int(parts[0]), 12, 0, tzinfo=timezone.utc).timestamp())
+                    except ValueError:
+                        break
+        return int(time.time())
+
+    chart_videos = [
+        {
+            "pkey": it["pkey"],
+            "pname": it["pname"],
+            "title": str(it.get("title") or "Ролик")[:65],
+            "date": str(it.get("date") or ""),
+            "ts": _parse_ru_video_ts(it),
+            "views": it.get("views"),
+            "likes": it.get("likes"),
+            "comments": it.get("comments"),
+            "reposts": it.get("reposts"),
+        }
+        for it in all_video_rows
+    ]
+    chart_payload_json = json.dumps(
+        {"history": data.get("video_history") or [], "videos": chart_videos},
+        ensure_ascii=False,
+    ).replace("</", "<\\/")
+
     ig_insights_note = (
         "<p class='st-note'>Подсказка по Instagram Reels: сейчас отображаются лайки и комментарии; чтобы подтягивались и просмотры/репосты/сохранения Reels, добавьте право <code>instagram_manage_insights</code> системному пользователю в Meta Business Suite и обновите токен.</p>"
         if ig.get("ok") and ig.get("insights_available") is False
@@ -694,6 +584,17 @@ def _render_html(config: dict, data: dict) -> str:
       .st-b-vk{{background:rgba(68,138,255,.18);color:#8ab4ff}}
       .st-b-ig{{background:rgba(225,48,108,.18);color:#ff85b3}}
       .st-b-dz{{background:rgba(167,239,70,.16);color:#b7f468}}
+      .st-chart-box{{margin:18px 0 22px;padding:18px;border:1px solid rgba(255,255,255,.12);border-radius:16px;background:rgba(255,255,255,.025)}}
+      .st-chart-ctrl{{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;margin-bottom:12px}}
+      .st-chart-grp{{display:flex;flex-wrap:wrap;gap:6px;align-items:center}}
+      .st-chart-lbl{{font-size:12px;color:var(--muted,#9aa39d);margin-right:4px}}
+      .st-date{{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);color:#e9eee9;border-radius:8px;padding:5px 8px;font-size:13px}}
+      .st-chart-meta{{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:13px}}
+      .st-legend{{display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:13px}}
+      .st-dot{{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}}
+      .st-canvas-wrap{{position:relative;width:100%;height:300px}}
+      .st-canvas-wrap canvas{{width:100%;height:100%;display:block}}
+      .st-tip{{position:absolute;pointer-events:none;display:none;z-index:5;background:rgba(16,20,18,.96);border:1px solid rgba(167,239,70,.45);border-radius:10px;padding:8px 11px;font-size:12px;line-height:1.45;color:#f3f7f3;box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:280px}}
     </style>
     <main class="st-wrap">
       <div class="st-head">
@@ -738,6 +639,58 @@ def _render_html(config: dict, data: dict) -> str:
           </table>
         </div>
         {ig_insights_note}
+        <div class="st-chart-box">
+          <div class="st-chart-ctrl">
+            <div class="st-chart-grp" id="st-mode-grp">
+              <span class="st-chart-lbl">Режим:</span>
+              <button type="button" class="st-pill active" data-mode="history" onclick="setChartOpt('mode','history',this)">Рост во времени</button>
+              <button type="button" class="st-pill" data-mode="videos" onclick="setChartOpt('mode','videos',this)">По датам роликов</button>
+            </div>
+            <div class="st-chart-grp" id="st-metric-grp">
+              <span class="st-chart-lbl">Параметр:</span>
+              <button type="button" class="st-pill active" data-metric="views" onclick="setChartOpt('metric','views',this)">Просмотры</button>
+              <button type="button" class="st-pill" data-metric="likes" onclick="setChartOpt('metric','likes',this)">Лайки</button>
+              <button type="button" class="st-pill" data-metric="comments" onclick="setChartOpt('metric','comments',this)">Комменты</button>
+              <button type="button" class="st-pill" data-metric="reposts" onclick="setChartOpt('metric','reposts',this)">Репосты</button>
+              <button type="button" class="st-pill" data-metric="subscribers" onclick="setChartOpt('metric','subscribers',this)">Подписчики</button>
+            </div>
+          </div>
+          <div class="st-chart-ctrl">
+            <div class="st-chart-grp" id="st-range-grp">
+              <span class="st-chart-lbl">Период:</span>
+              <button type="button" class="st-pill" data-range="6h" onclick="setRange('6h',this)">6 ч</button>
+              <button type="button" class="st-pill" data-range="24h" onclick="setRange('24h',this)">24 ч</button>
+              <button type="button" class="st-pill active" data-range="7d" onclick="setRange('7d',this)">7 дней</button>
+              <button type="button" class="st-pill" data-range="30d" onclick="setRange('30d',this)">30 дней</button>
+              <button type="button" class="st-pill" data-range="all" onclick="setRange('all',this)">Всё время</button>
+            </div>
+            <div class="st-chart-grp">
+              <span class="st-chart-lbl">С</span>
+              <input type="date" id="st-from-date" class="st-date" onchange="applyCustomDates()">
+              <span class="st-chart-lbl">по</span>
+              <input type="date" id="st-to-date" class="st-date" onchange="applyCustomDates()">
+            </div>
+          </div>
+          <div class="st-chart-ctrl">
+            <div class="st-chart-grp" id="st-plat-grp">
+              <span class="st-chart-lbl">Платформа:</span>
+              <button type="button" class="st-pill active" data-plat="all" onclick="setChartOpt('plat','all',this)">Все платформы</button>
+              <button type="button" class="st-pill" data-plat="yt" onclick="setChartOpt('plat','yt',this)">YouTube</button>
+              <button type="button" class="st-pill" data-plat="vk" onclick="setChartOpt('plat','vk',this)">VK Клипы</button>
+              <button type="button" class="st-pill" data-plat="ig" onclick="setChartOpt('plat','ig',this)">Instagram</button>
+              <button type="button" class="st-pill" data-plat="dz" onclick="setChartOpt('plat','dz',this)">Дзен</button>
+            </div>
+            <div id="st-chart-stat" class="st-note"></div>
+          </div>
+          <div class="st-chart-meta">
+            <div class="st-legend" id="st-chart-legend"></div>
+            <div class="st-note" id="st-chart-hint"></div>
+          </div>
+          <div class="st-canvas-wrap">
+            <canvas id="st-chart"></canvas>
+            <div class="st-tip" id="st-chart-tip"></div>
+          </div>
+        </div>
         <h3>Статистика по каждому ролику</h3>
         <div class="st-filters">
           <button type="button" class="st-pill active" onclick="filterVideos('all', this)">Все ({len(all_video_rows)})</button>
@@ -753,14 +706,286 @@ def _render_html(config: dict, data: dict) -> str:
           </table>
         </div>
       </section>
+      <script id="st-chart-data" type="application/json">{chart_payload_json}</script>
       <script>
         function filterVideos(plat, btn) {{
-          document.querySelectorAll('.st-pill').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.st-filters .st-pill').forEach(b => b.classList.remove('active'));
           if (btn) btn.classList.add('active');
           document.querySelectorAll('#st-videos-table tbody tr[data-plat]').forEach(tr => {{
             tr.style.display = (plat === 'all' || tr.dataset.plat === plat) ? '' : 'none';
           }});
         }}
+        (function() {{
+          const raw = JSON.parse(document.getElementById('st-chart-data').textContent || '{{}}');
+          const PAL = {{
+            total: {{ name: 'Итого', color: '#a7ef46' }},
+            yt: {{ name: 'YouTube Shorts', color: '#ff6b6b' }},
+            vk: {{ name: 'VK Клипы', color: '#5c9eff' }},
+            ig: {{ name: 'Instagram Reels', color: '#ff65a3' }},
+            dz: {{ name: 'Дзен', color: '#ffd166' }}
+          }};
+          const METRIC_NAMES = {{ views: 'Просмотры', likes: 'Лайки', comments: 'Комментарии', reposts: 'Репосты', subscribers: 'Подписчики' }};
+          const state = {{ mode: 'history', metric: 'views', range: '7d', plat: 'all', fromTs: null, toTs: null }};
+          let renderPoints = [];
+          let activeSeries = [];
+
+          window.setChartOpt = function(key, val, btn) {{
+            state[key] = val;
+            btn.parentElement.querySelectorAll('.st-pill').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            drawChart();
+          }};
+
+          window.setRange = function(rng, btn) {{
+            state.range = rng;
+            state.fromTs = null;
+            state.toTs = null;
+            document.getElementById('st-from-date').value = '';
+            document.getElementById('st-to-date').value = '';
+            document.querySelectorAll('#st-range-grp .st-pill').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+            drawChart();
+          }};
+
+          window.applyCustomDates = function() {{
+            const f = document.getElementById('st-from-date').value;
+            const t = document.getElementById('st-to-date').value;
+            state.fromTs = f ? Math.floor(new Date(f + 'T00:00:00+03:00').getTime() / 1000) : null;
+            state.toTs = t ? Math.floor(new Date(t + 'T23:59:59+03:00').getTime() / 1000) : null;
+            if (state.fromTs || state.toTs) {{
+              state.range = 'custom';
+              document.querySelectorAll('#st-range-grp .st-pill').forEach(b => b.classList.remove('active'));
+            }}
+            drawChart();
+          }};
+
+          function rangeBounds() {{
+            if (state.range === 'custom') return [state.fromTs || 0, state.toTs || 9e15];
+            const now = Math.floor(Date.now() / 1000);
+            const map = {{ '6h': 21600, '24h': 86400, '7d': 604800, '30d': 2592000 }};
+            if (map[state.range]) return [now - map[state.range], now + 60];
+            return [0, 9e15];
+          }}
+
+          function fmtTs(ts, withTime) {{
+            const d = new Date((ts + 3 * 3600) * 1000);
+            const dd = String(d.getUTCDate()).padStart(2, '0');
+            const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+            if (!withTime) return dd + '.' + mm;
+            const hh = String(d.getUTCHours()).padStart(2, '0');
+            const mi = String(d.getUTCMinutes()).padStart(2, '0');
+            return dd + '.' + mm + ' ' + hh + ':' + mi;
+          }}
+
+          function fmtVal(n) {{
+            return n == null ? '—' : Math.round(n).toLocaleString('ru-RU');
+          }}
+          function escHtml(s) {{
+            return String(s || '').replace(/[&<>"]/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}}[c]));
+          }}
+
+          function buildData() {{
+            const [lo, hi] = rangeBounds();
+            const m = state.metric;
+            const keys = state.plat === 'all' ? ['yt', 'vk', 'ig', 'dz'] : [state.plat];
+            if (state.mode === 'history') {{
+              const pts = (raw.history || []).filter(p => p.ts >= lo && p.ts <= hi);
+              const series = [];
+              if (state.plat === 'all') {{
+                series.push({{
+                  key: 'total', name: PAL.total.name, color: PAL.total.color, fill: true,
+                  vals: pts.map(p => {{
+                    let s = 0, has = false;
+                    keys.forEach(k => {{
+                      const v = p.platforms && p.platforms[k] ? p.platforms[k][m] : null;
+                      if (v !== null && v !== undefined) {{ s += v; has = true; }}
+                    }});
+                    return has ? s : null;
+                  }})
+                }});
+              }}
+              keys.forEach(k => {{
+                const vals = pts.map(p => (p.platforms && p.platforms[k] && p.platforms[k][m] != null) ? p.platforms[k][m] : null);
+                if (vals.some(v => v !== null)) {{
+                  series.push({{ key: k, name: PAL[k].name, color: PAL[k].color, fill: state.plat !== 'all', vals }});
+                }}
+              }});
+              return {{
+                xLabels: pts.map(p => fmtTs(p.ts, state.range === '6h' || state.range === '24h' || pts.length <= 16)),
+                titles: pts.map(p => fmtTs(p.ts, true) + ' MSK'),
+                series,
+                hint: pts.length < 2 ? 'Снимки пишутся каждые 10 мин — по мере накопления появится подробная кривая' : ('Точек снимков: ' + pts.length)
+              }};
+            }} else {{
+              const metricKey = m === 'subscribers' ? 'views' : m;
+              let vids = (raw.videos || []).filter(v => (state.plat === 'all' || v.pkey === state.plat) && v.ts >= lo && v.ts <= hi);
+              vids.sort((a, b) => a.ts - b.ts);
+              return {{
+                xLabels: vids.map(v => fmtTs(v.ts, false)),
+                titles: vids.map(v => v.pname + ': ' + v.title + ' (' + v.date + ')'),
+                series: [{{
+                  key: state.plat === 'all' ? 'total' : state.plat,
+                  name: METRIC_NAMES[metricKey] + ' по роликам',
+                  color: (PAL[state.plat] || PAL.total).color,
+                  fill: true,
+                  vals: vids.map(v => v[metricKey] != null ? v[metricKey] : 0),
+                  vids
+                }}],
+                hint: m === 'subscribers' ? 'Для роликов показаны просмотры (подписчики доступны в режиме «Рост во времени»)' : ('Роликов в периоде: ' + vids.length)
+              }};
+            }}
+          }}
+
+          function drawChart() {{
+            const canvas = document.getElementById('st-chart');
+            const wrap = canvas.parentElement;
+            const dpr = window.devicePixelRatio || 1;
+            const W = Math.max(300, wrap.clientWidth);
+            const H = wrap.clientHeight || 300;
+            canvas.width = W * dpr;
+            canvas.height = H * dpr;
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            ctx.clearRect(0, 0, W, H);
+
+            const built = buildData();
+            activeSeries = built.series;
+            renderPoints = built.titles.map((t, i) => ({{ title: t, label: built.xLabels[i], x: 0 }}));
+            document.getElementById('st-chart-hint').textContent = built.hint;
+
+            const legEl = document.getElementById('st-chart-legend');
+            legEl.innerHTML = activeSeries.map(s => {{
+              const clean = s.vals.filter(v => v !== null);
+              const last = clean.length ? clean[clean.length - 1] : null;
+              return `<span><i class="st-dot" style="background:${{s.color}}"></i>${{s.name}}: <b>${{fmtVal(last)}}</b></span>`;
+            }}).join('');
+
+            const statEl = document.getElementById('st-chart-stat');
+            if (activeSeries.length && activeSeries[0].vals.length) {{
+              const clean = activeSeries[0].vals.filter(v => v !== null);
+              if (state.mode === 'history' && clean.length >= 2) {{
+                const diff = clean[clean.length - 1] - clean[0];
+                statEl.innerHTML = 'Прирост за период: <b style="color:#a7ef46">' + (diff >= 0 ? '+' : '') + fmtVal(diff) + '</b>';
+              }} else if (state.mode === 'videos') {{
+                const sum = clean.reduce((a, b) => a + b, 0);
+                statEl.innerHTML = 'Сумма за период: <b style="color:#a7ef46">' + fmtVal(sum) + '</b>';
+              }} else {{
+                statEl.innerHTML = clean.length ? 'Текущее значение: <b style="color:#a7ef46">' + fmtVal(clean[0]) + '</b>' : '';
+              }}
+            }} else {{
+              statEl.textContent = 'Нет данных за выбранный промежуток';
+            }}
+
+            const allNums = [];
+            activeSeries.forEach(s => s.vals.forEach(v => {{ if (v !== null) allNums.push(v); }}));
+            if (!allNums.length || !renderPoints.length) {{
+              ctx.fillStyle = '#9aa39d';
+              ctx.font = '14px sans-serif';
+              ctx.textAlign = 'center';
+              ctx.fillText('Нет точек за выбранный период — попробуйте «Всё время» или «По датам роликов»', W / 2, H / 2);
+              return;
+            }}
+
+            const padL = 54, padR = 18, padT = 18, padB = 34;
+            const cw = W - padL - padR;
+            const ch = H - padT - padB;
+            let maxV = Math.max(...allNums, 1);
+            const step = Math.pow(10, Math.floor(Math.log10(maxV)));
+            maxV = Math.ceil(maxV / step) * step;
+
+            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.lineWidth = 1;
+            ctx.fillStyle = '#9aa39d';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'right';
+            for (let g = 0; g <= 4; g++) {{
+              const y = padT + (ch * g) / 4;
+              const val = maxV * (1 - g / 4);
+              ctx.beginPath();
+              ctx.moveTo(padL, y);
+              ctx.lineTo(W - padR, y);
+              ctx.stroke();
+              ctx.fillText(Math.round(val).toLocaleString('ru-RU'), padL - 8, y + 4);
+            }}
+
+            const n = renderPoints.length;
+            renderPoints.forEach((pt, i) => {{
+              pt.x = n === 1 ? padL + cw / 2 : padL + (cw * i) / (n - 1);
+            }});
+
+            ctx.textAlign = 'center';
+            const labelStep = Math.max(1, Math.ceil(n / 7));
+            renderPoints.forEach((pt, i) => {{
+              if (i % labelStep === 0 || i === n - 1) {{
+                ctx.fillText(pt.label, pt.x, H - 10);
+              }}
+            }});
+
+            activeSeries.forEach(s => {{
+              const coords = [];
+              s.vals.forEach((v, i) => {{
+                if (v !== null) {{
+                  const y = padT + ch * (1 - v / maxV);
+                  coords.push({{ x: renderPoints[i].x, y, v, idx: i }});
+                }}
+              }});
+              if (!coords.length) return;
+              if (s.fill && coords.length >= 2) {{
+                const grad = ctx.createLinearGradient(0, padT, 0, padT + ch);
+                grad.addColorStop(0, s.color + '44');
+                grad.addColorStop(1, s.color + '02');
+                ctx.beginPath();
+                ctx.moveTo(coords[0].x, padT + ch);
+                coords.forEach(c => ctx.lineTo(c.x, c.y));
+                ctx.lineTo(coords[coords.length - 1].x, padT + ch);
+                ctx.closePath();
+                ctx.fillStyle = grad;
+                ctx.fill();
+              }}
+              ctx.strokeStyle = s.color;
+              ctx.lineWidth = 2.4;
+              ctx.beginPath();
+              coords.forEach((c, idx) => idx === 0 ? ctx.moveTo(c.x, c.y) : ctx.lineTo(c.x, c.y));
+              ctx.stroke();
+              coords.forEach(c => {{
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, n <= 20 ? 4 : 2.5, 0, Math.PI * 2);
+                ctx.fillStyle = s.color;
+                ctx.fill();
+              }});
+            }});
+          }}
+
+          const canvas = document.getElementById('st-chart');
+          const tip = document.getElementById('st-chart-tip');
+          function showTip(clientX) {{
+            if (!renderPoints.length || !activeSeries.length) {{ tip.style.display = 'none'; return; }}
+            const rect = canvas.getBoundingClientRect();
+            const mx = clientX - rect.left;
+            let bestIdx = 0, bestDist = Infinity;
+            renderPoints.forEach((pt, i) => {{
+              const d = Math.abs(pt.x - mx);
+              if (d < bestDist) {{ bestDist = d; bestIdx = i; }}
+            }});
+            const lines = ['<b>' + escHtml(renderPoints[bestIdx].title) + '</b>'];
+            activeSeries.forEach(s => {{
+              const v = s.vals[bestIdx];
+              if (v !== null && v !== undefined) {{
+                lines.push(`<span style="color:${{s.color}}">●</span> ${{s.name}}: <b>${{fmtVal(v)}}</b>`);
+              }}
+            }});
+            tip.innerHTML = lines.join('<br>');
+            tip.style.display = 'block';
+            const left = Math.min(rect.width - tip.offsetWidth - 8, Math.max(8, renderPoints[bestIdx].x + 12));
+            tip.style.left = left + 'px';
+            tip.style.top = '12px';
+          }}
+          canvas.addEventListener('mousemove', e => showTip(e.clientX));
+          canvas.addEventListener('touchstart', e => {{ if (e.touches[0]) showTip(e.touches[0].clientX); }}, {{ passive: true }});
+          canvas.addEventListener('mouseleave', () => {{ tip.style.display = 'none'; }});
+          window.addEventListener('resize', drawChart);
+          drawChart();
+        }})();
       </script>
 
       <section class="st-sec">

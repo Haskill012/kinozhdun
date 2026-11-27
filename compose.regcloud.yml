@@ -58,6 +58,7 @@ services:
       SITE_BASE_URL: https://kinojdun.ru
     volumes:
       - /srv/apps/kinozhdun/data:/app/data
+      - /srv/apps/kinozhdun-dzen-uploader/data:/app/dzen-data:ro
     depends_on:
       kinozhdun-awg:
         condition: service_healthy
