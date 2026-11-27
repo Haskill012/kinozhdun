@@ -338,6 +338,22 @@ def create_app(config=None):
         return web.Response(text=body, content_type="text/html", headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 
     app.router.add_get('/tiktok/callback', tiktok_callback)
+
+    verify_dir = Path(config['database']).parent / 'site_verify'
+
+    async def tiktok_verify_file(request):
+        name = request.match_info.get("name", "")
+        target = verify_dir / name
+        if not target.is_file():
+            raise web.HTTPNotFound()
+        return web.Response(
+            body=target.read_bytes(),
+            content_type="text/plain",
+            charset="utf-8",
+            headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"},
+        )
+
+    app.router.add_get(r'/{name:tiktok[A-Za-z0-9_-]+\.txt}', tiktok_verify_file)
     return app
 
 
