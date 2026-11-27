@@ -998,4 +998,14 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         max_mid = await self.publish_to_max_channel(post, video_path)
         results["max_mid"] = max_mid
 
+        # 4. YouTube Shorts
+        try:
+            from bot.services.youtube_publisher import YouTubePublisher
+            yt_pub = YouTubePublisher(self.settings)
+            if yt_pub.is_configured():
+                yt_id = await yt_pub.publish_short(post, video_path)
+                results["youtube_video_id"] = yt_id
+        except Exception as yt_err:
+            logger.warning("Не удалось опубликовать шортс на YouTube: %s", yt_err)
+
         return results

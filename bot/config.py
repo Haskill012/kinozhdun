@@ -65,6 +65,12 @@ class Settings:
     YANDEX_SPEECHKIT_FOLDER_ID: str | None = None
     YANDEX_SPEECHKIT_VOICE: str = "filipp"
     YANDEX_SPEECHKIT_SPEED: str = "1.08"
+    YOUTUBE_POSTING_ENABLED: bool = False
+    YOUTUBE_CLIENT_ID: str | None = None
+    YOUTUBE_CLIENT_SECRET: str | None = None
+    YOUTUBE_REFRESH_TOKEN: str | None = None
+    YOUTUBE_PRIVACY_STATUS: str = "private"
+    YOUTUBE_CATEGORY_ID: str = "1"
     MAX_BOT_TOKEN: str | None = None
     MAX_CHANNEL_ID: int | None = None
     MAX_CHANNEL_POSTING_ENABLED: bool = False
@@ -170,6 +176,12 @@ class Settings:
             YANDEX_SPEECHKIT_FOLDER_ID=os.getenv("YANDEX_SPEECHKIT_FOLDER_ID") or None,
             YANDEX_SPEECHKIT_VOICE=(os.getenv("YANDEX_SPEECHKIT_VOICE") or "filipp").strip(),
             YANDEX_SPEECHKIT_SPEED=(os.getenv("YANDEX_SPEECHKIT_SPEED") or "1.08").strip(),
+            YOUTUBE_POSTING_ENABLED=os.getenv("YOUTUBE_POSTING_ENABLED", "false").lower() in ("true", "1", "yes"),
+            YOUTUBE_CLIENT_ID=os.getenv("YOUTUBE_CLIENT_ID") or None,
+            YOUTUBE_CLIENT_SECRET=os.getenv("YOUTUBE_CLIENT_SECRET") or None,
+            YOUTUBE_REFRESH_TOKEN=os.getenv("YOUTUBE_REFRESH_TOKEN") or None,
+            YOUTUBE_PRIVACY_STATUS=(os.getenv("YOUTUBE_PRIVACY_STATUS") or "private").strip().lower(),
+            YOUTUBE_CATEGORY_ID=(os.getenv("YOUTUBE_CATEGORY_ID") or "1").strip(),
             MAX_BOT_TOKEN=os.getenv("MAX_BOT_TOKEN") or None,
             MAX_CHANNEL_ID=int(os.getenv("MAX_CHANNEL_ID", "").strip()) if os.getenv("MAX_CHANNEL_ID", "").strip().lstrip("-").isdigit() else None,
             MAX_CHANNEL_POSTING_ENABLED=os.getenv("MAX_CHANNEL_POSTING_ENABLED", "false").lower() in ("true", "1", "yes"),
