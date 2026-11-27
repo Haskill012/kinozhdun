@@ -28,6 +28,12 @@ from bot.config import Settings
 from bot.db.models import ChannelPost
 from bot.utils.formatting import format_date_ru
 
+try:
+    from bot.services.tts_accentuator import prepare_tts_text
+except Exception:
+    def prepare_tts_text(text: str, use_plus: bool = True) -> str:  # type: ignore
+        return text
+
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -175,50 +181,113 @@ class ShortsPublisher:
         im.save(out_path)
         return out_path
 
+    def _synthesize_speechkit_wav_sync(
+        self, tts_text: str, wav_path: Path, api_key: str, voice: str, speed: str, folder_id: Optional[str]
+    ) -> None:
+        """Синхронный запрос к Yandex SpeechKit v1 (LPCM 48kHz -> stereo WAV)."""
+        payload: dict[str, str] = {
+            "text": tts_text,
+            "lang": "ru-RU",
+            "voice": voice or "filipp",
+            "speed": speed or "1.08",
+            "format": "lpcm",
+            "sampleRateHertz": "48000",
+        }
+        if folder_id:
+            payload["folderId"] = folder_id
+
+        data = urllib.parse.urlencode(payload).encode("utf-8")
+        req = urllib.request.Request(
+            "https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize",
+            data=data,
+            headers={
+                "Authorization": f"Api-Key {api_key}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            pcm = resp.read()
+
+        if len(pcm) < 5000:
+            raise RuntimeError(f"SpeechKit returned too few audio bytes: {len(pcm)}")
+
+        mono_wav = wav_path.with_name("voice_mono.wav")
+        with wave.open(str(mono_wav), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(48000)
+            wf.writeframes(pcm)
+
+        cmd = [FFMPEG_EXE, "-hide_banner", "-loglevel", "error", "-y", "-i", str(mono_wav), "-ar", "48000", "-ac", "2", str(wav_path)]
+        subprocess.run(cmd, check=True)
+        mono_wav.unlink(missing_ok=True)
+
     async def generate_narration_and_subtitles(
         self, script_sentences: list[dict[str, Any]], work_dir: Path
     ) -> tuple[Path, Path, float]:
-        """Синтезирует дикторский голос DmitryNeural +8% и строит ASS субтитры."""
-        if edge_tts is None:
-            raise RuntimeError("edge_tts не установлен")
-
+        """Синтезирует дикторский голос (SpeechKit с '+' ударениями или fallback edge-tts) и строит ASS субтитры."""
         word_timings = []
         mp3_path = work_dir / "voice.mp3"
         wav_path = work_dir / "voice.wav"
 
         full_text = " ".join(s["text"] for s in script_sentences)
-        
-        # Надежный синтез с повторными попытками при сетевых сбоях
-        last_err = None
-        for attempt in range(6):
-            try:
-                word_timings.clear()
-                rate_val = "+8%" if attempt % 2 == 0 else "+0%"
-                voice_val = "ru-RU-DmitryNeural" if attempt < 4 else "ru-RU-SvetlanaNeural"
-                comm = edge_tts.Communicate(full_text, voice_val, rate=rate_val)
-                audio_written = 0
-                with open(mp3_path, "wb") as f:
-                    async for chunk in comm.stream():
-                        if chunk["type"] == "audio":
-                            f.write(chunk["data"])
-                            audio_written += len(chunk["data"])
-                        elif chunk["type"] == "WordBoundary":
-                            word_timings.append({
-                                "start": chunk["offset"] / 10_000_000,
-                                "duration": chunk["duration"] / 10_000_000,
-                                "text": chunk["text"],
-                            })
-                if mp3_path.exists() and audio_written > 5000:
-                    break
-            except Exception as e:
-                last_err = e
-                await asyncio.sleep(1.5)
-        else:
-            raise RuntimeError(f"Edge TTS synthesis failed after 6 retries: {last_err}")
+        api_key = (getattr(self.settings, "YANDEX_SPEECHKIT_API_KEY", None) or os.getenv("YANDEX_SPEECHKIT_API_KEY") or "").strip()
+        folder_id = (getattr(self.settings, "YANDEX_SPEECHKIT_FOLDER_ID", None) or os.getenv("YANDEX_SPEECHKIT_FOLDER_ID") or "").strip() or None
+        sk_voice = (getattr(self.settings, "YANDEX_SPEECHKIT_VOICE", None) or os.getenv("YANDEX_SPEECHKIT_VOICE") or "filipp").strip()
+        sk_speed = str(getattr(self.settings, "YANDEX_SPEECHKIT_SPEED", None) or os.getenv("YANDEX_SPEECHKIT_SPEED") or "1.08").strip()
 
-        # Переводим в 48kHz WAV
-        cmd = [FFMPEG_EXE, "-hide_banner", "-loglevel", "error", "-y", "-i", str(mp3_path), "-ar", "48000", "-ac", "2", str(wav_path)]
-        subprocess.run(cmd, check=True)
+        synthesized = False
+        if api_key:
+            sk_text = prepare_tts_text(full_text, use_plus=True)
+            for attempt in range(3):
+                try:
+                    await asyncio.to_thread(
+                        self._synthesize_speechkit_wav_sync, sk_text, wav_path, api_key, sk_voice, sk_speed, folder_id
+                    )
+                    logger.info("Озвучка шортса выполнена через Yandex SpeechKit (voice=%s, speed=%s): %s", sk_voice, sk_speed, sk_text)
+                    synthesized = True
+                    break
+                except Exception as e:
+                    logger.warning("SpeechKit попытка %s не удалась (%s): %s", attempt + 1, type(e).__name__, e)
+                    await asyncio.sleep(1.5)
+
+        if not synthesized:
+            if edge_tts is None:
+                raise RuntimeError("Не задан YANDEX_SPEECHKIT_API_KEY и не установлен edge_tts")
+
+            edge_text = prepare_tts_text(full_text, use_plus=False)
+            last_err = None
+            for attempt in range(6):
+                try:
+                    word_timings.clear()
+                    rate_val = "+8%" if attempt % 2 == 0 else "+0%"
+                    voice_val = "ru-RU-DmitryNeural" if attempt < 4 else "ru-RU-SvetlanaNeural"
+                    comm = edge_tts.Communicate(edge_text, voice_val, rate=rate_val)
+                    audio_written = 0
+                    with open(mp3_path, "wb") as f:
+                        async for chunk in comm.stream():
+                            if chunk["type"] == "audio":
+                                f.write(chunk["data"])
+                                audio_written += len(chunk["data"])
+                            elif chunk["type"] == "WordBoundary":
+                                word_timings.append({
+                                    "start": chunk["offset"] / 10_000_000,
+                                    "duration": chunk["duration"] / 10_000_000,
+                                    "text": chunk["text"],
+                                })
+                    if mp3_path.exists() and audio_written > 5000:
+                        logger.info("Озвучка шортса выполнена через edge-tts (%s): %s", voice_val, edge_text)
+                        break
+                except Exception as e:
+                    last_err = e
+                    await asyncio.sleep(1.5)
+            else:
+                raise RuntimeError(f"Edge TTS synthesis failed after 6 retries: {last_err}")
+
+            # Переводим в 48kHz WAV
+            cmd = [FFMPEG_EXE, "-hide_banner", "-loglevel", "error", "-y", "-i", str(mp3_path), "-ar", "48000", "-ac", "2", str(wav_path)]
+            subprocess.run(cmd, check=True)
 
         actual_voice_dur = self.get_media_duration(wav_path)
         if actual_voice_dur > 1.0:

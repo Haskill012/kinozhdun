@@ -61,6 +61,10 @@ class Settings:
     SHORTS_AUTO_PUBLISH: bool = True
     SHORTS_DAILY_HOUR: int = 12
     SHORTS_DAILY_MINUTE: int = 0
+    YANDEX_SPEECHKIT_API_KEY: str | None = None
+    YANDEX_SPEECHKIT_FOLDER_ID: str | None = None
+    YANDEX_SPEECHKIT_VOICE: str = "filipp"
+    YANDEX_SPEECHKIT_SPEED: str = "1.08"
     MAX_BOT_TOKEN: str | None = None
     MAX_CHANNEL_ID: int | None = None
     MAX_CHANNEL_POSTING_ENABLED: bool = False
@@ -162,6 +166,10 @@ class Settings:
             SHORTS_AUTO_PUBLISH=os.getenv("SHORTS_AUTO_PUBLISH", "true").lower() in ("true", "1", "yes"),
             SHORTS_DAILY_HOUR=int(os.getenv("SHORTS_DAILY_HOUR", "12")),
             SHORTS_DAILY_MINUTE=int(os.getenv("SHORTS_DAILY_MINUTE", "0")),
+            YANDEX_SPEECHKIT_API_KEY=os.getenv("YANDEX_SPEECHKIT_API_KEY") or None,
+            YANDEX_SPEECHKIT_FOLDER_ID=os.getenv("YANDEX_SPEECHKIT_FOLDER_ID") or None,
+            YANDEX_SPEECHKIT_VOICE=(os.getenv("YANDEX_SPEECHKIT_VOICE") or "filipp").strip(),
+            YANDEX_SPEECHKIT_SPEED=(os.getenv("YANDEX_SPEECHKIT_SPEED") or "1.08").strip(),
             MAX_BOT_TOKEN=os.getenv("MAX_BOT_TOKEN") or None,
             MAX_CHANNEL_ID=int(os.getenv("MAX_CHANNEL_ID", "").strip()) if os.getenv("MAX_CHANNEL_ID", "").strip().lstrip("-").isdigit() else None,
             MAX_CHANNEL_POSTING_ENABLED=os.getenv("MAX_CHANNEL_POSTING_ENABLED", "false").lower() in ("true", "1", "yes"),
