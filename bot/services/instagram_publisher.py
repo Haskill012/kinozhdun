@@ -14,6 +14,8 @@ import re
 import secrets
 import shutil
 import sqlite3
+import subprocess
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -183,6 +185,20 @@ def _build_caption(post: ChannelPost, settings: Settings) -> str:
     return "\n".join(parts)[:2150]
 
 
+def _prepare_reel_video(source: Path, target: Path) -> None:
+    """Copy the video stream and normalize audio for Meta's Reels ingestion."""
+    from bot.services.shorts_publisher import FFMPEG_EXE
+
+    result = subprocess.run(
+        [FFMPEG_EXE, "-nostdin", "-v", "error", "-i", str(source),
+         "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy",
+         "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(target)],
+        capture_output=True, text=True, timeout=60,
+    )
+    if result.returncode != 0 or not target.is_file() or target.stat().st_size < 50_000:
+        raise RuntimeError(f"Instagram MP4 normalization failed: {result.stderr.strip()[-300:]}")
+
+
 class InstagramPublisher:
     """Публикатор Instagram Reels через Meta/Instagram Graph API."""
 
@@ -246,8 +262,12 @@ class InstagramPublisher:
 
         caption = _build_caption(post, self.settings)
         tmp_path: Optional[Path] = None
+        normalized_dir = tempfile.TemporaryDirectory(prefix="kinozhdun-instagram-")
 
         try:
+            normalized = Path(normalized_dir.name) / "reel.mp4"
+            await asyncio.to_thread(_prepare_reel_video, video_path, normalized)
+            video_path = normalized
             token = _load_effective_token(self.env_token)
             host = self._api_host(token)
             base = f"{host}/{self.api_version}"
@@ -351,5 +371,6 @@ class InstagramPublisher:
             logger.info("Instagram Reels опубликован для поста #%s (media_id=%s)", post_id, media_id)
             return media_id
         finally:
+            normalized_dir.cleanup()
             if tmp_path is not None:
                 tmp_path.unlink(missing_ok=True)

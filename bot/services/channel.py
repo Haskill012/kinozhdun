@@ -290,9 +290,13 @@ class ChannelPublisher:
         poster_path: Optional[str],
         reply_markup: InlineKeyboardMarkup,
         video_path: Optional[Any] = None,
+        require_video: bool = False,
     ) -> int:
         """Отправляет пост в Telegram с видео (шортс), фото (если есть постер) или текстом."""
-        if video_path and Path(video_path).exists() and telegram_text_length(post_text) <= 1024:
+        caption = post_text
+        if require_video and telegram_text_length(caption) > 1024:
+            caption = "🍿 Премьера"
+        if video_path and Path(video_path).exists() and telegram_text_length(caption) <= 1024:
             try:
                 from aiogram.types import FSInputFile
                 v_path = Path(video_path)
@@ -306,7 +310,7 @@ class ChannelPublisher:
                     chat_id=chat_id,
                     video=FSInputFile(str(v_path)),
                     thumbnail=thumb_input,
-                    caption=post_text,
+                    caption=caption,
                     reply_markup=reply_markup,
                     parse_mode=ParseMode.HTML,
                     supports_streaming=True,
@@ -315,7 +319,12 @@ class ChannelPublisher:
                 )
                 return msg.message_id
             except Exception as e:
+                if require_video:
+                    raise
                 logger.warning(f"Не удалось отправить шортс {video_path}, fallback на фото/текст: {e}")
+
+        if require_video:
+            raise RuntimeError("Обязательное видеовложение отсутствует")
 
         if poster_path and telegram_text_length(post_text) <= 1024:
             photo_url = poster_path if poster_path.startswith("http") else f"{self.settings.TMDB_IMAGE_BASE_URL}{poster_path}"
@@ -558,6 +567,12 @@ class ChannelPublisher:
                 except Exception as shorts_err:
                     logger.warning("Ошибка подготовки шортса для поста #%s: %s", post.id, shorts_err)
 
+            if post.post_type == "premiere" and not video_path:
+                await repo.update_channel_post_status(post_id, "failed")
+                await session.commit()
+                logger.error("Пост #%s пропущен: проверенный видеофайл отсутствует.", post_id)
+                return False
+
             try:
                 message_id = await self._send_post_to_telegram(
                     chat_id=self.settings.TELEGRAM_CHANNEL_ID,
@@ -565,6 +580,7 @@ class ChannelPublisher:
                     poster_path=post.poster_path,
                     reply_markup=reply_markup,
                     video_path=video_path,
+                    require_video=post.post_type == "premiere",
                 )
                 await repo.mark_channel_post_published(post.id, message_id)
                 await session.commit()
@@ -572,7 +588,12 @@ class ChannelPublisher:
                 # Мультиплатформенная публикация шортса (VK Stories, VK Wall, MAX Messenger)
                 if shorts_pub and video_path:
                     try:
-                        await shorts_pub.distribute_all_channels(post, video_path)
+                        delivery = await shorts_pub.distribute_all_channels(post, video_path)
+                        logger.info(
+                            "Результаты отправки шортса #%s: %s",
+                            post.id,
+                            {channel: bool(receipt) for channel, receipt in delivery.items()},
+                        )
                     except Exception as dist_err:
                         logger.warning("Ошибка дистрибуции шортса по внешним каналам: %s", dist_err)
                 if getattr(self.settings, "DZEN_POSTING_ENABLED", False) and self.settings.DZEN_SYNC_MODE == "telegram_sync":
@@ -956,7 +977,7 @@ class ChannelPublisher:
                         "Дневной лимит шортсов на %s (%s/%s) уже выполнен.",
                         target_date, len(today_premieres), daily_limit,
                     )
-                    return today_premieres[0]
+                    return None
 
             # 2. Сбор кандидатов (СТРОГО актуальные премьеры: сегодня или в ближайшие 45 дней)
             candidates = []
@@ -1194,7 +1215,25 @@ class ChannelPublisher:
                 logger.info("Нет доступных кандидатов для премьерного шортса.")
                 return None
 
-            chosen = candidates[0]
+            for chosen in candidates:
+                date_str = chosen["release_date"].isoformat() if chosen.get("release_date") else "nodate"
+                content_hash = generate_event_fingerprint(
+                    tmdb_id=chosen["tmdb_id"],
+                    media_type=chosen["media_type"],
+                    event_type="premiere",
+                    season_number=chosen.get("season_number"),
+                    extra_key=f"short:{date_str}",
+                )
+                existing_post = await repo.get_channel_post_by_hash(content_hash)
+                if existing_post is None:
+                    break
+                logger.info("Шортс #%s уже существует (статус: %s).", existing_post.id, existing_post.status)
+                if existing_post.status in ("pending", "approved") and self.settings.CHANNEL_AUTO_PUBLISH:
+                    if await self.publish_post_by_id(existing_post.id):
+                        await session.refresh(existing_post)
+                        return existing_post
+            else:
+                return None
             logger.info("Выбран кандидат для ежедневного шортса: «%s» (%s ID %s, дата: %s)",
                         chosen["title"], chosen["media_type"], chosen["tmdb_id"], chosen["release_date"])
 
@@ -1218,22 +1257,6 @@ class ChannelPublisher:
                                 chosen["trailer_url"] = trailer_obj.get("url")
                 except Exception as det_err:
                     logger.warning("Ошибка обогащения кандидата из TMDB: %s", det_err)
-
-            date_str = chosen["release_date"].isoformat() if chosen.get("release_date") else "nodate"
-            content_hash = generate_event_fingerprint(
-                tmdb_id=chosen["tmdb_id"],
-                media_type=chosen["media_type"],
-                event_type="premiere",
-                season_number=chosen.get("season_number"),
-                extra_key=f"short:{date_str}",
-            )
-
-            existing_post = await repo.get_channel_post_by_hash(content_hash)
-            if existing_post:
-                logger.info("Пост для «%s» уже существует (ID: %s).", chosen["title"], existing_post.id)
-                if existing_post.status != "published" and self.settings.CHANNEL_AUTO_PUBLISH:
-                    await self.publish_post_by_id(existing_post.id)
-                return existing_post
 
             post_text = format_channel_post_text(
                 title=chosen["title"],
@@ -1269,6 +1292,7 @@ class ChannelPublisher:
 
             if self.settings.CHANNEL_AUTO_PUBLISH and self.settings.TELEGRAM_CHANNEL_ID and self.settings.CHANNEL_POSTING_ENABLED:
                 await self.publish_post_by_id(post.id)
+                await session.refresh(post)
             elif not self.settings.CHANNEL_AUTO_PUBLISH:
                 await self.notify_admins_pending(post)
 

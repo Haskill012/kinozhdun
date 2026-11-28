@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+import asyncio
 import aiohttp
 
 from bot.config import Settings
@@ -220,6 +221,34 @@ class YouTubePublisher:
                 raise RuntimeError(f"Google OAuth refresh failed ({resp.status}): {data}")
             return str(data["access_token"])
 
+    async def _confirm_processing(self, video_id: str) -> Optional[str]:
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+                token = await self._fetch_access_token(session)
+                for attempt in range(10):
+                    async with session.get(
+                        "https://www.googleapis.com/youtube/v3/videos",
+                        params={"part": "status,processingDetails", "id": video_id},
+                        headers={"Authorization": f"Bearer {token}"},
+                    ) as response:
+                        response.raise_for_status()
+                        items = (await response.json()).get("items", [])
+                    if items:
+                        upload_status = items[0].get("status", {}).get("uploadStatus")
+                        processing = items[0].get("processingDetails", {}).get("processingStatus")
+                        if processing in ("failed", "terminated") or upload_status in ("failed", "rejected", "deleted"):
+                            logger.error("YouTube отклонил видео %s (%s/%s)", video_id, upload_status, processing)
+                            return None
+                        if processing == "succeeded" or upload_status == "processed":
+                            logger.info("YouTube подтвердил обработку видео %s", video_id)
+                            return video_id
+                    if attempt < 9:
+                        await asyncio.sleep(8)
+        except (aiohttp.ClientError, asyncio.TimeoutError, RuntimeError) as exc:
+            logger.warning("Не удалось проверить обработку YouTube %s (%s)", video_id, type(exc).__name__)
+        logger.warning("YouTube принял видео %s, обработка не подтверждена", video_id)
+        return None
+
     async def publish_short(self, post: ChannelPost, video_path: Path) -> Optional[str]:
         """Загружает шортс на YouTube и возвращает video_id (либо None при пропуске/ошибке)."""
         if not self.is_configured():
@@ -233,7 +262,7 @@ class YouTubePublisher:
             existing = _already_uploaded(int(post_id))
             if existing:
                 logger.info("YouTube skip: пост #%s уже загружен (video_id=%s)", post_id, existing)
-                return existing
+                return await self._confirm_processing(existing)
 
         metadata = _build_metadata(post, self.settings)
         privacy = metadata["status"]["privacyStatus"]
@@ -306,4 +335,4 @@ class YouTubePublisher:
             "YouTube Shorts загружен для поста #%s: https://youtube.com/shorts/%s (privacy=%s)",
             post_id, video_id, privacy,
         )
-        return video_id
+        return await self._confirm_processing(video_id)

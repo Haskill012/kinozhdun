@@ -49,6 +49,9 @@ services:
       start_period: 20s
   kinozhdun-bot:
     image: kinozhdun:c909279-shorts-youtube
+    mem_limit: 768m
+    memswap_limit: 768m
+    cpus: 1.0
     network_mode: "service:kinozhdun-awg"
     dns: !reset null
     extra_hosts: !reset null

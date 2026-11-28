@@ -10,6 +10,7 @@ import json
 import html
 import wave
 import asyncio
+import aiohttp
 import logging
 import hashlib
 import shutil
@@ -457,7 +458,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 "-map", "[out]", "-map", "0:a",
                 "-t", str(dur), "-r", "30",
                 "-af", f"afade=t=in:d=0.03,afade=t=out:st={dur-0.03}:d=0.03",
-                "-c:v", "libx264", "-preset", "fast", "-crf", "19", "-threads", "3",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "19", "-threads", "1",
                 "-c:a", "aac", "-b:a", "192k",
                 str(p)
             ]
@@ -487,17 +488,18 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         # Вызов с cwd=work_dir для безопасного парсинга ass субтитров
         subprocess.run([
             FFMPEG_EXE, "-hide_banner", "-loglevel", "error", "-y",
-            "-i", "base_montage.mp4",
+            "-filter_threads", "1", "-filter_complex_threads", "1",
+            "-threads", "1", "-i", "base_montage.mp4",
             "-i", voice_wav_path.name,
             "-filter_complex", audio_mix,
             "-vf", ass_filter,
             "-map", "0:v", "-map", "[aout]",
             "-t", str(final_dur),
-            "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-threads", "1", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-ar", "48000", "-b:a", "256k",
             "-movflags", "+faststart",
             str(out_mp4.resolve())
-        ], cwd=str(work_dir), check=True)
+        ], cwd=str(work_dir), check=True, timeout=480)
 
         # Постер
         poster_path = work_dir / "shorts_poster.jpg"
@@ -523,14 +525,28 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         rendering = target.with_suffix(".rendering.mp4")
         subprocess.run([
             FFMPEG_EXE, "-hide_banner", "-loglevel", "error", "-y",
-            "-filter_complex_threads", "2", "-i", artwork.name,
+            "-filter_complex_threads", "1", "-i", artwork.name,
             "-i", overlay.name, "-i", voice.name, "-filter_complex", filters,
             "-map", "[out]", "-map", "2:a", "-t", str(duration),
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-threads", "2",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-threads", "1",
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
             "-movflags", "+faststart", str(rendering.resolve()),
         ], cwd=work_dir, check=True, timeout=180)
         rendering.replace(target)
+
+    @staticmethod
+    def validate_short(path: Path) -> bool:
+        if not path.is_file() or path.stat().st_size < 100_000:
+            return False
+        try:
+            result = subprocess.run(
+                [FFMPEG_EXE, "-nostdin", "-v", "error", "-xerror", "-threads", "1",
+                 "-i", str(path), "-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-"],
+                capture_output=True, timeout=90,
+            )
+            return result.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            return False
 
     async def ensure_short_for_post(self, post: ChannelPost) -> Optional[Path]:
         """Возвращает существующий или генерирует новый шортс для премьерного поста."""
@@ -543,7 +559,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             return None
 
         target_path = self.get_short_cache_path(post)
-        if target_path.exists() and target_path.stat().st_size > 100_000:
+        if self.validate_short(target_path):
             logger.info("Найден готовый шортс в кэше: %s", target_path)
             return target_path
 
@@ -717,11 +733,16 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         voice_wav, ass_path, dur = await self.generate_narration_and_subtitles(script, work_dir)
         shots = []
 
+        staged_path = work_dir / "export.partial.mp4"
         logger.info("Монтаж и композитинг шортса для поста #%s...", post.id)
         if artwork:
-            await asyncio.to_thread(self.assemble_artwork_short, artwork, overlay_path, voice_wav, ass_path, dur, target_path)
+            await asyncio.to_thread(self.assemble_artwork_short, artwork, overlay_path, voice_wav, ass_path, dur, staged_path)
         else:
-            await asyncio.to_thread(self.assemble_short_video, trailer_raw, overlay_path, voice_wav, ass_path, shots, dur, target_path)
+            await asyncio.to_thread(self.assemble_short_video, trailer_raw, overlay_path, voice_wav, ass_path, shots, dur, staged_path)
+        if not await asyncio.to_thread(self.validate_short, staged_path):
+            logger.error("Экспорт шортса #%s не прошёл проверку", post.id)
+            return None
+        staged_path.replace(target_path)
         logger.info("Шортс успешно сгенерирован и сохранён: %s", target_path)
         return target_path
 
@@ -935,6 +956,40 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             logger.warning("Не удалось опубликовать пост на стене VK: %s", e)
         return None
 
+    @staticmethod
+    async def upload_max_video(session, headers, video_path: Path) -> dict:
+        async with session.post(
+            "https://platform-api2.max.ru/uploads", params={"type": "video"}, headers=headers,
+        ) as response:
+            response.raise_for_status()
+            upload = await response.json()
+        with video_path.open("rb") as stream:
+            form = aiohttp.FormData()
+            form.add_field("data", stream, filename="short.mp4", content_type="video/mp4")
+            async with session.post(upload["url"], data=form) as response:
+                response.raise_for_status()
+                try:
+                    uploaded = await response.json(content_type=None)
+                except (ValueError, TypeError):
+                    uploaded = {}
+        token = (uploaded or {}).get("token") or upload["token"]
+        return {"type": "video", "payload": {"token": token}}
+
+    @staticmethod
+    async def send_max_video(session, headers, method, params, body):
+        for delay in (0, 3, 7, 15, 25):
+            if delay:
+                await asyncio.sleep(delay)
+            async with session.request(
+                method, "https://platform-api2.max.ru/messages", params=params, headers=headers, json=body,
+            ) as response:
+                result = await response.json(content_type=None)
+                if response.ok and result.get("success") is not False:
+                    return result
+                if result.get("code") != "attachment.not.ready":
+                    raise RuntimeError(f"MAX video request failed ({response.status}, {result.get('code')})")
+        raise RuntimeError("MAX video processing not confirmed")
+
     async def publish_to_max_channel(self, post: ChannelPost, video_path: Optional[Path] = None) -> Optional[str]:
         """Публикация анонса премьеры в канал MAX Messenger."""
         max_token = getattr(self.settings, "MAX_BOT_TOKEN", None) or os.getenv("MAX_BOT_TOKEN")
@@ -965,6 +1020,21 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 [{"type": "link", "text": "🍿 Смотреть на сайте", "url": card_url}],
                 [{"type": "link", "text": "🔔 Личные напоминания", "url": bot_url}],
             ]}})
+
+            if video_path:
+                await client.close()
+                headers = {"Authorization": max_token}
+                async with await client._get_session() as session:
+                    video = await self.upload_max_video(session, headers, video_path)
+                    result = await self.send_max_video(
+                        session, headers, "POST", {"chat_id": int(max_channel)},
+                        {"text": post.post_text or f"🍿 Премьера: {post.title}!",
+                         "attachments": [video, attachments[-1]]},
+                    )
+                body = result.get("message", {}).get("body", {})
+                if not any(item.get("type") == "video" for item in body.get("attachments", [])):
+                    raise RuntimeError("MAX did not confirm a video attachment")
+                return body.get("mid")
 
             res = await client.send_message(
                 chat_id=int(max_channel),
