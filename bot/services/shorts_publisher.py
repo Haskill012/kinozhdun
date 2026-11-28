@@ -1029,6 +1029,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                     result = await self.send_max_video(
                         session, headers, "POST", {"chat_id": int(max_channel)},
                         {"text": post.post_text or f"🍿 Премьера: {post.title}!",
+                         "format": "html",
                          "attachments": [video, attachments[-1]]},
                     )
                 body = result.get("message", {}).get("body", {})

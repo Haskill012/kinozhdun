@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+from time import monotonic
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,11 @@ from shared.video_stats import (
 )
 
 logger = logging.getLogger(__name__)
+_instagram_stats_next_attempt = 0.0
+
+
+def _meta_api_blocked(error: Any) -> bool:
+    return isinstance(error, dict) and str(error.get("error_subcode")) == "5258005"
 
 
 def _stats_path() -> Path:
@@ -43,6 +49,7 @@ def _extract_caption_title(caption: str) -> str:
 
 async def sync_instagram_stats(settings: Settings) -> dict[str, Any]:
     """Забирает профиль и список Reels (@kinojdun) и сохраняет срез истории по всем платформам."""
+    global _instagram_stats_next_attempt
     data_dir = _data_dir()
     ig = InstagramPublisher(settings)
     ig_result: dict[str, Any] = {
@@ -57,7 +64,9 @@ async def sync_instagram_stats(settings: Settings) -> dict[str, Any]:
         "error": "",
     }
 
-    if ig.is_configured():
+    if ig.is_configured() and monotonic() >= _instagram_stats_next_attempt:
+        _instagram_stats_next_attempt = monotonic() + 3600
+        blocked = False
         token = _load_effective_token(ig.env_token)
         base = f"{ig._api_host(token)}/{ig.api_version}"
         uid = ig.ig_user_id
@@ -71,6 +80,7 @@ async def sync_instagram_stats(settings: Settings) -> dict[str, Any]:
                     prof = await resp.json(content_type=None)
                     if resp.status >= 400 or prof.get("error"):
                         ig_result["error"] = str(prof.get("error") or resp.status)
+                        blocked = _meta_api_blocked(prof.get("error"))
                     else:
                         ig_result["username"] = prof.get("username")
                         ig_result["followers"] = prof.get("followers_count")
@@ -89,6 +99,7 @@ async def sync_instagram_stats(settings: Settings) -> dict[str, Any]:
                         media_data = await resp.json(content_type=None)
                         if resp.status >= 400 or media_data.get("error"):
                             ig_result["error"] = str(media_data.get("error") or resp.status)
+                            blocked = _meta_api_blocked(media_data.get("error"))
                         else:
                             insights_supported = True
                             for item in (media_data.get("data") or []):
@@ -124,6 +135,9 @@ async def sync_instagram_stats(settings: Settings) -> dict[str, Any]:
                                         ) as ir:
                                             idata = await ir.json(content_type=None)
                                             err = idata.get("error") or {}
+                                            if _meta_api_blocked(err):
+                                                blocked = True
+                                                break
                                             if ir.status == 200 and isinstance(idata.get("data"), list):
                                                 ig_result["insights_available"] = True
                                                 for m in idata["data"]:
@@ -153,6 +167,11 @@ async def sync_instagram_stats(settings: Settings) -> dict[str, Any]:
         except Exception as exc:
             ig_result["error"] = f"{type(exc).__name__}: {exc}"
             logger.debug("Instagram stats sync error: %s", exc)
+
+        if blocked:
+            _instagram_stats_next_attempt = monotonic() + 6 * 3600
+            ig_result["ok"] = False
+            logger.warning("Instagram API access blocked (5258005); stats requests paused for 6 hours")
 
         if ig_result["ok"] or not _stats_path().exists():
             try:
